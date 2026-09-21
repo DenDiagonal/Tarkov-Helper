@@ -110,7 +110,9 @@ namespace TarkovHelper.Services
 
             CollectPrerequisites(questNormalizedName, visited, visiting, result);
 
-            return result;
+            return result
+    .Where(t => !string.Equals(t.NormalizedName, questNormalizedName, StringComparison.OrdinalIgnoreCase))
+    .ToList();
         }
 
         private void CollectPrerequisites(string questName, HashSet<string> visited, HashSet<string> visiting, List<TarkovTask> result)
