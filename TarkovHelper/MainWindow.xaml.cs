@@ -1325,8 +1325,7 @@ public partial class MainWindow : Window
             TxtLogFolderStatus.Text = _loc.CurrentLanguage switch
             {
                 AppLanguage.KO => "유효한 경로",
-                    _ => "Valid path"
-                _ => "유효한 경로"
+                _ => "Valid path"
             };
         }
         else
