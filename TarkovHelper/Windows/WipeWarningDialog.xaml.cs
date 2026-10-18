@@ -60,14 +60,14 @@ public partial class WipeWarningDialog : Window
     /// </summary>
     private void UpdateLocalizedText()
     {
-        TxtTitle.Text = "퀘스트 동기화 전 확인";
-        TxtMessage.Text = "최근 계정 초기화(와이프)를 진행하셨나요?";
-        TxtDescription.Text = "계정 초기화 후 동기화를 진행하면 이전 시즌의 로그가 섞여 퀘스트 진행 상태가 올바르지 않게 표시될 수 있습니다.";
-        TxtLogFolderLabel.Text = "📁 로그 폴더 위치:";
-        TxtRecommendation.Text = "💡 권장 조치: 계정 초기화 이전 날짜의 로그 폴더를 삭제하거나 다른 위치로 백업해 주세요.";
-        ChkDontShowAgain.Content = "이 안내를 다시 보지 않기";
-        BtnOpenFolder.Content = "폴더 열기";
-        BtnContinue.Content = "계속 진행";
+        TxtTitle.Text = "Check Before Quest Sync";
+        TxtMessage.Text = "Did you recently reset your account (wipe)?";
+        TxtDescription.Text = "Syncing after a wipe may mix previous season logs and show incorrect quest progress.";
+        TxtLogFolderLabel.Text = "📁 Log Folder Path:";
+        TxtRecommendation.Text = "💡 Recommendation: Delete or back up log folders from before the wipe date.";
+        ChkDontShowAgain.Content = "Do not show this notice again";
+        BtnOpenFolder.Content = "Open Folder";
+        BtnContinue.Content = "Continue";
     }
 
     private void BtnClose_Click(object sender, RoutedEventArgs e)
@@ -95,8 +95,8 @@ public partial class WipeWarningDialog : Window
             {
                 Clipboard.SetText(_logPath);
                 MessageBox.Show(
-                    "폴더를 열 수 없습니다. 경로가 클립보드에 복사되었습니다.",
-                    "알림",
+                    "Could not open folder. Path copied to clipboard.",
+                    "Notice",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
             }

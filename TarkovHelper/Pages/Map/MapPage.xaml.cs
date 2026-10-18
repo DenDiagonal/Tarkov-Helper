@@ -1387,12 +1387,12 @@ public partial class MapPage : UserControl
             {
                 var pathList = string.Join("\n", possiblePaths);
                 MessageBox.Show($"스크린샷 폴더를 자동으로 찾지 못했습니다.\n\n발견된 EFT 폴더:\n{pathList}\n\n수동으로 선택해주세요.",
-                    "자동 탐지 실패", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    "Auto Detect Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             else
             {
                 MessageBox.Show("EFT 스크린샷 폴더를 찾을 수 없습니다.\n수동으로 폴더를 선택해주세요.",
-                    "자동 탐지 실패", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    "Auto Detect Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
     }
@@ -1401,7 +1401,7 @@ public partial class MapPage : UserControl
     {
         var dialog = new OpenFolderDialog
         {
-            Title = "스크린샷 폴더 선택",
+            Title = "Select Screenshot Folder",
             InitialDirectory = TxtScreenshotFolder.Text
         };
 
@@ -1905,8 +1905,8 @@ public partial class MapPage : UserControl
         var orig = position.OriginalPosition;
         if (orig != null)
         {
-            var angleStr = orig.Angle.HasValue ? $", 각도: {orig.Angle:F1}°" : "";
-            TxtCoordinates.Text = $"맵: {orig.MapName}, X: {orig.X:F2}, Y: {orig.Y:F2}{angleStr}";
+            var angleStr = orig.Angle.HasValue ? $", Angle: {orig.Angle:F1}°" : "";
+            TxtCoordinates.Text = $"Map: {orig.MapName}, X: {orig.X:F2}, Y: {orig.Y:F2}{angleStr}";
         }
         else
         {
@@ -2587,7 +2587,7 @@ public partial class MapPage : UserControl
         try
         {
             ct.ThrowIfCancellationRequested();
-            TxtStatus.Text = "탈출구 데이터를 불러오는 중...";
+            TxtStatus.Text = "Loading extract data...";
 
             await _extractService.EnsureLoadedAsync(msg =>
             {
@@ -2595,7 +2595,7 @@ public partial class MapPage : UserControl
             }).WaitAsync(ct);
 
             var count = _extractService.AllExtracts.Count;
-            TxtStatus.Text = $"{count}개의 탈출구 데이터를 불러왔습니다";
+            TxtStatus.Text = $"Loaded {count} extracts";
 
             if (!string.IsNullOrEmpty(_currentMapKey))
             {
@@ -2608,7 +2608,7 @@ public partial class MapPage : UserControl
         }
         catch (Exception ex)
         {
-            TxtStatus.Text = $"탈출구 데이터 로드 오류: {ex.Message}";
+            TxtStatus.Text = $"Error loading extracts: {ex.Message}";
         }
     }
 
@@ -2641,12 +2641,12 @@ public partial class MapPage : UserControl
         try
         {
             ct.ThrowIfCancellationRequested();
-            TxtStatus.Text = "지도 마커 데이터를 불러오는 중...";
+            TxtStatus.Text = "Loading map markers...";
 
             await MapMarkerDbService.Instance.LoadMarkersAsync().WaitAsync(ct);
 
             var count = MapMarkerDbService.Instance.MarkerCount;
-            TxtStatus.Text = $"{count}개의 지도 마커 데이터를 불러왔습니다";
+            TxtStatus.Text = $"Loaded {count} map markers";
 
             if (!string.IsNullOrEmpty(_currentMapKey))
             {
@@ -2659,7 +2659,7 @@ public partial class MapPage : UserControl
         }
         catch (Exception ex)
         {
-            TxtStatus.Text = $"지도 마커 데이터 로드 오류: {ex.Message}";
+            TxtStatus.Text = $"Error loading map markers: {ex.Message}";
         }
     }
 
@@ -3601,7 +3601,7 @@ public partial class MapPage : UserControl
     {
         if (string.IsNullOrEmpty(_currentMapKey) || _customMarkerManager == null) return;
 
-        TxtStatus.Text = "마커 추가 시도 중...";
+        TxtStatus.Text = "Adding custom marker...";
 
         // 저장해둔 좌표 사용 (이미 MapCanvas 기준임)
         await _customMarkerManager.AddMarkerAsync(_lastRightClickPosition.X, _lastRightClickPosition.Y);

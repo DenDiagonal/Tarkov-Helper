@@ -72,7 +72,7 @@ public class MapCustomMarkerManager
         }
         catch (Exception ex)
         {
-            StatusUpdated?.Invoke($"커스텀 마커 로드 실패: {ex.Message}");
+            StatusUpdated?.Invoke($"Failed to load custom markers: {ex.Message}");
         }
     }
 
@@ -139,11 +139,11 @@ public class MapCustomMarkerManager
 
         // 우클릭 메뉴
         var contextMenu = new ContextMenu();
-        var editItem = new MenuItem { Header = "마커 수정" };
+        var editItem = new MenuItem { Header = "Edit Marker" };
         editItem.Click += async (s, e) => await EditMarkerAsync(marker);
         contextMenu.Items.Add(editItem);
 
-        var deleteItem = new MenuItem { Header = "마커 삭제" };
+        var deleteItem = new MenuItem { Header = "Delete Marker" };
         deleteItem.Click += async (s, e) => await DeleteMarkerAsync(marker);
         contextMenu.Items.Add(deleteItem);
         container.ContextMenu = contextMenu;
@@ -153,7 +153,7 @@ public class MapCustomMarkerManager
 
     public async Task DeleteMarkerAsync(CustomMapMarker marker)
     {
-        var result = MessageBox.Show($"'{marker.Name}' 마커를 삭제하시겠습니까?", "마커 삭제", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        var result = MessageBox.Show($"Are you sure you want to delete marker '{marker.Name}'?", "Delete Marker", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (result != MessageBoxResult.Yes) return;
 
         try
@@ -161,11 +161,11 @@ public class MapCustomMarkerManager
             await _userDataDb.DeleteCustomMarkerAsync(marker.Id);
             Markers.Remove(marker);
             UpdateMarkerDisplay();
-            StatusUpdated?.Invoke("마커가 삭제되었습니다.");
+            StatusUpdated?.Invoke("Marker deleted.");
         }
         catch (Exception ex)
         {
-            StatusUpdated?.Invoke($"마커 삭제 실패: {ex.Message}");
+            StatusUpdated?.Invoke($"Failed to delete marker: {ex.Message}");
         }
     }
 
@@ -187,7 +187,7 @@ public class MapCustomMarkerManager
             }
             
             UpdateMarkerDisplay();
-            StatusUpdated?.Invoke("마커가 수정되었습니다.");
+            StatusUpdated?.Invoke("Marker updated.");
         }
     }
 
@@ -210,13 +210,13 @@ public class MapCustomMarkerManager
         {
             if (string.IsNullOrEmpty(_currentMapKey))
             {
-                StatusUpdated?.Invoke("오류: 선택된 맵이 없습니다.");
+                StatusUpdated?.Invoke("Error: No map selected.");
                 return;
             }
 
             if (!_transformer.TryTransformToWorld(_currentMapKey, screenX, screenY, out var worldPos) || worldPos == null)
             {
-                StatusUpdated?.Invoke("좌표 변환 실패: 지도의 유효 범위 내에서 시도해 주세요.");
+                StatusUpdated?.Invoke("Coordinate conversion failed: Click within valid map area.");
                 return;
             }
 
@@ -232,13 +232,13 @@ public class MapCustomMarkerManager
                 
                 Markers.Add(newMarker);
                 UpdateMarkerDisplay();
-                StatusUpdated?.Invoke("새 마커가 성공적으로 생성되었습니다.");
+                StatusUpdated?.Invoke("New marker created successfully.");
             }
         }
         catch (Exception ex)
         {
-            StatusUpdated?.Invoke($"마커 추가 실패: {ex.Message}");
-            MessageBox.Show($"마커 추가 중 오류 발생:\n{ex.Message}", "마커 추가 오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            StatusUpdated?.Invoke($"Failed to add marker: {ex.Message}");
+            MessageBox.Show($"마커 추가 중 오류 발생:\n{ex.Message}", "Add Marker Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

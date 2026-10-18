@@ -67,7 +67,7 @@ public sealed class ScreenshotWatcherService : IDisposable
 
         if (!Directory.Exists(folderPath))
         {
-            OnError($"폴더가 존재하지 않습니다: {folderPath}");
+            OnError($"Folder does not exist: {folderPath}");
             return false;
         }
 
@@ -97,7 +97,7 @@ public sealed class ScreenshotWatcherService : IDisposable
             }
             catch (Exception ex)
             {
-                OnError($"감시 시작 실패: {ex.Message}");
+                OnError($"Failed to start screenshot watcher: {ex.Message}");
                 return false;
             }
         }
@@ -172,7 +172,7 @@ public sealed class ScreenshotWatcherService : IDisposable
                 // 파일 접근 가능 여부 확인
                 if (!await WaitForFileAccessAsync(filePath, TimeSpan.FromSeconds(5)))
                 {
-                    OnError($"파일 접근 불가: {fileName}");
+                    OnError($"Cannot access file: {fileName}");
                     return;
                 }
 
@@ -183,12 +183,12 @@ public sealed class ScreenshotWatcherService : IDisposable
                 }
                 else
                 {
-                    OnParsingFailed(fileName, "패턴이 일치하지 않습니다");
+                    OnParsingFailed(fileName, "Pattern does not match");
                 }
             }
             catch (Exception ex)
             {
-                OnError($"파일 처리 오류 ({fileName}): {ex.Message}");
+                OnError($"File processing error ({fileName}): {ex.Message}");
             }
             finally
             {
@@ -232,7 +232,7 @@ public sealed class ScreenshotWatcherService : IDisposable
 
     private void OnWatcherError(object sender, ErrorEventArgs e)
     {
-        OnError($"FileSystemWatcher 오류: {e.GetException().Message}");
+        OnError($"FileSystemWatcher error: {e.GetException().Message}");
 
         // 자동 복구 시도
         if (CurrentWatchPath != null)

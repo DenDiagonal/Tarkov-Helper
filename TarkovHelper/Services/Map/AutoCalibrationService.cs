@@ -33,7 +33,7 @@ public sealed class AutoCalibrationService
 
         if (mapConfig.CalibrationPoints == null || mapConfig.CalibrationPoints.Count < 3)
         {
-            result.ErrorMessage = "보정 포인트가 3개 이상 필요합니다.";
+            result.ErrorMessage = "At least 3 calibration points are required.";
             return result;
         }
 
@@ -54,14 +54,14 @@ public sealed class AutoCalibrationService
 
         if (correspondences.Count < 3)
         {
-            result.ErrorMessage = "유효한 대응점이 3개 미만입니다.";
+            result.ErrorMessage = "Fewer than 3 valid corresponding points found.";
             return result;
         }
 
         var mapping = _comparison.CalculateOldToNewMapping(correspondences);
         if (mapping == null)
         {
-            result.ErrorMessage = "매핑 계산 실패";
+            result.ErrorMessage = "Mapping calculation failed";
             return result;
         }
 

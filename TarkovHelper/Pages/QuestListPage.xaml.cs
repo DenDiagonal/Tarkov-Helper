@@ -389,11 +389,11 @@ namespace TarkovHelper.Pages
                 // Check if it's level-locked or karma-locked
                 if (task.RequiredLevel.HasValue && !_progressService.IsLevelRequirementMet(task))
                 {
-                    return $"레벨 {task.RequiredLevel}";
+                    return $"Lv.{task.RequiredLevel}";
                 }
                 if (task.RequiredScavKarma.HasValue && !_progressService.IsScavKarmaRequirementMet(task))
                 {
-                    return $"우호도 {task.RequiredScavKarma:0.#}";
+                    return $"Rep {task.RequiredScavKarma:0.#}";
                 }
             }
 
@@ -411,32 +411,32 @@ namespace TarkovHelper.Pages
                     // Check for excluded edition
                     var excludedEdition = task.ExcludedEdition?.ToLowerInvariant();
                     if (!string.IsNullOrEmpty(excludedEdition))
-                        return "에디션 제한";
+                        return "Edition";
                 }
                 if (!_progressService.IsPrestigeLevelRequirementMet(task))
                 {
-                    return $"명성 {task.RequiredPrestigeLevel}";
+                    return $"Prestige {task.RequiredPrestigeLevel}";
                 }
                 // Show faction if quest is for different faction
                 if (!_progressService.IsFactionRequirementMet(task))
                 {
                     var faction = task.Faction?.ToLowerInvariant();
                     if (faction == "bear")
-                        return "BEAR 전용";
+                        return "BEAR Only";
                     if (faction == "usec")
-                        return "USEC 전용";
+                        return "USEC Only";
                 }
             }
 
             return status switch
             {
-                QuestStatus.Locked => "잠김",
-                QuestStatus.Active => "진행중",
-                QuestStatus.Done => "완료",
-                QuestStatus.Failed => "실패",
-                QuestStatus.LevelLocked => "레벨 제한",
-                QuestStatus.Unavailable => "상태 불가",
-                _ => "알 수 없음"
+                QuestStatus.Locked => "Locked",
+                QuestStatus.Active => "Active",
+                QuestStatus.Done => "Done",
+                QuestStatus.Failed => "Failed",
+                QuestStatus.LevelLocked => "Level Locked",
+                QuestStatus.Unavailable => "Unavailable",
+                _ => "Unknown"
             };
         }
 
@@ -597,8 +597,8 @@ namespace TarkovHelper.Pages
             var stats = _progressService.GetStatistics();
             var playerLevel = SettingsService.Instance.PlayerLevel;
             var lockedTotal = stats.Locked + stats.LevelLocked;
-            TxtStats.Text = $"레벨 {playerLevel} | {stats.Total}개 중 {filtered.Count}개 표시 중 | " +
-                           $"진행 중: {stats.Active} | 잠김: {lockedTotal} | 완료: {stats.Done} | 실패: {stats.Failed} | 불가: {stats.Unavailable}";
+            TxtStats.Text = $"Lv. {playerLevel} | Showing {filtered.Count} of {stats.Total} | " +
+                           $"Active: {stats.Active} | Locked: {lockedTotal} | Done: {stats.Done} | Failed: {stats.Failed} | Unavailable: {stats.Unavailable}";
 
             // Update Kappa progress gauge
             UpdateKappaGauge();
@@ -737,12 +737,12 @@ namespace TarkovHelper.Pages
                 var reqLevel = task.RequiredLevel!.Value;
                 if (playerLevel >= reqLevel)
                 {
-                    TxtRequiredLevel.Text = $"레벨 {reqLevel} (현재: {playerLevel})";
+                    TxtRequiredLevel.Text = $"Lv.{reqLevel} (Current: {playerLevel})";
                     TxtRequiredLevel.Foreground = (Brush)FindResource("TextPrimaryBrush");
                 }
                 else
                 {
-                    TxtRequiredLevel.Text = $"레벨 {reqLevel} (현재: {playerLevel})";
+                    TxtRequiredLevel.Text = $"Lv.{reqLevel} (Current: {playerLevel})";
                     TxtRequiredLevel.Foreground = LevelLockedBrush;
                 }
                 TxtRequiredLevel.Visibility = Visibility.Visible;
@@ -759,7 +759,7 @@ namespace TarkovHelper.Pages
                 var reqKarma = task.RequiredScavKarma!.Value;
                 var isMet = _progressService.IsScavKarmaRequirementMet(task);
                 var comparison = reqKarma < 0 ? "≤" : "≥";
-                TxtRequiredScavKarma.Text = $"스캐브 우호도 {comparison} {reqKarma:0.#} (현재: {playerScavRep:0.#})";
+                TxtRequiredScavKarma.Text = $"Scav Karma {comparison} {reqKarma:0.#} (Current: {playerScavRep:0.#})";
                 TxtRequiredScavKarma.Foreground = isMet ? (Brush)FindResource("TextPrimaryBrush") : LevelLockedBrush;
                 TxtRequiredScavKarma.Visibility = Visibility.Visible;
             }
@@ -1017,7 +1017,7 @@ namespace TarkovHelper.Pages
                 normalizedName => _progressService.IsQuestCompleted(normalizedName));
 
             // Update progress text
-            TxtKappaProgress.Text = $"선행 필수 퀘스트: ({completed}/{total} 완료)";
+            TxtKappaProgress.Text = $"Kappa Prerequisites: ({completed}/{total} Done)";
             TxtKappaProgressPercent.Text = $"{percentage}%";
 
             // Update progress bar width
@@ -1046,7 +1046,7 @@ namespace TarkovHelper.Pages
             // Create a popup window to show all Kappa required quests
             var popupWindow = new Window
             {
-                Title = "카파 필수 퀘스트",
+                Title = "Kappa Required Quests",
                 Width = 500,
                 Height = 600,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -1062,7 +1062,7 @@ namespace TarkovHelper.Pages
                 normalizedName => _progressService.IsQuestCompleted(normalizedName));
             var headerText = new TextBlock
             {
-                Text = $"카파 필수 퀘스트 ({completed}/{total})",
+                Text = $"Kappa Required Quests ({completed}/{total})",
                 FontSize = 18,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = (Brush)FindResource("AccentBrush"),
@@ -1198,7 +1198,7 @@ namespace TarkovHelper.Pages
 
                 var badgeText = new TextBlock
                 {
-                    Text = "선택 사항",
+                    Text = "Optional",
                     FontSize = 10,
                     FontWeight = FontWeights.SemiBold,
                     Foreground = new SolidColorBrush(Color.FromRgb(255, 193, 7)) // Amber color
@@ -1301,7 +1301,7 @@ namespace TarkovHelper.Pages
                 GuideImagesList.ItemsSource = null; // Clear previous images
                 GuideImagesExpander.IsExpanded = false; // Reset to collapsed
                 GuideImagesExpander.Visibility = Visibility.Visible;
-                TxtGuideImagesHeader.Text = $"이미지 보기 ({task.GuideImages!.Count}개)";
+                TxtGuideImagesHeader.Text = $"Guide Images ({task.GuideImages!.Count})";
             }
             else
             {

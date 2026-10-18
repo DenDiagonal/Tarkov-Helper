@@ -223,7 +223,7 @@ public partial class OverlayMiniMapWindow : Window
             // SVG 맵 로드
             if (string.IsNullOrEmpty(_currentMapConfig.SvgFileName))
             {
-                TxtNoMap.Text = $"SVG 파일 없음: {mapKey}";
+                TxtNoMap.Text = $"SVG file not found: {mapKey}";
                 TxtNoMap.Visibility = Visibility.Visible;
                 return;
             }
@@ -240,7 +240,7 @@ public partial class OverlayMiniMapWindow : Window
             else
             {
                 _log.Warning($"Map SVG not found: {svgPath}");
-                TxtNoMap.Text = $"지도를 찾을 수 없음: {mapKey}";
+                TxtNoMap.Text = $"Map not found: {mapKey}";
                 TxtNoMap.Visibility = Visibility.Visible;
             }
 

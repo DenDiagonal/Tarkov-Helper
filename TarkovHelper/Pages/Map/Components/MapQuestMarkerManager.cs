@@ -760,7 +760,7 @@ public class MapQuestMarkerManager
             ? objective.TaskNameKo
             : objective.TaskName;
         var floorIndicator = !isOnCurrentFloor ? " ⬆⬇" : "";
-        container.ToolTip = $"[영역] {tooltipName}\n{tooltipDesc}{floorIndicator}";
+        container.ToolTip = $"[Area] {tooltipName}\n{tooltipDesc}{floorIndicator}";
 
         return container;
     }
@@ -816,7 +816,7 @@ public class MapQuestMarkerManager
         // OR 레이블
         var orLabel = new TextBlock
         {
-            Text = $"선택{orIndex}",
+            Text = $"Choice {orIndex}",
             FontSize = _questNameTextSize * 0.9,
             FontWeight = FontWeights.Bold,
             Foreground = Brushes.White
@@ -916,7 +916,7 @@ public class MapQuestMarkerManager
             ? objective.TaskNameKo
             : objective.TaskName;
         var floorIndicator = !isOnCurrentFloor ? " ⬆⬇" : "";
-        canvas.ToolTip = $"[선택{orIndex}] {tooltipName}\n{tooltipDesc}{floorIndicator}";
+        canvas.ToolTip = $"[Choice {orIndex}] {tooltipName}\n{tooltipDesc}{floorIndicator}";
 
         return canvas;
     }

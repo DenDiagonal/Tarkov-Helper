@@ -164,7 +164,7 @@ public partial class OverlaySettingsWindow : Window
     private void BtnZoomInKey_Click(object sender, RoutedEventArgs e)
     {
         _captureMode = KeyCaptureMode.ZoomIn;
-        BtnZoomInKey.Content = "입력 대기...";
+        BtnZoomInKey.Content = "Press a key...";
         BtnZoomOutKey.Content = System.Windows.Input.KeyInterop.KeyFromVirtualKey(_settings.ZoomOutKey).ToString();
         this.Focus();
     }
@@ -172,7 +172,7 @@ public partial class OverlaySettingsWindow : Window
     private void BtnZoomOutKey_Click(object sender, RoutedEventArgs e)
     {
         _captureMode = KeyCaptureMode.ZoomOut;
-        BtnZoomOutKey.Content = "입력 대기...";
+        BtnZoomOutKey.Content = "Press a key...";
         BtnZoomInKey.Content = System.Windows.Input.KeyInterop.KeyFromVirtualKey(_settings.ZoomInKey).ToString();
         this.Focus();
     }

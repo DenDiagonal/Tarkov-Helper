@@ -82,7 +82,7 @@
 
             <!-- 맵 없음 메시지 -->
             <TextBlock x:Name="TxtNoMap"
-                       Text="지도가 선택되지 않았습니다"
+                       Text="No map selected"
                        Foreground="#666666"
                        FontSize="14"
                        HorizontalAlignment="Center"

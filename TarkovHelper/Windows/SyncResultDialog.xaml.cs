@@ -83,17 +83,17 @@ public partial class SyncResultDialog : Window
         var prereqCount = _result.QuestsToComplete.Count(q => q.IsPrerequisite);
         var inProgressCount = _result.InProgressQuests.Count;
 
-        TxtTitle.Text = "퀘스트 동기화 완료";
-        TxtCompletedHeader.Text = $"완료된 퀘스트 ({_result.QuestsToComplete.Count})";
-        TxtInProgressHeader.Text = $"진행중 퀘스트 ({inProgressCount})";
-        TxtSummaryLabel.Text = "요약:";
-        TxtStats.Text = $"├─ 로그에서 발견된 이벤트: {_result.TotalEventsFound}\n├─ 자동 완료된 선행 퀘스트: {prereqCount}\n└─ 매칭 실패한 퀘스트 ID: {_result.UnmatchedQuestIds.Count}";
-        BtnCancel.Content = "취소";
-        BtnConfirm.Content = "확인";
+        TxtTitle.Text = "Quest Sync Complete";
+        TxtCompletedHeader.Text = $"Completed Quests ({_result.QuestsToComplete.Count})";
+        TxtInProgressHeader.Text = $"In-Progress Quests ({inProgressCount})";
+        TxtSummaryLabel.Text = "Summary:";
+        TxtStats.Text = $"├─ Events found in logs: {_result.TotalEventsFound}\n├─ Auto-completed prerequisites: {prereqCount}\n└─ Unmatched quest IDs: {_result.UnmatchedQuestIds.Count}";
+        BtnCancel.Content = "Cancel";
+        BtnConfirm.Content = "Confirm";
 
         if (_result.AlternativeQuestGroups.Count > 0)
         {
-            TxtAlternativeHeader.Text = $"선택 필요 퀘스트 - 그룹당 하나 선택 ({_result.AlternativeQuestGroups.Count}개 그룹)";
+            TxtAlternativeHeader.Text = $"Choice Required Quests - Pick one per group ({_result.AlternativeQuestGroups.Count} groups)";
         }
     }
 
@@ -102,7 +102,7 @@ public partial class SyncResultDialog : Window
         var vm = new AlternativeQuestGroupViewModel
         {
             OriginalGroup = group,
-            GroupLabel = $"선택 그룹: {string.Join(" / ", group.Choices.Select(c => c.Task.Name))}"
+            GroupLabel = $"Choice Group: {string.Join(" / ", group.Choices.Select(c => c.Task.Name))}"
         };
 
         foreach (var choice in group.Choices)

@@ -46,7 +46,7 @@ public partial class MigrationResultDialog : Window
         TxtMigrationInventoryCount.Text = result.ItemInventoryCount.ToString();
         TxtMigrationSettingsCount.Text = result.SettingsCount.ToString();
 
-        TxtMigrationTotalCount.Text = $"{result.TotalCount}개 항목";
+        TxtMigrationTotalCount.Text = $"{result.TotalCount} items";
 
         // Show warnings if any
         if (result.HasWarnings || result.HasErrors)
@@ -55,7 +55,7 @@ public partial class MigrationResultDialog : Window
             MigrationWarningsList.ItemsSource = allMessages;
             MigrationWarningsSection.Visibility = Visibility.Visible;
 
-            TxtMigrationWarningsHeader.Text = result.HasErrors ? "오류 및 경고" : "경고";
+            TxtMigrationWarningsHeader.Text = result.HasErrors ? "Errors & Warnings" : "Warnings";
 
             TxtMigrationWarningsHeader.Foreground = result.HasErrors
                 ? new SolidColorBrush(Color.FromRgb(239, 83, 80)) // Red
@@ -89,13 +89,13 @@ public partial class MigrationResultDialog : Window
     /// </summary>
     private void UpdateLocalizedText(ConfigMigrationService.MigrationResult result)
     {
-        TxtMigrationResultTitle.Text = result.HasErrors ? "마이그레이션 실패" : "마이그레이션 완료";
-        TxtMigrationQuestLabel.Text = "퀘스트 진행";
-        TxtMigrationHideoutLabel.Text = "하이드아웃 진행";
-        TxtMigrationInventoryLabel.Text = "아이템 인벤토리";
-        TxtMigrationSettingsLabel.Text = "설정";
-        TxtMigrationTotalLabel.Text = "총 가져온 항목: ";
-        BtnOk.Content = "확인";
+        TxtMigrationResultTitle.Text = result.HasErrors ? "Migration Failed" : "Migration Complete";
+        TxtMigrationQuestLabel.Text = "Quest Progress";
+        TxtMigrationHideoutLabel.Text = "Hideout Progress";
+        TxtMigrationInventoryLabel.Text = "Item Inventory";
+        TxtMigrationSettingsLabel.Text = "Settings";
+        TxtMigrationTotalLabel.Text = "Total Imported Items: ";
+        BtnOk.Content = "OK";
     }
 
     private void BtnClose_Click(object sender, RoutedEventArgs e)

@@ -148,7 +148,7 @@ public sealed class DatabaseUpdateService : IDisposable
     public async Task<UpdateCheckResult> CheckAndUpdateAsync()
     {
         _log.Info("Update check disabled by user request");
-        return new UpdateCheckResult(true, false, "업데이트 기능이 비활성화되었습니다");
+        return new UpdateCheckResult(true, false, "Update feature is disabled");
     }
 
     /// <summary>
@@ -167,7 +167,7 @@ public sealed class DatabaseUpdateService : IDisposable
 
             if (string.IsNullOrEmpty(remoteVersion))
             {
-                var result = new UpdateCheckResult(false, false, "원격 버전을 가져오지 못했습니다");
+                var result = new UpdateCheckResult(false, false, "Failed to fetch remote version");
                 UpdateCheckCompleted?.Invoke(this, result);
                 return result;
             }
@@ -179,7 +179,7 @@ public sealed class DatabaseUpdateService : IDisposable
             if (LocalVersion == remoteVersion)
             {
                 _log.Debug("Database is up to date");
-                var result = new UpdateCheckResult(true, false, "데이터베이스가 최신 버전입니다");
+                var result = new UpdateCheckResult(true, false, "Database is up to date");
                 UpdateCheckCompleted?.Invoke(this, result);
                 return result;
             }
@@ -190,7 +190,7 @@ public sealed class DatabaseUpdateService : IDisposable
 
             if (!downloadSuccess)
             {
-                var result = new UpdateCheckResult(false, false, "데이터베이스 다운로드에 실패했습니다");
+                var result = new UpdateCheckResult(false, false, "Failed to download database");
                 UpdateCheckCompleted?.Invoke(this, result);
                 return result;
             }
@@ -202,7 +202,7 @@ public sealed class DatabaseUpdateService : IDisposable
             _log.Info("Database updated successfully, notifying services...");
             OnDatabaseUpdated();
 
-            var successResult = new UpdateCheckResult(true, true, $"버전 {remoteVersion}(으)로 업데이트되었습니다");
+            var successResult = new UpdateCheckResult(true, true, $"Updated to version {remoteVersion}");
             UpdateCheckCompleted?.Invoke(this, successResult);
             return successResult;
         }

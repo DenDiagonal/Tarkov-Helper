@@ -135,7 +135,7 @@ public sealed class LogMapWatcherService : IDisposable
 
             if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
             {
-                ErrorOccurred?.Invoke(this, "로그 폴더가 설정되지 않았거나 존재하지 않습니다.");
+                ErrorOccurred?.Invoke(this, "Log folder is not set or does not exist.");
                 return false;
             }
 
@@ -168,7 +168,7 @@ public sealed class LogMapWatcherService : IDisposable
             }
             catch (Exception ex)
             {
-                ErrorOccurred?.Invoke(this, $"로그 감시 시작 실패: {ex.Message}");
+                ErrorOccurred?.Invoke(this, $"Failed to start log watcher: {ex.Message}");
                 _isWatching = false;
                 WatchingStateChanged?.Invoke(this, false);
                 return false;

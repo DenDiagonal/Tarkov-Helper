@@ -349,11 +349,11 @@ namespace TarkovHelper.Pages
         private void UpdateStatistics()
         {
             var stats = _progressService.GetStatistics();
-            TxtStats.Text = $"모듈: {stats.TotalModules} | " +
-                           $"완료: {stats.FullyCompleted} | " +
-                           $"진행 중: {stats.InProgress} | " +
-                           $"시작 안 함: {stats.NotStarted} | " +
-                           $"레벨: {stats.CompletedLevels}/{stats.TotalLevels}";
+            TxtStats.Text = $"Modules: {stats.TotalModules} | " +
+                           $"Completed: {stats.FullyCompleted} | " +
+                           $"In Progress: {stats.InProgress} | " +
+                           $"Not Started: {stats.NotStarted} | " +
+                           $"Levels: {stats.CompletedLevels}/{stats.TotalLevels}";
         }
 
         private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e)
@@ -428,7 +428,7 @@ namespace TarkovHelper.Pages
             if (nextLevel != null)
             {
                 NextLevelSection.Visibility = Visibility.Visible;
-                TxtNextLevelHeader.Text = $"다음 레벨 요구 사항 (레벨 {nextLevel.Level})";
+                TxtNextLevelHeader.Text = $"Next Level Requirements (Level {nextLevel.Level})";
 
                 // Items
                 if (nextLevel.ItemRequirements.Count > 0)
@@ -560,7 +560,7 @@ namespace TarkovHelper.Pages
             }
             else
             {
-                TotalRemainingItemsList.ItemsSource = new[] { new RequirementViewModel { DisplayText = "모든 아이템을 수집했습니다!" } };
+                TotalRemainingItemsList.ItemsSource = new[] { new RequirementViewModel { DisplayText = "All items collected!" } };
             }
         }
 

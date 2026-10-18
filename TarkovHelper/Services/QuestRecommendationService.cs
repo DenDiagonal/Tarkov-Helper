@@ -432,37 +432,37 @@ namespace TarkovHelper.Services
         {
             if (readyItems.Count > 0)
             {
-                return $"필요 아이템 {readyItems.Count}개 보유 중";
+                return $"Have {readyItems.Count} required items";
             }
 
-            return "지금 바로 완료 가능";
+            return "Ready to complete now";
         }
 
         private string GetItemHandInReason(TarkovTask quest, List<(QuestItem, int)> ready, List<(QuestItem, int)> missing)
         {
             var total = ready.Count + missing.Count;
 
-            return $"아이템 제출만 필요 ({ready.Count}/{total}개 보유)";
+            return $"Item turn-in only ({ready.Count}/{total} owned)";
         }
 
         private string GetKappaReason(TarkovTask quest, int unlocksCount)
         {
             if (unlocksCount > 0)
             {
-                return $"카파 필수 + {unlocksCount}개 퀘스트 해금";
+                return $"Kappa required + unlocks {unlocksCount} quests";
             }
 
-            return "카파 컨테이너 필수 퀘스트";
+            return "Required for Kappa Container";
         }
 
         private string GetUnlocksReason(TarkovTask quest, int unlocksCount)
         {
-            return $"{unlocksCount}개 퀘스트 해금";
+            return $"Unlocks {unlocksCount} quests";
         }
 
         private string GetEasyQuestReason(TarkovTask quest)
         {
-            return "아이템 필요 없음";
+            return "No items required";
         }
     }
 }

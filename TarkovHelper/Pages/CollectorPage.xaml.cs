@@ -340,11 +340,11 @@ namespace TarkovHelper.Pages
             var inProgressCount = filteredList.Count(i => i.FulfillmentStatus == ItemFulfillmentStatus.PartiallyFulfilled);
             var includePreQuest = ChkIncludePreQuest.IsChecked == true;
 
-            TxtStats.Text = $"아이템 {totalItems}개 표시 중 | " +
-                           $"합계: {totalCount} | " +
-                           $"수집 완료: {fulfilledCount} | " +
-                           $"진행 중: {inProgressCount}" +
-                           (includePreQuest ? " | 선행 퀘스트 포함" : " | 카파 퀘스트 전용");
+            TxtStats.Text = $"Showing {totalItems} items | " +
+                           $"Total: {totalCount} | " +
+                           $"Fulfilled: {fulfilledCount} | " +
+                           $"In Progress: {inProgressCount}" +
+                           (includePreQuest ? " | Pre-quests included" : " | Collector quest only");
         }
 
         private async void ChkIncludePreQuest_Changed(object sender, RoutedEventArgs e)
@@ -469,9 +469,9 @@ namespace TarkovHelper.Pages
             var status = itemVm.FulfillmentStatus;
             var statusText = status switch
             {
-                ItemFulfillmentStatus.Fulfilled => "수집 완료",
-                ItemFulfillmentStatus.PartiallyFulfilled => "진행 중",
-                _ => "시작 안 함"
+                ItemFulfillmentStatus.Fulfilled => "Fulfilled",
+                ItemFulfillmentStatus.PartiallyFulfilled => "In Progress",
+                _ => "Not Started"
             };
 
             TxtDetailFulfillmentStatus.Text = statusText;
@@ -695,9 +695,9 @@ namespace TarkovHelper.Pages
             var status = _selectedItem.FulfillmentStatus;
             var statusText = status switch
             {
-                ItemFulfillmentStatus.Fulfilled => "수집 완료",
-                ItemFulfillmentStatus.PartiallyFulfilled => "진행 중",
-                _ => "시작 안 함"
+                ItemFulfillmentStatus.Fulfilled => "Fulfilled",
+                ItemFulfillmentStatus.PartiallyFulfilled => "In Progress",
+                _ => "Not Started"
             };
 
             TxtDetailFulfillmentStatus.Text = statusText;
