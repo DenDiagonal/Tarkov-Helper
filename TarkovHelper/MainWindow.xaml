@@ -90,10 +90,10 @@
                         <StackPanel Orientation="Horizontal">
                             <RadioButton x:Name="RadioPvp" Content="PVP" Style="{StaticResource ProfileToggleStyle}" 
                                          Tag="Pvp" GroupName="ProfileGroup"
-                                         ToolTip="PVP 모드 데이터를 표시합니다."/>
+                                         ToolTip="Display PVP mode data"/>
                             <RadioButton x:Name="RadioPve" Content="PVE" Style="{StaticResource ProfileToggleStyle}" 
                                          Tag="Pve" GroupName="ProfileGroup"
-                                         ToolTip="PVE 모드 데이터를 표시합니다."/>
+                                         ToolTip="Display PVE mode data"/>
                         </StackPanel>
                     </Border>
 
@@ -110,7 +110,7 @@
                                 <Button x:Name="BtnLevelDown" Content="-" Width="24" Height="24"
                                         Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                         Click="BtnLevelDown_Click"
-                                        ToolTip="레벨 감소"/>
+                                        ToolTip="Decrease level"/>
                                 <TextBox x:Name="TxtPlayerLevel" Text="15" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                          Foreground="{StaticResource AccentBrush}"
                                          Background="Transparent"
@@ -125,25 +125,25 @@
                                 <Button x:Name="BtnLevelUp" Content="+" Width="24" Height="24"
                                         Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                         Click="BtnLevelUp_Click"
-                                        ToolTip="레벨 증가"/>
+                                        ToolTip="Increase level"/>
                             </StackPanel>
                         </Border>
 
                         <!-- Profile Button -->
-                        <Button x:Name="BtnProfile" Content="▼ 프로필" Padding="10,6"
+                        <Button x:Name="BtnProfile" Content="▼ Profile" Padding="10,6"
                                 Margin="0,0,12,0" Click="BtnProfile_Click"
-                                ToolTip="프로필 설정 (에디션, 프레스티지, 스캐브 평판 등)"/>
+                                ToolTip="Profile settings (Edition, Prestige, Scav karma, etc.)"/>
 
                         <!-- Reset Progress -->
-                        <Button x:Name="BtnResetProgress" Content="↩ 초기화" Padding="10,6"
+                        <Button x:Name="BtnResetProgress" Content="↩ Reset" Padding="10,6"
                                 Margin="0,0,8,0" Click="BtnResetProgress_Click"
-                                ToolTip="모든 진행 상황 초기화"/>
+                                ToolTip="Reset all progress"/>
 
                         <!-- Settings -->
                         <Button x:Name="BtnSettings" Content="⚙" Padding="10,6"
                                 Margin="0,0,12,0" Click="BtnSettings_Click"
                                 FontSize="{DynamicResource FontSizeMedium}"
-                                ToolTip="설정"/>
+                                ToolTip="Settings"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -167,20 +167,20 @@
                     <!-- Tab Navigation -->
                     <Border x:Name="TabNavigation" Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}" Padding="16,0">
                         <StackPanel Orientation="Horizontal">
-                            <RadioButton x:Name="TabQuests" Content="퀘스트"
+                            <RadioButton x:Name="TabQuests" Content="Quests"
                                          Style="{StaticResource TabButtonStyle}"
                                          IsChecked="True"
                                          Checked="Tab_Checked"/>
-                            <RadioButton x:Name="TabHideout" Content="은신처"
+                            <RadioButton x:Name="TabHideout" Content="Hideout"
                                          Style="{StaticResource TabButtonStyle}"
                                          Checked="Tab_Checked"/>
-                            <RadioButton x:Name="TabItems" Content="아이템"
+                            <RadioButton x:Name="TabItems" Content="Items"
                                          Style="{StaticResource TabButtonStyle}"
                                          Checked="Tab_Checked"/>
-                            <RadioButton x:Name="TabCollector" Content="수집가 - 카파"
+                            <RadioButton x:Name="TabCollector" Content="Collector - Kappa"
                                          Style="{StaticResource TabButtonStyle}"
                                          Checked="Tab_Checked"/>
-                            <RadioButton x:Name="TabMap" Content="지도"
+                            <RadioButton x:Name="TabMap" Content="Map"
                                          Style="{StaticResource TabButtonStyle}"
                                          Checked="Tab_Checked"/>
                         </StackPanel>
@@ -205,13 +205,13 @@
                         CornerRadius="4" Padding="8,6" Margin="0,0,16,0"
                         VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="스캐브 평판" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                        <TextBlock Text="Scav Karma" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <Button x:Name="BtnScavRepDown" Content="-" Width="24" Height="24"
                                 Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                 Click="BtnScavRepDown_Click"
-                                ToolTip="평판 감소 (-0.1)"/>
+                                ToolTip="Decrease karma (-0.1)"/>
                         <TextBox x:Name="TxtScavRep" Text="1.0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                  Foreground="{StaticResource AccentBrush}"
                                  Background="Transparent"
@@ -226,7 +226,7 @@
                         <Button x:Name="BtnScavRepUp" Content="+" Width="24" Height="24"
                                 Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                 Click="BtnScavRepUp_Click"
-                                ToolTip="평판 증가 (+0.1)"/>
+                                ToolTip="Increase karma (+0.1)"/>
                     </StackPanel>
                 </Border>
 
@@ -235,25 +235,25 @@
                         CornerRadius="4" Padding="8,6" Margin="0,0,16,0"
                         VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="DSP 디코드" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                        <TextBlock Text="DSP Decodes" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <Button x:Name="BtnDsp0" Content="0" Width="24" Height="24"
                                 Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                 Click="BtnDsp_Click" Tag="0"
-                                ToolTip="0회 디코드 - Make Amends 퀘스트 없음"/>
+                                ToolTip="0 decodes - No Make Amends quest"/>
                         <Button x:Name="BtnDsp1" Content="1" Width="24" Height="24"
                                 Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                 Click="BtnDsp_Click" Tag="1" Margin="2,0,0,0"
-                                ToolTip="1회 디코드 - Make Amends: Buyout"/>
+                                ToolTip="1 decode - Make Amends: Buyout"/>
                         <Button x:Name="BtnDsp2" Content="2" Width="24" Height="24"
                                 Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                 Click="BtnDsp_Click" Tag="2" Margin="2,0,0,0"
-                                ToolTip="2회 디코드 - Make Amends: Security"/>
+                                ToolTip="2 decodes - Make Amends: Security"/>
                         <Button x:Name="BtnDsp3" Content="3" Width="24" Height="24"
                                 Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                 Click="BtnDsp_Click" Tag="3" Margin="2,0,0,0"
-                                ToolTip="3회 디코드 - Make Amends: Software"/>
+                                ToolTip="3 decodes - Make Amends: Software"/>
                     </StackPanel>
                 </Border>
 
@@ -262,7 +262,7 @@
                         CornerRadius="4" Padding="8,6" Margin="0,0,16,0"
                         VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="에디션" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                        <TextBlock Text="Edition" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <CheckBox x:Name="ChkEodEdition" Content="EOD"
@@ -270,13 +270,13 @@
                                   FontSize="{DynamicResource FontSizeXSmall}"
                                   VerticalAlignment="Center" Margin="0,0,12,0"
                                   Checked="ChkEdition_Changed" Unchecked="ChkEdition_Changed"
-                                  ToolTip="Edge of Darkness 에디션"/>
+                                  ToolTip="Edge of Darkness Edition"/>
                         <CheckBox x:Name="ChkUnheardEdition" Content="Unheard"
                                   Foreground="{StaticResource TextPrimaryBrush}"
                                   FontSize="{DynamicResource FontSizeXSmall}"
                                   VerticalAlignment="Center"
                                   Checked="ChkEdition_Changed" Unchecked="ChkEdition_Changed"
-                                  ToolTip="The Unheard 에디션"/>
+                                  ToolTip="The Unheard Edition"/>
                     </StackPanel>
                 </Border>
 
@@ -285,13 +285,13 @@
                         CornerRadius="4" Padding="8,6"
                         VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="프레스티지" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                        <TextBlock Text="Prestige" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <Button x:Name="BtnPrestigeDown" Content="-" Width="24" Height="24"
                                 Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                 Click="BtnPrestigeDown_Click"
-                                ToolTip="프레스티지 레벨 감소"/>
+                                ToolTip="Decrease prestige level"/>
                         <TextBlock x:Name="TxtPrestigeLevel" Text="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                    Foreground="{StaticResource AccentBrush}"
                                    VerticalAlignment="Center" Margin="8,0"
@@ -299,7 +299,7 @@
                         <Button x:Name="BtnPrestigeUp" Content="+" Width="24" Height="24"
                                 Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                 Click="BtnPrestigeUp_Click"
-                                ToolTip="프레스티지 레벨 증가"/>
+                                ToolTip="Increase prestige level"/>
                     </StackPanel>
                 </Border>
             </StackPanel>
@@ -315,7 +315,7 @@
                     <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
                 </Border.Effect>
                 <StackPanel>
-                    <TextBlock Text="데이터 로딩 중" FontSize="{DynamicResource FontSizeLarge}" FontWeight="SemiBold"
+                    <TextBlock Text="Loading Data" FontSize="{DynamicResource FontSizeLarge}" FontWeight="SemiBold"
                                Foreground="{StaticResource AccentBrush}"
                                HorizontalAlignment="Center" Margin="0,0,0,16"/>
                     <ProgressBar x:Name="LoadingProgressBar"
@@ -323,7 +323,7 @@
                                  Foreground="{StaticResource AccentBrush}"
                                  Background="{StaticResource BackgroundMediumBrush}"/>
                     <TextBlock x:Name="LoadingStatusText"
-                               Text="초기화 중..."
+                               Text="Initializing..."
                                FontSize="{DynamicResource FontSizeXSmall}" Margin="0,12,0,0"
                                Foreground="{StaticResource TextSecondaryBrush}"
                                HorizontalAlignment="Center"
@@ -350,7 +350,7 @@
 
                     <!-- Header -->
                     <Grid Grid.Row="0" Margin="0,0,0,20">
-                        <TextBlock x:Name="TxtSettingsTitle" Text="설정" FontSize="{DynamicResource FontSizeTitle}" FontWeight="SemiBold"
+                        <TextBlock x:Name="TxtSettingsTitle" Text="Settings" FontSize="{DynamicResource FontSizeTitle}" FontWeight="SemiBold"
                                    Foreground="{StaticResource AccentBrush}"/>
                         <Button x:Name="BtnCloseSettings" Content="✕"
                                 HorizontalAlignment="Right"
@@ -370,13 +370,13 @@
                             <!-- Left Column -->
                             <StackPanel Grid.Column="0">
                                 <!-- Log Folder Section -->
-                                <TextBlock x:Name="TxtLogFolderLabel" Text="Tarkov 로그 폴더"
+                                <TextBlock x:Name="TxtLogFolderLabel" Text="Tarkov Log Folder"
                                            FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimaryBrush}"
                                            Margin="0,0,0,8"/>
 
                                 <TextBlock x:Name="TxtLogFolderDesc"
-                                           Text="자동 퀘스트 완료 추적을 위해 Tarkov의 Logs 폴더 경로를 설정하세요."
+                                           Text="Set the Tarkov Logs folder path to automatically track completed quests."
                                            FontSize="{DynamicResource FontSizeXSmall}"
                                            Foreground="{StaticResource TextSecondaryBrush}"
                                            TextWrapping="Wrap"
@@ -391,7 +391,7 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock x:Name="TxtCurrentLogPath"
-                                                   Text="설정되지 않음"
+                                                   Text="Not configured"
                                                    FontSize="{DynamicResource FontSizeXSmall}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    TextTrimming="CharacterEllipsis"
@@ -415,20 +415,20 @@
                                              VerticalAlignment="Center"
                                              Margin="0,0,8,0"/>
                                     <TextBlock x:Name="TxtLogFolderStatus"
-                                               Text="잘못된 경로"
+                                               Text="Invalid path"
                                                FontSize="{DynamicResource FontSizeXSmall}"
                                                Foreground="{StaticResource TextSecondaryBrush}"/>
                                 </StackPanel>
 
                                 <!-- Action Buttons -->
                                 <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                    <Button x:Name="BtnAutoDetect" Content="자동 감지"
+                                    <Button x:Name="BtnAutoDetect" Content="Auto Detect"
                                             Padding="12,8" Margin="0,0,8,8"
                                             Click="BtnAutoDetect_Click"/>
-                                    <Button x:Name="BtnBrowseLogFolder" Content="찾아보기..."
+                                    <Button x:Name="BtnBrowseLogFolder" Content="Browse..."
                                             Padding="12,8" Margin="0,0,8,8"
                                             Click="BtnBrowseLogFolder_Click"/>
-                                    <Button x:Name="BtnResetLogFolder" Content="초기화"
+                                    <Button x:Name="BtnResetLogFolder" Content="Reset"
                                             Padding="12,8" Margin="0,0,0,8"
                                             Click="BtnResetLogFolder_Click"/>
                                 </WrapPanel>
@@ -437,13 +437,13 @@
                                 <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
                                         Margin="0,12,0,0" Padding="0,16,0,0">
                                     <StackPanel>
-                                        <TextBlock x:Name="TxtQuestSyncLabel" Text="퀘스트 로그 동기화"
+                                        <TextBlock x:Name="TxtQuestSyncLabel" Text="Quest Log Sync"
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextPrimaryBrush}"
                                                    Margin="0,0,0,8"/>
 
                                         <TextBlock x:Name="TxtQuestSyncDesc"
-                                                   Text="게임 로그 파일에서 퀘스트 진행 상태를 동기화합니다. Tarkov 로그를 분석하여 완료된 퀘스트를 업데이트합니다."
+                                                   Text="Sync quest progress from game log files. Analyzes Tarkov logs to update completed quests."
                                                    FontSize="{DynamicResource FontSizeXSmall}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    TextWrapping="Wrap"
@@ -457,22 +457,22 @@
                                                      VerticalAlignment="Center"
                                                      Margin="0,0,8,0"/>
                                             <TextBlock x:Name="TxtMonitoringStatus"
-                                                       Text="모니터링 안함"
+                                                       Text="Not monitoring"
                                                        FontSize="{DynamicResource FontSizeXSmall}"
                                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                                         </StackPanel>
 
                                         <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                            <Button x:Name="BtnSyncQuest" Content="퀘스트 동기화"
+                                            <Button x:Name="BtnSyncQuest" Content="Sync Quests"
                                                     Padding="12,8" Margin="0,0,8,8"
                                                     Click="BtnSyncQuest_Click"/>
-                                            <Button x:Name="BtnToggleMonitoring" Content="모니터링 시작"
+                                            <Button x:Name="BtnToggleMonitoring" Content="Start Monitoring"
                                                     Padding="12,8" Margin="0,0,0,8"
                                                     Click="BtnToggleMonitoring_Click"/>
                                         </WrapPanel>
 
                                         <!-- Enter In-Progress Quests Button -->
-                                        <Button x:Name="BtnInProgressQuestInput" Content="진행 중인 퀘스트 입력"
+                                        <Button x:Name="BtnInProgressQuestInput" Content="Enter In-Progress Quests"
                                                 Padding="12,8" Margin="0,4,0,0"
                                                 HorizontalAlignment="Left"
                                                 Click="BtnInProgressQuestInput_Click"/>
@@ -483,12 +483,12 @@
                             <!-- Right Column -->
                             <StackPanel Grid.Column="2">
                                 <!-- Cache Management Section -->
-                                <TextBlock Text="캐시 관리"
+                                <TextBlock Text="Cache Management"
                                            FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimaryBrush}"
                                            Margin="0,0,0,8"/>
 
-                                <TextBlock Text="위키 페이지 캐시 및 다운로드된 데이터를 삭제합니다. 데이터에 문제가 있거나 전체를 다시 다운로드하려는 경우 사용하세요."
+                                <TextBlock Text="Clear wiki page cache and downloaded data. Use if data is corrupted or to re-download everything."
                                            FontSize="{DynamicResource FontSizeXSmall}"
                                            Foreground="{StaticResource TextSecondaryBrush}"
                                            TextWrapping="Wrap"
@@ -496,42 +496,42 @@
 
                                 <!-- Cache Size Display -->
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                    <TextBlock Text="캐시 크기: "
+                                    <TextBlock Text="Cache size: "
                                                FontSize="{DynamicResource FontSizeXSmall}"
                                                Foreground="{StaticResource TextSecondaryBrush}"/>
                                     <TextBlock x:Name="TxtCacheSize"
-                                               Text="계산 중..."
+                                               Text="Calculating..."
                                                FontSize="{DynamicResource FontSizeXSmall}"
                                                Foreground="{StaticResource TextPrimaryBrush}"/>
                                 </StackPanel>
 
                                 <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                    <Button x:Name="BtnClearCache" Content="캐시 삭제"
+                                    <Button x:Name="BtnClearCache" Content="Clear Cache"
                                             Padding="12,8" Margin="0,0,8,8"
                                             Click="BtnClearCache_Click"/>
-                                    <Button x:Name="BtnClearAllData" Content="모든 데이터 삭제"
+                                    <Button x:Name="BtnClearAllData" Content="Delete All Data"
                                             Padding="12,8" Margin="0,0,0,8"
                                             Click="BtnClearAllData_Click"
-                                            ToolTip="캐시 및 모든 다운로드 데이터 (퀘스트, 아이템 등) 삭제"/>
+                                            ToolTip="Delete cache and all downloaded data (quests, items, etc.)"/>
                                 </WrapPanel>
 
                                 <!-- Data Update Section -->
                                 <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
                                         Margin="0,12,0,0" Padding="0,16,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="데이터 업데이트"
+                                        <TextBlock Text="Data Update"
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextPrimaryBrush}"
                                                    Margin="0,0,0,8"/>
 
-                                        <TextBlock Text="tarkov.dev API에서 최신 아이템 및 퀘스트 정보를 수동으로 보충합니다."
+                                        <TextBlock Text="Manually update latest items and quest info from tarkov.dev API."
                                                    FontSize="{DynamicResource FontSizeXSmall}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    TextWrapping="Wrap"
                                                    Margin="0,0,0,12"/>
 
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                            <Button x:Name="BtnUpdateApiData" Content="API 데이터 업데이트"
+                                            <Button x:Name="BtnUpdateApiData" Content="Update API Data"
                                                     Padding="12,8" Margin="0,0,12,0"
                                                     Click="BtnUpdateApiData_Click"/>
                                             <TextBlock x:Name="TxtApiUpdateStatus"
@@ -547,12 +547,12 @@
                                  <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
                                          Margin="0,12,0,0" Padding="0,16,0,0">
                                      <StackPanel>
-                                         <TextBlock x:Name="TxtFontLabel" Text="글꼴"
+                                         <TextBlock x:Name="TxtFontLabel" Text="Font"
                                                     FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                                     Foreground="{StaticResource TextPrimaryBrush}"
                                                     Margin="0,0,0,8"/>
 
-                                         <TextBlock x:Name="TxtFontDesc" Text="어플리케이션의 글꼴을 변경합니다. Fonts 폴더의 폰트 파일을 인식합니다."
+                                         <TextBlock x:Name="TxtFontDesc" Text="Change application font. Automatically recognizes fonts in the Fonts folder."
                                                     FontSize="{DynamicResource FontSizeXSmall}"
                                                     Foreground="{StaticResource TextSecondaryBrush}"
                                                     TextWrapping="Wrap"
@@ -572,7 +572,7 @@
                                                      Content="↻" 
                                                      FontSize="16"
                                                      Padding="8,2"
-                                                     ToolTip="글꼴 목록 새로고침"
+                                                     ToolTip="Refresh font list"
                                                      Click="BtnRefreshFonts_Click"
                                                      Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
                                          </Grid>
@@ -583,12 +583,12 @@
                                 <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
                                         Margin="0,12,0,0" Padding="0,16,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="글꼴 크기"
+                                        <TextBlock Text="Font Size"
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextPrimaryBrush}"
                                                    Margin="0,0,0,8"/>
 
-                                        <TextBlock Text="어플리케이션의 기본 글꼴 크기를 조절합니다."
+                                        <TextBlock Text="Adjust default application font size."
                                                    FontSize="{DynamicResource FontSizeXSmall}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    TextWrapping="Wrap"
@@ -622,7 +622,7 @@
                                                     Click="BtnFontSizeUp_Click"/>
                                         </Grid>
 
-                                        <Button x:Name="BtnResetFontSize" Content="기본값으로 복원"
+                                        <Button x:Name="BtnResetFontSize" Content="Restore Defaults"
                                                 Padding="12,8" HorizontalAlignment="Left"
                                                 Click="BtnResetFontSize_Click"/>
                                     </StackPanel>

@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="오버레이 설정"
+        Title="Overlay Settings"
         Width="320" Height="400"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
@@ -94,14 +94,14 @@
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
             <StackPanel>
                 <!-- Opacity -->
-                <TextBlock Text="디스플레이" Style="{StaticResource SectionHeader}"/>
+                <TextBlock Text="Display" Style="{StaticResource SectionHeader}"/>
 
                 <Grid Margin="0,4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="투명도" Style="{StaticResource SettingLabel}"/>
+                    <TextBlock Grid.Column="0" Text="Opacity" Style="{StaticResource SettingLabel}"/>
                     <TextBlock x:Name="TxtOpacity" Grid.Column="1" Style="{StaticResource SettingValue}"/>
                 </Grid>
                 <Slider x:Name="SliderOpacity" Minimum="10" Maximum="100" Value="80"
@@ -113,7 +113,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="줌 레벨" Style="{StaticResource SettingLabel}"/>
+                    <TextBlock Grid.Column="0" Text="Zoom Level" Style="{StaticResource SettingLabel}"/>
                     <TextBlock x:Name="TxtZoom" Grid.Column="1" Style="{StaticResource SettingValue}"/>
                 </Grid>
                 <Slider x:Name="SliderZoom" Minimum="25" Maximum="400" Value="100"
@@ -125,39 +125,39 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="플레이어 마커 크기" Style="{StaticResource SettingLabel}"/>
+                    <TextBlock Grid.Column="0" Text="Player Marker Size" Style="{StaticResource SettingLabel}"/>
                     <TextBlock x:Name="TxtMarkerSize" Grid.Column="1" Style="{StaticResource SettingValue}"/>
                 </Grid>
                 <Slider x:Name="SliderMarkerSize" Minimum="50" Maximum="300" Value="100"
                         ValueChanged="SliderMarkerSize_ValueChanged"/>
 
                 <!-- View Mode -->
-                <TextBlock Text="뷰 모드" Style="{StaticResource SectionHeader}"/>
+                <TextBlock Text="View Mode" Style="{StaticResource SectionHeader}"/>
 
-                <RadioButton x:Name="RbFixed" Content="고정 뷰" Foreground="#E0E0E0" Margin="0,4"
+                <RadioButton x:Name="RbFixed" Content="Fixed View" Foreground="#E0E0E0" Margin="0,4"
                              Checked="ViewMode_Changed"/>
-                <RadioButton x:Name="RbTracking" Content="플레이어 트래킹" Foreground="#E0E0E0" Margin="0,4"
+                <RadioButton x:Name="RbTracking" Content="Player Tracking" Foreground="#E0E0E0" Margin="0,4"
                              Checked="ViewMode_Changed"/>
 
 
 
                 <!-- Mode -->
-                <TextBlock Text="상호작용" Style="{StaticResource SectionHeader}"/>
+                <TextBlock Text="Interaction" Style="{StaticResource SectionHeader}"/>
 
-                <CheckBox x:Name="ChkClickThrough" Content="클릭 투과 모드"
+                <CheckBox x:Name="ChkClickThrough" Content="Click-Through Mode"
                           Checked="ClickThrough_Changed" Unchecked="ClickThrough_Changed"/>
-                <TextBlock Text="활성화하면 마우스 클릭이 오버레이를 통과합니다"
+                <TextBlock Text="When enabled, mouse clicks pass through overlay to game"
                            Foreground="#666666" FontSize="11" Margin="20,0,0,0"/>
 
                 <!-- Hotkeys -->
-                <TextBlock Text="단축키" Style="{StaticResource SectionHeader}"/>
+                <TextBlock Text="Hotkeys" Style="{StaticResource SectionHeader}"/>
 
                 <Grid Margin="0,4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="줌 인 단축키" Style="{StaticResource SettingLabel}"/>
+                    <TextBlock Grid.Column="0" Text="Zoom In Hotkey" Style="{StaticResource SettingLabel}"/>
                     <Button x:Name="BtnZoomInKey" Grid.Column="1" Content="NumPad +" Width="80" 
                             Style="{StaticResource ActionButton}" Padding="4" FontSize="11" Click="BtnZoomInKey_Click"/>
                 </Grid>
@@ -167,24 +167,24 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="줌 아웃 단축키" Style="{StaticResource SettingLabel}"/>
+                    <TextBlock Grid.Column="0" Text="Zoom Out Hotkey" Style="{StaticResource SettingLabel}"/>
                     <Button x:Name="BtnZoomOutKey" Grid.Column="1" Content="NumPad -" Width="80" 
                             Style="{StaticResource ActionButton}" Padding="4" FontSize="11" Click="BtnZoomOutKey_Click"/>
                 </Grid>
 
                 <!-- Actions -->
-                <TextBlock Text="작업" Style="{StaticResource SectionHeader}"/>
+                <TextBlock Text="Actions" Style="{StaticResource SectionHeader}"/>
 
-                <Button Content="플레이어 중앙에 맞춤" Style="{StaticResource ActionButton}"
+                <Button Content="Center on Player" Style="{StaticResource ActionButton}"
                         Click="BtnCenterPlayer_Click" Margin="0,4"/>
-                <Button Content="기본값으로 초기화" Style="{StaticResource ActionButton}"
+                <Button Content="Reset to Defaults" Style="{StaticResource ActionButton}"
                         Click="BtnReset_Click" Margin="0,4"/>
             </StackPanel>
         </ScrollViewer>
 
         <!-- Bottom buttons -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button Content="닫기" Style="{StaticResource ActionButton}"
+            <Button Content="Close" Style="{StaticResource ActionButton}"
                     Click="BtnClose_Click" Width="80"/>
         </StackPanel>
     </Grid>

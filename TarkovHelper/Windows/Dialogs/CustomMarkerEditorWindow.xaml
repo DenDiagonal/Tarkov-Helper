@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="커스텀 마커 편집"
+        Title="Edit Custom Marker"
         Width="350" Height="420"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
@@ -102,17 +102,17 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="커스텀 마커 편집" Style="{StaticResource HeaderStyle}"/>
+        <TextBlock Grid.Row="0" Text="Edit Custom Marker" Style="{StaticResource HeaderStyle}"/>
 
         <!-- 이름 편집 -->
         <StackPanel Grid.Row="1" Margin="0,0,0,20">
-            <TextBlock Text="이름" Style="{StaticResource LabelStyle}"/>
+            <TextBlock Text="Name" Style="{StaticResource LabelStyle}"/>
             <TextBox x:Name="TxtName" Style="{StaticResource ModernTextBox}" MaxLength="50"/>
         </StackPanel>
 
         <!-- 색상 선택 -->
         <StackPanel Grid.Row="2" Margin="0,0,0,20">
-            <TextBlock Text="색상" Style="{StaticResource LabelStyle}"/>
+            <TextBlock Text="Color" Style="{StaticResource LabelStyle}"/>
             <WrapPanel x:Name="ColorPanel">
                 <RadioButton Background="#FF4444" Style="{StaticResource ColorOption}" Tag="#FF4444" IsChecked="True"/>
                 <RadioButton Background="#4CAF50" Style="{StaticResource ColorOption}" Tag="#4CAF50"/>
@@ -127,7 +127,7 @@
 
         <StackPanel Grid.Row="3" Margin="0,0,0,20">
             <Grid Margin="0,0,0,6">
-                <TextBlock Text="크기" Style="{StaticResource LabelStyle}" HorizontalAlignment="Left"/>
+                <TextBlock Text="Size" Style="{StaticResource LabelStyle}" HorizontalAlignment="Left"/>
                 <TextBlock x:Name="TxtSizeValue" Text="24" Foreground="#2196F3" HorizontalAlignment="Right" FontWeight="Bold"/>
             </Grid>
             <Slider x:Name="SliderSize" Minimum="12" Maximum="64" Value="24" TickFrequency="2" IsSnapToTickEnabled="True" 
@@ -137,8 +137,8 @@
 
         <!-- 하단 버튼 -->
         <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-            <Button Content="취소" Style="{StaticResource ActionButton}" Margin="0,0,10,0" Click="BtnCancel_Click"/>
-            <Button Content="저장" Style="{StaticResource PrimaryButton}" Click="BtnSave_Click"/>
+            <Button Content="Cancel" Style="{StaticResource ActionButton}" Margin="0,0,10,0" Click="BtnCancel_Click"/>
+            <Button Content="Save" Style="{StaticResource PrimaryButton}" Click="BtnSave_Click"/>
         </StackPanel>
     </Grid>
 </Window>

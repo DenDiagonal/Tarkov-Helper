@@ -102,7 +102,7 @@ public partial class MainWindow : Window
         if (!File.Exists(dbPath))
         {
             LoadingOverlay.Visibility = Visibility.Visible;
-            LoadingStatusText.Text = "데이터를 다운로드 중입니다. 잠시만 기다려주세요...";
+            LoadingStatusText.Text = "Downloading data. Please wait...";
             TabContentArea.Visibility = Visibility.Collapsed; // 다운로드 중에는 탭 숨김
             
             try
@@ -241,7 +241,7 @@ public partial class MainWindow : Window
             // Add internal default at the very top
             fontItems.Insert(0, new FontItem 
             { 
-                DisplayName = "기본", 
+                DisplayName = "Default", 
                 InternalName = "Maplestory", 
                 FileName = "" 
             });
@@ -484,7 +484,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// Show loading overlay with blur effect
     /// </summary>
-    public void ShowLoadingOverlay(string status = "로딩 중...")
+    public void ShowLoadingOverlay(string status = "Loading...")
     {
         LoadingStatusText.Text = status;
         LoadingOverlay.Visibility = Visibility.Visible;
@@ -538,7 +538,7 @@ public partial class MainWindow : Window
         bool needsMigration = migrationService.NeedsAutoMigration();
         if (needsMigration)
         {
-            ShowLoadingOverlay("데이터 마이그레이션 중...");
+            ShowLoadingOverlay("Migrating data...");
 
             try
             {
@@ -673,7 +673,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            TxtWelcome.Text = "퀘스트 데이터가 없습니다. 데이터를 새로고침 해주세요.";
+            TxtWelcome.Text = "No quest data available. Please refresh data.";
             TxtWelcome.Visibility = Visibility.Visible;
             TabContentArea.Visibility = Visibility.Collapsed;
         }
@@ -712,7 +712,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task RefreshCurrentProfileDataAsync()
     {
-        ShowLoadingOverlay($"{ProfileService.Instance.CurrentProfile.ToString().ToUpper()} 데이터 로드 중...");
+        ShowLoadingOverlay($"Loading {ProfileService.Instance.CurrentProfile.ToString().ToUpper()} data...");
 
         try
         {
@@ -822,7 +822,7 @@ public partial class MainWindow : Window
                 // Hideout data not available, show message or load it
                 PageContent.Content = new TextBlock
                 {
-                    Text = "은신처 데이터가 없습니다. 데이터를 새로고침 해주세요.",
+                    Text = "No hideout data available. Please refresh data.",
                     Foreground = FindResource("TextSecondaryBrush") as System.Windows.Media.Brush,
                     FontSize = 16,
                     HorizontalAlignment = HorizontalAlignment.Center,
@@ -1200,8 +1200,8 @@ public partial class MainWindow : Window
     private async void BtnResetProgress_Click(object sender, RoutedEventArgs e)
     {
         var result = MessageBox.Show(
-            "정말 진행도를 초기화 하시겠습니까?",
-            "진행도 초기화",
+            "Are you sure you want to reset all progress?",
+            "Reset Progress",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
@@ -1217,8 +1217,8 @@ public partial class MainWindow : Window
             await LoadAndShowQuestListAsync();
 
             MessageBox.Show(
-            "진행도가 초기화되었습니다.",
-            "초기화 완료",
+            "Progress has been reset.",
+            "Reset Complete",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -1235,7 +1235,7 @@ public partial class MainWindow : Window
     {
         _isProfileDrawerOpen = !_isProfileDrawerOpen;
         ProfileDrawer.Visibility = _isProfileDrawerOpen ? Visibility.Visible : Visibility.Collapsed;
-        BtnProfile.Content = _isProfileDrawerOpen ? "▲ 프로필" : "▼ 프로필";
+        BtnProfile.Content = _isProfileDrawerOpen ? "▲ Profile" : "▼ Profile";
     }
 
     #endregion
@@ -1304,7 +1304,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            TxtCurrentLogPath.Text = "설정되지 않음";
+            TxtCurrentLogPath.Text = "Not configured";
             TxtCurrentLogPath.Foreground = (Brush)FindResource("TextSecondaryBrush");
         }
 
@@ -1325,13 +1325,14 @@ public partial class MainWindow : Window
             TxtLogFolderStatus.Text = _loc.CurrentLanguage switch
             {
                 AppLanguage.KO => "유효한 경로",
+                    _ => "Valid path"
                 _ => "유효한 경로"
             };
         }
         else
         {
             LogFolderStatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(244, 67, 54)); // Red
-            TxtLogFolderStatus.Text = "잘못된 경로";
+            TxtLogFolderStatus.Text = "Invalid path";
         }
     }
 
@@ -1341,17 +1342,17 @@ public partial class MainWindow : Window
     private void UpdateSettingsLocalizedText()
     {
 
-        TxtSettingsTitle.Text = "설정";
+        TxtSettingsTitle.Text = "Settings";
 
-        TxtLogFolderLabel.Text = "Tarkov 로그 폴더";
+        TxtLogFolderLabel.Text = "Tarkov Log Folder";
 
-        TxtLogFolderDesc.Text = "자동 퀘스트 완료 추적을 위해 Tarkov의 Logs 폴더 경로를 설정하세요.";
+        TxtLogFolderDesc.Text = "Set the Tarkov Logs folder path to automatically track completed quests.";
 
-        BtnAutoDetect.Content = "자동 감지";
+        BtnAutoDetect.Content = "Auto Detect";
 
-        BtnBrowseLogFolder.Content = "찾아보기...";
+        BtnBrowseLogFolder.Content = "Browse...";
 
-        BtnResetLogFolder.Content = "초기화";
+        BtnResetLogFolder.Content = "Reset";
     }
 
     /// <summary>
@@ -1386,9 +1387,9 @@ public partial class MainWindow : Window
             _settingsService.LogFolderPath = detectedPath;
             UpdateSettingsUI();
 
-            var message = $"로그 폴더를 찾았습니다:\n{detectedPath}";
+            var message = $"Found log folder:\n{detectedPath}";
 
-            MessageBox.Show(message, "자동 감지",
+            MessageBox.Show(message, "Auto Detect",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -1396,9 +1397,9 @@ public partial class MainWindow : Window
         {
             UpdateSettingsUI();
 
-            var message = "Tarkov 설치를 찾을 수 없습니다.\n수동으로 로그 폴더를 선택해 주세요.";
+            var message = "Tarkov installation not found.\nPlease select the Logs folder manually.";
 
-            MessageBox.Show(message, "경고",
+            MessageBox.Show(message, "Warning",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
@@ -1411,7 +1412,7 @@ public partial class MainWindow : Window
     {
         var dialog = new Microsoft.Win32.OpenFolderDialog
         {
-            Title = "Tarkov Logs 폴더 선택"
+            Title = "Select Tarkov Logs Folder"
         };
 
         if (dialog.ShowDialog() == true)
@@ -1489,9 +1490,9 @@ public partial class MainWindow : Window
     private void UpdateQuestSyncUI()
     {
         // Update localized text
-        TxtQuestSyncLabel.Text = "퀘스트 로그 동기화";
-        TxtQuestSyncDesc.Text = "게임 로그 파일에서 퀘스트 진행 상태를 동기화합니다. Tarkov 로그를 분석하여 완료된 퀘스트를 업데이트합니다.";
-        BtnSyncQuest.Content = "퀘스트 동기화";
+        TxtQuestSyncLabel.Text = "Quest Log Sync";
+        TxtQuestSyncDesc.Text = "Sync quest progress from game log files. Analyzes Tarkov logs to update completed quests.";
+        BtnSyncQuest.Content = "Sync Quests";
 
         // Update monitoring status
         var isMonitoring = _logSyncService.IsMonitoring;
@@ -1499,9 +1500,9 @@ public partial class MainWindow : Window
             ? new SolidColorBrush(Color.FromRgb(76, 175, 80)) // Green
             : new SolidColorBrush(Color.FromRgb(244, 67, 54)); // Red
 
-        TxtMonitoringStatus.Text = isMonitoring ? "모니터링 중" : "모니터링 안함";
+        TxtMonitoringStatus.Text = isMonitoring ? "Monitoring" : "Not monitoring";
 
-        BtnToggleMonitoring.Content = isMonitoring ? "모니터링 중지" : "모니터링 시작";
+        BtnToggleMonitoring.Content = isMonitoring ? "Stop Monitoring" : "Start Monitoring";
 
         // Disable sync button if log folder is not valid
         BtnSyncQuest.IsEnabled = _settingsService.IsLogFolderValid;
@@ -1517,8 +1518,8 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(logPath) || !Directory.Exists(logPath))
         {
             MessageBox.Show(
-                "로그 폴더가 설정되지 않았거나 존재하지 않습니다.",
-                "오류",
+                "Log folder is not set or does not exist.",
+                "Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             return;
@@ -1545,7 +1546,7 @@ public partial class MainWindow : Window
     /// </summary>
     private async void PerformQuestSync(string logPath)
     {
-        ShowLoadingOverlay("로그 파일 스캔 중...");
+        ShowLoadingOverlay("Scanning log files...");
 
         try
         {
@@ -1566,9 +1567,9 @@ public partial class MainWindow : Window
             {
                 MessageBox.Show(
                     result.TotalEventsFound > 0
-                        ? $"퀘스트 이벤트 {result.TotalEventsFound}개를 찾았지만, 업데이트할 퀘스트가 없습니다."
-                        : "로그에서 퀘스트 이벤트를 찾지 못했습니다.",
-                    "동기화 완료",
+                        ? $"Found {result.TotalEventsFound} quest events, but no quests need updating."
+                        : "No quest events found in logs.",
+                    "Sync Complete",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 return;
@@ -1581,8 +1582,8 @@ public partial class MainWindow : Window
         {
             HideLoadingOverlay();
             MessageBox.Show(
-                $"오류 발생: {ex.Message}",
-                "동기화 오류",
+                $"An error occurred: {ex.Message}",
+                "Sync Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
@@ -1628,9 +1629,9 @@ public partial class MainWindow : Window
             {
                 var message = evt.EventType switch
                 {
-                    QuestEventType.Started => $"퀘스트 시작: {task.Name}",
-                    QuestEventType.Completed => $"퀘스트 완료: {task.Name}",
-                    QuestEventType.Failed => $"퀘스트 실패: {task.Name}",
+                    QuestEventType.Started => $"Quest started: {task.Name}",
+                    QuestEventType.Completed => $"Quest completed: {task.Name}",
+                    QuestEventType.Failed => $"Quest failed: {task.Name}",
                     _ => ""
                 };
 
@@ -1702,7 +1703,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        ShowLoadingOverlay("퀘스트 진행도 업데이트 중...");
+        ShowLoadingOverlay("Updating quest progress...");
 
         await _logSyncService.ApplyQuestChangesAsync(selectedChanges);
 
@@ -1715,9 +1716,9 @@ public partial class MainWindow : Window
 
         MessageBox.Show(
             alternativeCount > 0
-                ? $"{totalUpdated}개의 퀘스트가 업데이트되었습니다.\n(선택 퀘스트 {alternativeCount}개 그룹 포함)"
-                : $"{totalUpdated}개의 퀘스트가 업데이트되었습니다.",
-            "동기화 완료",
+                ? $"{totalUpdated} quests were updated.\n(Including {alternativeCount} alternative choice groups)"
+                : $"{totalUpdated} quests were updated.",
+            "Sync Complete",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
     }
@@ -1765,7 +1766,7 @@ public partial class MainWindow : Window
         // Show success message
         MessageBox.Show(
             string.Format(_loc.QuestsAppliedSuccess, result.SelectedQuests.Count, completedCount),
-            "알림",
+            "Notice",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
     }
@@ -1862,8 +1863,8 @@ public partial class MainWindow : Window
     private void BtnClearCache_Click(object sender, RoutedEventArgs e)
     {
         var result = MessageBox.Show(
-            "캐시를 삭제하시겠습니까?\n(Wiki 페이지, 이미지 등이 삭제됩니다)",
-            "캐시 삭제",
+            "Do you want to delete the cache?\n(Wiki pages, images, etc. will be deleted)",
+            "Clear Cache",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
 
@@ -1883,16 +1884,16 @@ public partial class MainWindow : Window
             UpdateCacheSizeDisplay();
 
             MessageBox.Show(
-                "캐시가 삭제되었습니다.\n데이터를 다시 가져오려면 '새로고침' 버튼을 누르세요.",
-                "삭제 완료",
+                "Cache has been cleared.\nPress the Refresh button to re-fetch data.",
+                "Clear Complete",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             MessageBox.Show(
-                $"캐시 삭제 중 오류 발생: {ex.Message}",
-                "오류",
+                $"Error clearing cache: {ex.Message}",
+                "Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
@@ -1909,8 +1910,8 @@ public partial class MainWindow : Window
     private async void BtnClearAllData_Click(object sender, RoutedEventArgs e)
     {
         var result = MessageBox.Show(
-            "모든 데이터를 삭제하시겠습니까?\n(캐시, 퀘스트 데이터, 아이템 데이터 등이 삭제됩니다)\n\n⚠️ 퀘스트 진행 상태는 유지됩니다.",
-            "데이터 초기화",
+            "Do you want to delete all data?\n(Cache, quest data, item data, etc. will be deleted)\n\n⚠️ Quest progress will be preserved.",
+            "Reset Data",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
@@ -1942,16 +1943,16 @@ public partial class MainWindow : Window
 
             // Show confirmation
             MessageBox.Show(
-                "캐시가 삭제되었습니다.",
-                "완료",
+                "Cache cleared.",
+                "Complete",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             MessageBox.Show(
-                $"데이터 삭제 중 오류 발생: {ex.Message}",
-                "오류",
+                $"Error deleting data: {ex.Message}",
+                "Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
