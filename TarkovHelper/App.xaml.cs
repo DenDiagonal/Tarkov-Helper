@@ -14,7 +14,7 @@ namespace TarkovHelper
     {
         private static readonly ILogger _log = Log.For<App>();
 
-        private const string UpdateXmlUrl = "https://raw.githubusercontent.com/Zeliper/Tarkov-Item-Helper/main/update.xml";
+        private const string UpdateXmlUrl = "https://raw.githubusercontent.com/DenDiagonal/Tarkov-Helper/main/update.xml";
 
         private static string DataDirectory => Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory,
