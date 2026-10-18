@@ -136,7 +136,10 @@ public partial class MapPage : UserControl
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"지도 추적 페이지 초기화 오류: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(
+                _loc.CurrentLanguage == AppLanguage.KO ? $"지도 추적 페이지 초기화 오류: {ex.Message}" : $"Map tracker initialization error: {ex.Message}",
+                _loc.CurrentLanguage == AppLanguage.KO ? "오류" : "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -333,7 +336,10 @@ public partial class MapPage : UserControl
             }
 
             _log.Error("Critical error loading map page", ex);
-            MessageBox.Show($"지도 추적 페이지 로드 오류: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(
+                _loc.CurrentLanguage == AppLanguage.KO ? $"지도 추적 페이지 로드 오류: {ex.Message}" : $"Map tracker loading error: {ex.Message}",
+                _loc.CurrentLanguage == AppLanguage.KO ? "오류" : "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -785,7 +791,7 @@ public partial class MapPage : UserControl
     {
         Dispatcher.Invoke(() =>
         {
-            TxtStatus.Text = $"오류: {message}";
+            TxtStatus.Text = _loc.CurrentLanguage == AppLanguage.KO ? $"오류: {message}" : $"Error: {message}";
             TxtStatus.Foreground = TryFindResource("WarningBrush") as Brush ?? Brushes.Orange;
         });
     }
@@ -907,7 +913,7 @@ public partial class MapPage : UserControl
         {
             ClearTrailAndMarkers();
             var raidTypeStr = raidType == RaidType.PMC ? "PMC" : "SCAV";
-            TxtStatus.Text = $"레이드 시작: {mapKey} ({raidTypeStr})";
+            TxtStatus.Text = _loc.CurrentLanguage == AppLanguage.KO ? $"레이드 시작: {mapKey} ({raidTypeStr})" : $"Raid started: {mapKey} ({raidTypeStr})";
             return;
         }
 
@@ -937,7 +943,7 @@ public partial class MapPage : UserControl
                 CenterMapInView();
 
                 var raidTypeStr = raidType == RaidType.PMC ? "PMC" : "SCAV";
-                TxtStatus.Text = $"레이드 시작: {mapKey} ({raidTypeStr})";
+                TxtStatus.Text = _loc.CurrentLanguage == AppLanguage.KO ? $"레이드 시작: {mapKey} ({raidTypeStr})" : $"Raid started: {mapKey} ({raidTypeStr})";
                 break;
             }
         }
@@ -1007,8 +1013,12 @@ public partial class MapPage : UserControl
 
         var mapKey = e.RaidInfo?.MapKey ?? _currentMapKey;
         var duration = e.RaidInfo?.Duration;
-        var durationStr = duration.HasValue ? $" ({duration.Value.Minutes}분 {duration.Value.Seconds}초)" : "";
-        TxtStatus.Text = $"레이드 종료: {mapKey}{durationStr}";
+        var durationStr = duration.HasValue
+            ? (_loc.CurrentLanguage == AppLanguage.KO
+                ? $" ({duration.Value.Minutes}분 {duration.Value.Seconds}초)"
+                : $" ({duration.Value.Minutes}m {duration.Value.Seconds}s)")
+            : "";
+        TxtStatus.Text = _loc.CurrentLanguage == AppLanguage.KO ? $"레이드 종료: {mapKey}{durationStr}" : $"Raid ended: {mapKey}{durationStr}";
     }
 
     /// <summary>
@@ -1376,7 +1386,9 @@ public partial class MapPage : UserControl
             _trackerService?.ChangeScreenshotFolder(detectedPath);
             // DB에 저장
             SettingsService.Instance.MapScreenshotPath = detectedPath;
-            MessageBox.Show($"스크린샷 폴더를 찾았습니다:\n{detectedPath}", "자동 탐지 성공",
+            MessageBox.Show(
+                _loc.CurrentLanguage == AppLanguage.KO ? $"스크린샷 폴더를 찾았습니다:\n{detectedPath}" : $"Screenshot folder found:\n{detectedPath}",
+                _loc.CurrentLanguage == AppLanguage.KO ? "자동 탐지 성공" : "Auto Detect Success",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         else
@@ -1386,12 +1398,18 @@ public partial class MapPage : UserControl
             if (possiblePaths.Count > 0)
             {
                 var pathList = string.Join("\n", possiblePaths);
-                MessageBox.Show($"스크린샷 폴더를 자동으로 찾지 못했습니다.\n\n발견된 EFT 폴더:\n{pathList}\n\n수동으로 선택해주세요.",
+                MessageBox.Show(
+                    _loc.CurrentLanguage == AppLanguage.KO
+                        ? $"스크린샷 폴더를 자동으로 찾지 못했습니다.\n\n발견된 EFT 폴더:\n{pathList}\n\n수동으로 선택해주세요."
+                        : $"Could not automatically find screenshot folder.\n\nFound EFT folder:\n{pathList}\n\nPlease select manually.",
                     "Auto Detect Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             else
             {
-                MessageBox.Show("EFT 스크린샷 폴더를 찾을 수 없습니다.\n수동으로 폴더를 선택해주세요.",
+                MessageBox.Show(
+                    _loc.CurrentLanguage == AppLanguage.KO
+                        ? "EFT 스크린샷 폴더를 찾을 수 없습니다.\n수동으로 폴더를 선택해주세요."
+                        : "Could not find EFT screenshot folder.\nPlease select folder manually.",
                     "Auto Detect Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }

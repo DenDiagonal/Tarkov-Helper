@@ -777,9 +777,9 @@ namespace TarkovHelper.Pages
             var status = itemVm.FulfillmentStatus;
             var statusText = status switch
             {
-                ItemFulfillmentStatus.Fulfilled => "완료",
-                ItemFulfillmentStatus.PartiallyFulfilled => "진행 중",
-                _ => "미시작"
+                ItemFulfillmentStatus.Fulfilled => _loc.ItemsFilterFulfilled,
+                ItemFulfillmentStatus.PartiallyFulfilled => _loc.ItemsFilterInProgress,
+                _ => _loc.ItemsFilterNotStarted
             };
 
             TxtDetailFulfillmentStatus.Text = statusText;

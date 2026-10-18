@@ -249,7 +249,7 @@ public sealed class EftRaidEventService : IDisposable
             if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
             {
                 _log.Warning($"Log folder not found or invalid: {folderPath}");
-                ErrorOccurred?.Invoke(this, "EFT 로그 폴더를 찾을 수 없습니다.");
+                ErrorOccurred?.Invoke(this, LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "EFT 로그 폴더를 찾을 수 없습니다." : "Could not find EFT log folder.");
                 return false;
             }
 
@@ -294,7 +294,7 @@ public sealed class EftRaidEventService : IDisposable
             catch (Exception ex)
             {
                 _log.Error($"Failed to start monitoring: {ex.Message}");
-                ErrorOccurred?.Invoke(this, $"모니터링 시작 실패: {ex.Message}");
+                ErrorOccurred?.Invoke(this, LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? $"모니터링 시작 실패: {ex.Message}" : $"Failed to start monitoring: {ex.Message}");
                 _isWatching = false;
                 MonitoringStateChanged?.Invoke(this, false);
                 return false;

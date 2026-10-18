@@ -134,15 +134,15 @@ public sealed class MapTrackerService : IDisposable
         var objectivesLoaded = await _objectiveService.LoadAsync();
 
         if (!extractsLoaded)
-            OnStatusMessage("탈출구 데이터 로드 실패");
+            OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "탈출구 데이터 로드 실패" : "Failed to load extraction data");
         if (!objectivesLoaded)
-            OnStatusMessage("퀘스트 목표 데이터 로드 실패");
+            OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "퀘스트 목표 데이터 로드 실패" : "Failed to load quest objective data");
 
         return extractsLoaded && objectivesLoaded;
     }
 
     /// <summary>
-    /// 스크린샷 폴더 감시를 시작합니다.
+    /// Starts monitoring screenshot folder.
     /// </summary>
     public bool StartTracking()
     {
@@ -150,35 +150,35 @@ public sealed class MapTrackerService : IDisposable
     }
 
     /// <summary>
-    /// 지정된 폴더에서 스크린샷 감시를 시작합니다.
+    /// Starts monitoring screenshot folder at specified path.
     /// </summary>
     public bool StartTracking(string folderPath)
     {
         if (_watcher.StartWatching(folderPath))
         {
-            OnStatusMessage($"스크린샷 감시 시작: {folderPath}");
+            OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? $"스크린샷 감시 시작: {folderPath}" : $"Screenshot monitoring started: {folderPath}");
             return true;
         }
         return false;
     }
 
     /// <summary>
-    /// 감시를 중지합니다.
+    /// Stops monitoring.
     /// </summary>
     public void StopTracking()
     {
         _watcher.StopWatching();
-        OnStatusMessage("스크린샷 감시 중지");
+        OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "스크린샷 감시 중지" : "Screenshot monitoring stopped");
     }
 
     /// <summary>
-    /// 이동 경로를 초기화합니다.
+    /// Clears movement trail.
     /// </summary>
     public void ClearTrail()
     {
         _trailPositions.Clear();
         _currentPosition = null;
-        OnStatusMessage("이동 경로 초기화");
+        OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "이동 경로 초기화" : "Path history cleared");
     }
 
     /// <summary>
@@ -227,7 +227,7 @@ public sealed class MapTrackerService : IDisposable
     {
         if (!Directory.Exists(newPath))
         {
-            OnError($"폴더가 존재하지 않습니다: {newPath}");
+            OnError(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? $"폴더가 존재하지 않습니다: {newPath}" : $"Folder does not exist: {newPath}");
             return false;
         }
 
@@ -319,7 +319,7 @@ public sealed class MapTrackerService : IDisposable
 
         if (string.IsNullOrEmpty(mapKey))
         {
-            OnError("맵이 선택되지 않았습니다.");
+            OnError(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "맵이 선택되지 않았습니다." : "No map selected.");
             return;
         }
 
@@ -348,12 +348,16 @@ public sealed class MapTrackerService : IDisposable
                 }
             }
 
-            OnStatusMessage($"위치 감지: X={position.X:F1}, Z={position.Z:F1}");
+            OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO
+                ? $"위치 감지: X={position.X:F1}, Z={position.Z:F1}"
+                : $"Position detected: X={position.X:F1}, Z={position.Z:F1}");
             PositionUpdated?.Invoke(this, screenPos);
         }
         else
         {
-            OnError($"맵 '{mapKey}'의 좌표 변환 실패");
+            OnError(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO
+                ? $"맵 '{mapKey}'의 좌표 변환 실패"
+                : $"Coordinate conversion failed for map '{mapKey}'");
         }
     }
 
@@ -423,11 +427,11 @@ public sealed class MapTrackerService : IDisposable
             var settingsPath = Path.Combine(tarkovHelperPath, "legacy_map_settings.json");
             var json = System.Text.Json.JsonSerializer.Serialize(_settings, JsonOptions);
             File.WriteAllText(settingsPath, json);
-            OnStatusMessage("설정 저장됨");
+            OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "설정 저장됨" : "Settings saved");
         }
         catch (Exception ex)
         {
-            OnError($"설정 저장 실패: {ex.Message}");
+            OnError(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? $"설정 저장 실패: {ex.Message}" : $"Failed to save settings: {ex.Message}");
         }
     }
 

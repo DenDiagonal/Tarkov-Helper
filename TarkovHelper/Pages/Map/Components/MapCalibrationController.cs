@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using TarkovHelper.Models.Map;
+using TarkovHelper.Services;
 using TarkovHelper.Services.Map;
 
 namespace TarkovHelper.Pages.Map.Components;
@@ -63,22 +64,26 @@ public class MapCalibrationController
     public void EnterCalibrationMode()
     {
         _isCalibrationMode = true;
-        StatusUpdated?.Invoke("보정 모드 활성화. 탈출구 마커를 드래그하여 보정 포인트를 설정하세요.");
+        StatusUpdated?.Invoke(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO
+            ? "보정 모드 활성화. 탈출구 마커를 드래그하여 보정 포인트를 설정하세요."
+            : "Calibration mode enabled. Drag extract markers to set calibration points.");
     }
 
     /// <summary>
-    /// 캘리브레이션 모드 비활성화
+    /// Calibration mode disable
     /// </summary>
     public void ExitCalibrationMode()
     {
         _isCalibrationMode = false;
         _draggingExtractMarker = null;
         _draggingExtract = null;
-        StatusUpdated?.Invoke("보정 모드 비활성화.");
+        StatusUpdated?.Invoke(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO
+            ? "보정 모드 비활성화."
+            : "Calibration mode disabled.");
     }
 
     /// <summary>
-    /// 현재 맵 설정
+    /// Set current map
     /// </summary>
     public void SetCurrentMap(string? mapKey)
     {
@@ -90,7 +95,7 @@ public class MapCalibrationController
     #region Public Methods - Calibration
 
     /// <summary>
-    /// 캘리브레이션 저장 및 마커 새로고침 요청
+    /// Save calibration and request refresh
     /// </summary>
     public void SaveCalibrationAndRefresh()
     {
@@ -99,22 +104,26 @@ public class MapCalibrationController
         var config = _trackerService.GetMapConfig(_currentMapKey ?? "");
         if (config?.CalibrationPoints != null && config.CalibrationPoints.Count >= 3)
         {
-            // 변환 행렬 재계산
+            // Calculate affine transform
             config.CalibratedTransform = _calibrationService.CalculateAffineTransform(config.CalibrationPoints);
 
             if (config.CalibratedTransform != null)
             {
-                StatusUpdated?.Invoke($"보정 저장 완료! ({config.CalibrationPoints.Count}개 포인트)");
+                StatusUpdated?.Invoke(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO
+                    ? $"보정 저장 완료! ({config.CalibrationPoints.Count}개 포인트)"
+                    : $"Calibration saved! ({config.CalibrationPoints.Count} points)");
 
-                // 설정 저장
+                // Save settings
                 _trackerService.SaveSettings();
 
-                // 마커 새로고침 요청
+                // Request refresh
                 CalibrationCompleted?.Invoke(this, EventArgs.Empty);
             }
             else
             {
-                StatusUpdated?.Invoke("보정 계산 실패.");
+                StatusUpdated?.Invoke(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO
+                    ? "보정 계산 실패."
+                    : "Calibration calculation failed.");
             }
         }
         else
@@ -201,15 +210,20 @@ public class MapCalibrationController
             var hasEnough = _calibrationService.AddCalibrationPoint(config, calibrationPoint);
             var pointCount = config.CalibrationPoints?.Count ?? 0;
 
-            var displayName = !string.IsNullOrEmpty(_draggingExtract.NameKo) ? _draggingExtract.NameKo : _draggingExtract.Name;
-            var statusMessage = $"보정 포인트 설정됨: {displayName} ({pointCount}개 포인트)";
+            var isKo = LocalizationService.Instance.CurrentLanguage == AppLanguage.KO;
+            var displayName = (isKo && !string.IsNullOrEmpty(_draggingExtract.NameKo)) ? _draggingExtract.NameKo : _draggingExtract.Name;
+            var statusMessage = isKo
+                ? $"보정 포인트 설정됨: {displayName} ({pointCount}개 포인트)"
+                : $"Calibration point set: {displayName} ({pointCount} points)";
             if (pointCount >= 3)
             {
-                statusMessage += " - 적용 가능!";
+                statusMessage += isKo ? " - 적용 가능!" : " - Ready to apply!";
             }
             else
             {
-                statusMessage += $" - {3 - pointCount}개의 포인트가 더 필요합니다";
+                statusMessage += isKo
+                    ? $" - {3 - pointCount}개의 포인트가 더 필요합니다"
+                    : $" - {3 - pointCount} more points needed";
             }
             StatusUpdated?.Invoke(statusMessage);
         }

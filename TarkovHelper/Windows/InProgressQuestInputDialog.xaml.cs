@@ -50,7 +50,7 @@ public partial class InProgressQuestInputDialog : Window
         {
             MessageBox.Show(
                 dialog._loc.QuestDataNotLoaded,
-                "오류",
+                "Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             return null;
@@ -178,11 +178,14 @@ public partial class InProgressQuestInputDialog : Window
 
     private (string DisplayName, string Subtitle, bool ShowSubtitle) GetLocalizedQuestNames(TarkovTask task)
     {
-        var localizedName = task.NameKo;
-
-        if (!string.IsNullOrEmpty(localizedName))
+        var lang = _loc.CurrentLanguage;
+        if (lang == AppLanguage.KO && !string.IsNullOrEmpty(task.NameKo))
         {
-            return (localizedName, task.Name, true);
+            return (task.NameKo, task.Name, true);
+        }
+        if (lang == AppLanguage.JA && !string.IsNullOrEmpty(task.NameJa))
+        {
+            return (task.NameJa, task.Name, true);
         }
 
         return (task.Name, string.Empty, false);
@@ -200,7 +203,12 @@ public partial class InProgressQuestInputDialog : Window
 
             if (traderData != null)
             {
-                return traderData.NameKo ?? traderData.Name;
+                var lang = _loc.CurrentLanguage;
+                if (lang == AppLanguage.KO && !string.IsNullOrEmpty(traderData.NameKo))
+                    return traderData.NameKo;
+                if (lang == AppLanguage.JA && !string.IsNullOrEmpty(traderData.NameJa))
+                    return traderData.NameJa;
+                return traderData.Name;
             }
         }
 
@@ -387,7 +395,7 @@ public partial class InProgressQuestInputDialog : Window
         {
             MessageBox.Show(
                 _loc.NoQuestsSelected,
-                "알림",
+                "Notice",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             return;

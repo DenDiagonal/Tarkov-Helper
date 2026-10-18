@@ -238,7 +238,7 @@ public class MapCustomMarkerManager
         catch (Exception ex)
         {
             StatusUpdated?.Invoke($"Failed to add marker: {ex.Message}");
-            MessageBox.Show($"마커 추가 중 오류 발생:\n{ex.Message}", "Add Marker Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error while adding marker:\n{ex.Message}", "Add Marker Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

@@ -9,8 +9,8 @@ using TarkovHelper.Services.Logging;
 namespace TarkovHelper.Services;
 
 /// <summary>
-/// ?�용???�이?��? SQLite DB (user_data.db)???�??로드?�는 ?�비??
-/// ?�스??진행, 목표 ?�료, ?�이?�아??진행, ?�이???�벤?�리 ?�을 관리합?�다.
+/// ?�용???�이?��? SQLite DB (user_data.db)???�??로드?�는 ?�비??
+/// ?�스??진행, 목표 ?�료, ?�이?�아??진행, ?�이???�벤?�리 ?�을 관리합?�다.
 /// </summary>
 public sealed class UserDataDbService
 {
@@ -30,12 +30,12 @@ public sealed class UserDataDbService
     public string DatabasePath => _databasePath;
 
     /// <summary>
-    /// 마이그레?�션 진행 ?�황 ?�벤??
+    /// 마이그레?�션 진행 ?�황 ?�벤??
     /// </summary>
     public event Action<string>? MigrationProgress;
 
     /// <summary>
-    /// 마이그레?�션???�요?��? ?�인
+    /// 마이그레?�션???�요?��? ?�인
     /// </summary>
     public bool NeedsMigration()
     {
@@ -61,7 +61,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// DB 초기??(?�이�??�성)
+    /// DB 초기??(?�이�??�성)
     /// </summary>
     public async Task InitializeAsync()
     {
@@ -69,7 +69,7 @@ public sealed class UserDataDbService
 
         try
         {
-            // 백업 먼�? ?�행
+            // 백업 먼�? ?�행
             await BackupDatabaseAsync();
 
             Directory.CreateDirectory(Path.GetDirectoryName(_databasePath)!);
@@ -91,7 +91,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ?�기??DB 초기??(???�작 ?�계 ?�는 GetSetting ?�출 ???�용)
+    /// ?�기??DB 초기??(???�작 ?�계 ?�는 GetSetting ?�출 ???�용)
     /// </summary>
     public void EnsureInitialized()
     {
@@ -103,7 +103,7 @@ public sealed class UserDataDbService
 
             try
             {
-                // ?�전 ?�션???�긴 ?�들 ?�리
+                // ?�전 ?�션???�긴 ?�들 ?�리
                 SqliteConnection.ClearAllPools();
                 
                 Directory.CreateDirectory(Path.GetDirectoryName(_databasePath)!);
@@ -225,7 +225,7 @@ public sealed class UserDataDbService
         await MigrateToProfileSystemAsync(connection);
 
         var createTablesSql = @"
-            -- ?�스??진행 ?�태
+            -- ?�스??진행 ?�태
             CREATE TABLE IF NOT EXISTS QuestProgress (
                 Id TEXT,
                 ProfileType INTEGER NOT NULL DEFAULT 0,
@@ -235,7 +235,7 @@ public sealed class UserDataDbService
                 PRIMARY KEY (Id, ProfileType)
             );
 
-            -- ?�스??목표 진행 ?�태
+            -- ?�스??목표 진행 ?�태
             CREATE TABLE IF NOT EXISTS ObjectiveProgress (
                 Id TEXT,
                 ProfileType INTEGER NOT NULL DEFAULT 0,
@@ -245,7 +245,7 @@ public sealed class UserDataDbService
                 PRIMARY KEY (Id, ProfileType)
             );
 
-            -- ?�이???�벤?�리
+            -- ?�이???�벤?�리
             CREATE TABLE IF NOT EXISTS ItemInventory (
                 ItemNormalizedName TEXT,
                 ProfileType INTEGER NOT NULL DEFAULT 0,
@@ -255,7 +255,7 @@ public sealed class UserDataDbService
                 PRIMARY KEY (ItemNormalizedName, ProfileType)
             );
 
-            -- ?�이?�아??진행
+            -- ?�이?�아??진행
             CREATE TABLE IF NOT EXISTS HideoutProgress (
                 StationId TEXT,
                 ProfileType INTEGER NOT NULL DEFAULT 0,
@@ -264,7 +264,7 @@ public sealed class UserDataDbService
                 PRIMARY KEY (StationId, ProfileType)
             );
 
-            -- ?�용???�정 (?��? ?�정?� ?�로?�별�?관�?
+            -- ?�용???�정 (?��? ?�정?� ?�로?�별�?관�?
             CREATE TABLE IF NOT EXISTS UserSettings (
                 Key TEXT,
                 ProfileType INTEGER NOT NULL DEFAULT 0,
@@ -272,7 +272,7 @@ public sealed class UserDataDbService
                 PRIMARY KEY (Key, ProfileType)
             );
 
-            -- ?�이???�스?�리
+            -- ?�이???�스?�리
             CREATE TABLE IF NOT EXISTS RaidHistory (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 RaidId TEXT,
@@ -297,7 +297,7 @@ public sealed class UserDataDbService
                 CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
-            -- 커스?� �?마커
+            -- 커스?� �?마커
             CREATE TABLE IF NOT EXISTS CustomMapMarkers (
                 Id TEXT,
                 ProfileType INTEGER NOT NULL DEFAULT 0,
@@ -314,7 +314,7 @@ public sealed class UserDataDbService
                 PRIMARY KEY (Id, ProfileType)
             );
 
-            -- ?�덱??
+            -- ?�덱??
             CREATE INDEX IF NOT EXISTS idx_quest_progress_normalized ON QuestProgress(NormalizedName);
             CREATE INDEX IF NOT EXISTS idx_objective_progress_quest ON ObjectiveProgress(QuestId);
             CREATE INDEX IF NOT EXISTS idx_raid_history_start_time ON RaidHistory(StartTime);
@@ -328,8 +328,8 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// 기존 ?�일 ?�로???�스?�에??PVP/PVE ?�합 ?�로???�스?�으�?마이그레?�션?�니??
-    /// SQLite??ALTER TABLE�?PK�?변경할 ???�으므�??�이�??�생??방식???�용?�니??
+    /// 기존 ?�일 ?�로???�스?�에??PVP/PVE ?�합 ?�로???�스?�으�?마이그레?�션?�니??
+    /// SQLite??ALTER TABLE�?PK�?변경할 ???�으므�??�이�??�생??방식???�용?�니??
     /// </summary>
     private async Task MigrateToProfileSystemAsync(SqliteConnection connection)
     {
@@ -350,12 +350,12 @@ public sealed class UserDataDbService
 
             try
             {
-                // ?�이�?존재 ?��? ?�인
+                // ?�이�?존재 ?��? ?�인
                 var checkTableSql = $"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='{tableName}'";
                 await using var checkTableCmd = new SqliteCommand(checkTableSql, connection);
                 if (Convert.ToInt32(await checkTableCmd.ExecuteScalarAsync()) == 0) continue;
 
-                // ?��? 고유 PK(ProfileType ?�함)가 ?�정?�어 ?�는지 ?�인
+                // ?��? 고유 PK(ProfileType ?�함)가 ?�정?�어 ?�는지 ?�인
                 var checkPkSql = $"SELECT COUNT(*) FROM pragma_table_info('{tableName}') WHERE pk > 0 AND name = 'ProfileType'";
                 await using var checkPkCmd = new SqliteCommand(checkPkSql, connection);
                 var hasProfileTypeInPk = Convert.ToInt32(await checkPkCmd.ExecuteScalarAsync()) > 0;
@@ -364,16 +364,16 @@ public sealed class UserDataDbService
                 {
                     System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Reconstructing {tableName} for PVE/PVP PK change...");
 
-                    // 1. 기존 ?�이�??�름 변�?
+                    // 1. 기존 ?�이�??�름 변�?
                     var renameSql = $"ALTER TABLE {tableName} RENAME TO {tableName}_old";
                     await using (var cmd = new SqliteCommand(renameSql, connection)) await cmd.ExecuteNonQueryAsync();
 
-                    // 2. ???�이�??�성 (CreateTablesAsync가 ?�중???�출?��?�??�기?�는 직접 명령 ?�행 ?�??
-                    // CreateTablesAsync?�서 ?�용??SQL�??�일??구조???�이블을 미리 ?�성)
+                    // 2. ???�이�??�성 (CreateTablesAsync가 ?�중???�출?��?�??�기?�는 직접 명령 ?�행 ?�??
+                    // CreateTablesAsync?�서 ?�용??SQL�??�일??구조???�이블을 미리 ?�성)
                     await RecreateTableWithNewPkAsync(tableName, connection);
 
-                    // 3. ?�이??복사 (기존 ?�이?�는 PVP??0?�로 매핑)
-                    // ?�드 목록??ProfileType 컬럼???�함?�어 ?�는지 ?�인 ???�이??부?�넣�?
+                    // 3. ?�이??복사 (기존 ?�이?�는 PVP??0?�로 매핑)
+                    // ?�드 목록??ProfileType 컬럼???�함?�어 ?�는지 ?�인 ???�이??부?�넣�?
                     var insertSql = $@"
                         INSERT INTO {tableName} 
                         SELECT * FROM (
@@ -382,7 +382,7 @@ public sealed class UserDataDbService
                     
                     try {
                         await using (var cmd = new SqliteCommand(insertSql, connection)) await cmd.ExecuteNonQueryAsync();
-                        // 4. 기존 ?�이�???��
+                        // 4. 기존 ?�이�???��
                         var dropSql = $"DROP TABLE {tableName}_old";
                         await using (var cmd = new SqliteCommand(dropSql, connection)) await cmd.ExecuteNonQueryAsync();
                         System.Diagnostics.Debug.WriteLine($"[UserDataDbService] {tableName} reconstruction success");
@@ -401,7 +401,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ?�이블별 ???�키마로 ?�생??
+    /// ?�이블별 ???�키마로 ?�생??
     /// </summary>
     private async Task RecreateTableWithNewPkAsync(string tableName, SqliteConnection connection)
     {
@@ -463,13 +463,13 @@ public sealed class UserDataDbService
     #region Quest Progress
 
     /// <summary>
-    /// 모든 ?�스??진행 ?�태 로드
+    /// 모든 ?�스??진행 ?�태 로드
     /// </summary>
     public async Task<Dictionary<string, QuestStatus>> LoadQuestProgressAsync(ProfileType? profileType = null)
     {
         await InitializeAsync();
         
-        // ProfileService.Instance�?직접 ?�출?��? ?�고 ?�자�?받�? 값을 ?�용?�거??기본값을 ?�용?�니??
+        // ProfileService.Instance�?직접 ?�출?��? ?�고 ?�자�?받�? 값을 ?�용?�거??기본값을 ?�용?�니??
         var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
 
         var result = new Dictionary<string, QuestStatus>(StringComparer.OrdinalIgnoreCase);
@@ -491,7 +491,7 @@ public sealed class UserDataDbService
 
             if (Enum.TryParse<QuestStatus>(statusStr, out var status))
             {
-                // NormalizedName???�로 ?�용 (기존 ?�환??
+                // NormalizedName???�로 ?�용 (기존 ?�환??
                 var key = normalizedName ?? id;
                 result[key] = status;
             }
@@ -501,7 +501,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ?�스??진행 ?�태 ?�??
+    /// ?�스??진행 ?�태 ?�??
     /// </summary>
     public async Task SaveQuestProgressAsync(string id, string? normalizedName, QuestStatus status, ProfileType? profileType = null)
     {
@@ -531,7 +531,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ?�러 ?�스??진행 ?�태�?배치�??�??(?�랜??�� ?�용)
+    /// ?�러 ?�스??진행 ?�태�?배치�??�??(?�랜??�� ?�용)
     /// </summary>
     public async Task SaveQuestProgressBatchAsync(IEnumerable<(string Id, string? NormalizedName, QuestStatus Status)> progressItems, ProfileType? profileType = null)
     {
@@ -576,7 +576,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ?�스??진행 ?�태 ??�� (리셋)
+    /// ?�스??진행 ?�태 ??�� (리셋)
     /// </summary>
     public async Task DeleteQuestProgressAsync(string id, ProfileType? profileType = null)
     {
@@ -596,7 +596,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// 모든 ?�스??진행 ?�태 ??��
+    /// 모든 ?�스??진행 ?�태 ??��
     /// </summary>
     public async Task ClearAllQuestProgressAsync(ProfileType? profileType = null)
     {
@@ -617,7 +617,7 @@ public sealed class UserDataDbService
     #region Objective Progress
 
     /// <summary>
-    /// 모든 목표 진행 ?�태 로드
+    /// 모든 목표 진행 ?�태 로드
     /// </summary>
     public async Task<Dictionary<string, bool>> LoadObjectiveProgressAsync()
     {
@@ -646,7 +646,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// 목표 진행 ?�태 ?�??
+    /// 목표 진행 ?�태 ?�??
     /// </summary>
     public async Task SaveObjectiveProgressAsync(string id, string? questId, bool isCompleted)
     {
@@ -676,7 +676,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// 목표 진행 ?�태 ??��
+    /// 목표 진행 ?�태 ??��
     /// </summary>
     public async Task DeleteObjectiveProgressAsync(string id)
     {
@@ -696,7 +696,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ?�스?�의 모든 목표 진행 ?�태 ??��
+    /// ?�스?�의 모든 목표 진행 ?�태 ??��
     /// </summary>
     public async Task DeleteObjectiveProgressByQuestAsync(string questId)
     {
@@ -717,7 +717,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// 모든 목표 진행 ?�태 ??��
+    /// 모든 목표 진행 ?�태 ??��
     /// </summary>
     public async Task ClearAllObjectiveProgressAsync()
     {
@@ -738,7 +738,7 @@ public sealed class UserDataDbService
     #region Hideout Progress
 
     /// <summary>
-    /// 모든 ?�이?�아??진행 ?�태 로드
+    /// 모든 ?�이?�아??진행 ?�태 로드
     /// </summary>
     public async Task<Dictionary<string, int>> LoadHideoutProgressAsync(ProfileType? profileType = null)
     {
@@ -767,7 +767,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ?�이?�아??진행 ?�태 ?�??
+    /// ?�이?�아??진행 ?�태 ?�??
     /// </summary>
     public async Task SaveHideoutProgressAsync(string stationId, int level, ProfileType? profileType = null)
     {
@@ -778,7 +778,7 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        // ?�벨??0?�면 ??��
+        // ?�벨??0?�면 ??��
         if (level == 0)
         {
             var deleteSql = "DELETE FROM HideoutProgress WHERE StationId = @stationId AND ProfileType = @profileType";
@@ -806,7 +806,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// 모든 ?�이?�아??진행 ?�태 ??��
+    /// 모든 ?�이?�아??진행 ?�태 ??��
     /// </summary>
     public async Task ClearAllHideoutProgressAsync(ProfileType? profileType = null)
     {
@@ -827,7 +827,7 @@ public sealed class UserDataDbService
     #region Item Inventory
 
     /// <summary>
-    /// 모든 ?�이???�벤?�리 로드
+    /// 모든 ?�이???�벤?�리 로드
     /// </summary>
     public async Task<Dictionary<string, (int FirQuantity, int NonFirQuantity)>> LoadItemInventoryAsync(ProfileType? profileType = null)
     {
@@ -857,7 +857,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ?�이???�벤?�리 ?�??
+    /// ?�이???�벤?�리 ?�??
     /// </summary>
     public async Task SaveItemInventoryAsync(string itemNormalizedName, int firQuantity, int nonFirQuantity, ProfileType? profileType = null)
     {
@@ -868,7 +868,7 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
-        // ????0?�면 ??��
+        // ????0?�면 ??��
         if (firQuantity == 0 && nonFirQuantity == 0)
         {
             var deleteSql = "DELETE FROM ItemInventory WHERE ItemNormalizedName = @itemName AND ProfileType = @profileType";
@@ -898,7 +898,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// 모든 ?�이???�벤?�리 ??��
+    /// 모든 ?�이???�벤?�리 ??��
     /// </summary>
     public async Task ClearAllItemInventoryAsync(ProfileType? profileType = null)
     {
@@ -919,7 +919,7 @@ public sealed class UserDataDbService
     #region JSON Migration
 
     /// <summary>
-    /// 기존 JSON ?�일?�을 DB�?마이그레?�션
+    /// 기존 JSON ?�일?�을 DB�?마이그레?�션
     /// </summary>
     public async Task<bool> MigrateFromJsonAsync()
     {
@@ -928,28 +928,28 @@ public sealed class UserDataDbService
             return false;
         }
 
-        ReportProgress("?�이??마이그레?�션???�작?�니??..");
+        ReportProgress("Starting data migration...");
         var migrated = false;
 
-        // Quest Progress 마이그레?�션
-        ReportProgress("?�스??진행 ?�이??마이그레?�션 �?..");
+        // Quest Progress migration
+        ReportProgress("Migrating quest progress data...");
         migrated |= await MigrateQuestProgressJsonAsync();
 
-        // Objective Progress 마이그레?�션
-        ReportProgress("목표 진행 ?�이??마이그레?�션 �?..");
+        // Objective Progress migration
+        ReportProgress("Migrating objective progress data...");
         migrated |= await MigrateObjectiveProgressJsonAsync();
 
-        // Hideout Progress 마이그레?�션
-        ReportProgress("?�이?�아??진행 ?�이??마이그레?�션 �?..");
+        // Hideout Progress migration
+        ReportProgress("Migrating hideout progress data...");
         migrated |= await MigrateHideoutProgressJsonAsync();
 
-        // Item Inventory 마이그레?�션
-        ReportProgress("?�이???�벤?�리 ?�이??마이그레?�션 �?..");
+        // Item Inventory migration
+        ReportProgress("Migrating item inventory data...");
         migrated |= await MigrateItemInventoryJsonAsync();
 
         if (migrated)
         {
-            ReportProgress("?�이??마이그레?�션 ?�료!");
+            ReportProgress("Data migration completed!");
         }
 
         return migrated;
@@ -957,7 +957,7 @@ public sealed class UserDataDbService
 
     private async Task<bool> MigrateQuestProgressJsonAsync()
     {
-        // V2 ?�일 먼�? ?�인
+        // V2 ?�일 먼�? ?�인
         var v2Path = Path.Combine(AppEnv.ConfigPath, "quest_progress_v2.json");
         var v1Path = Path.Combine(AppEnv.ConfigPath, "quest_progress.json");
 
@@ -994,11 +994,11 @@ public sealed class UserDataDbService
                         }
                     }
 
-                    // 마이그레?�션 ?�료 ???�일 ??��
+                    // 마이그레?�션 ?�료 ???�일 ??��
                     File.Delete(v2Path);
                     System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Migrated and deleted: {v2Path}");
 
-                    // V1 ?�일???�으�???��
+                    // V1 ?�일???�으�???��
                     if (File.Exists(v1Path))
                     {
                         File.Delete(v1Path);
@@ -1032,7 +1032,7 @@ public sealed class UserDataDbService
                         }
                     }
 
-                    // 마이그레?�션 ?�료 ???�일 ??��
+                    // 마이그레?�션 ?�료 ???�일 ??��
                     File.Delete(v1Path);
                     System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Migrated and deleted: {v1Path}");
 
@@ -1066,7 +1066,7 @@ public sealed class UserDataDbService
 
                 foreach (var kvp in data)
                 {
-                    // ???�식: "questName:index" ?�는 "id:objectiveId"
+                    // ???�식: "questName:index" ?�는 "id:objectiveId"
                     string? questId = null;
                     if (kvp.Key.Contains(':'))
                     {
@@ -1080,7 +1080,7 @@ public sealed class UserDataDbService
                     await SaveObjectiveProgressAsync(kvp.Key, questId, kvp.Value);
                 }
 
-                // 마이그레?�션 ?�료 ???�일 ??��
+                // 마이그레?�션 ?�료 ???�일 ??��
                 File.Delete(filePath);
                 System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Migrated and deleted: {filePath}");
 
@@ -1138,7 +1138,7 @@ public sealed class UserDataDbService
                     await SaveHideoutProgressAsync(kvp.Key, kvp.Value);
                 }
 
-                // 마이그레?�션 ?�료 ???�일 ??��
+                // 마이그레?�션 ?�료 ???�일 ??��
                 File.Delete(filePath);
                 System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Migrated and deleted: {filePath}");
 
@@ -1183,7 +1183,7 @@ public sealed class UserDataDbService
                         inventory.NonFirQuantity);
                 }
 
-                // 마이그레?�션 ?�료 ???�일 ??��
+                // 마이그레?�션 ?�료 ???�일 ??��
                 File.Delete(filePath);
                 System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Migrated and deleted: {filePath}");
 
@@ -1203,7 +1203,7 @@ public sealed class UserDataDbService
     #region User Settings (Safe & Unified)
 
     /// <summary>
-    /// ?�정 �?조회 (비동�?
+    /// ?�정 �?조회 (비동�?
     /// </summary>
     public async Task<string?> GetSettingAsync(string key, ProfileType? profileType = null)
     {
@@ -1212,7 +1212,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ?�정 �??�??(비동�?
+    /// ?�정 �??�??(비동�?
     /// </summary>
     public async Task SetSettingAsync(string key, string value, ProfileType? profileType = null)
     {
@@ -1221,12 +1221,12 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ?�정 �?조회 (?�기 버전 - 모든 코드??중심)
+    /// ?�정 �?조회 (?�기 버전 - 모든 코드??중심)
     /// </summary>
     public string? GetSetting(string key, ProfileType? profileType = null)
     {
         EnsureInitialized();
-        // profileType??null?�면 ?�로??무�? ?�역 ?�정(99)?�로 간주?�니??
+        // profileType??null?�면 ?�로??무�? ?�역 ?�정(99)?�로 간주?�니??
         var actualProfileType = profileType.HasValue ? (int)profileType.Value : 99;
         var connectionString = GetConnectionString();
 
@@ -1268,12 +1268,12 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ?�정 �??�??(?�기 버전 - 모든 코드??중심)
+    /// ?�정 �??�??(?�기 버전 - 모든 코드??중심)
     /// </summary>
     public void SetSetting(string key, string value, ProfileType? profileType = null)
     {
         EnsureInitialized();
-        // profileType??null?�면 ?�로??무�? ?�역 ?�정(99)?�로 간주?�니??
+        // profileType??null?�면 ?�로??무�? ?�역 ?�정(99)?�로 간주?�니??
         var actualProfileType = profileType.HasValue ? (int)profileType.Value : 99;
         var connectionString = GetConnectionString();
 
@@ -1319,7 +1319,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// ?�정 �???�� (?�기 버전)
+    /// ?�정 �???�� (?�기 버전)
     /// </summary>
     public void DeleteSetting(string key, ProfileType? profileType = null)
     {
@@ -1526,7 +1526,7 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
-    /// 커스?� 마커 ??��
+    /// 커스?� 마커 ??��
     /// </summary>
     public async Task DeleteCustomMarkerAsync(string id)
     {

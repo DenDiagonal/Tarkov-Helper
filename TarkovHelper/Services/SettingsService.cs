@@ -575,7 +575,7 @@ public class SettingsService
             var logsPath = GetLogsPathFromGameFolder(gameFolder);
             if (logsPath != null)
             {
-                _detectionMethod = "BSG 런처";
+                _detectionMethod = LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "BSG 런처" : "BSG Launcher";
                 return logsPath;
             }
         }
@@ -587,7 +587,7 @@ public class SettingsService
             var logsPath = GetLogsPathFromGameFolder(gameFolder);
             if (logsPath != null)
             {
-                _detectionMethod = "스팀";
+                _detectionMethod = LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "스팀" : "Steam";
                 return logsPath;
             }
         }
@@ -599,7 +599,7 @@ public class SettingsService
             var logsPath = GetLogsPathFromGameFolder(gameFolder);
             if (logsPath != null)
             {
-                _detectionMethod = "기본 경로";
+                _detectionMethod = LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "기본 경로" : "Default Path";
                 return logsPath;
             }
         }

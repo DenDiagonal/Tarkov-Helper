@@ -292,11 +292,14 @@ namespace TarkovHelper.Pages
 
         private (string DisplayName, string Subtitle, bool ShowSubtitle) GetLocalizedNames(HideoutModule module)
         {
-            var localizedName = module.NameKo;
-
-            if (!string.IsNullOrEmpty(localizedName))
+            var lang = _loc.CurrentLanguage;
+            if (lang == AppLanguage.KO && !string.IsNullOrEmpty(module.NameKo))
             {
-                return (localizedName, module.Name, true);
+                return (module.NameKo, module.Name, true);
+            }
+            if (lang == AppLanguage.JA && !string.IsNullOrEmpty(module.NameJa))
+            {
+                return (module.NameJa, module.Name, true);
             }
 
             return (module.Name, string.Empty, false);
@@ -595,22 +598,42 @@ namespace TarkovHelper.Pages
 
         private string GetLocalizedItemName(HideoutItemRequirement item)
         {
-            return item.ItemNameKo ?? item.ItemName;
+            var lang = _loc.CurrentLanguage;
+            if (lang == AppLanguage.KO && !string.IsNullOrEmpty(item.ItemNameKo))
+                return item.ItemNameKo;
+            if (lang == AppLanguage.JA && !string.IsNullOrEmpty(item.ItemNameJa))
+                return item.ItemNameJa;
+            return item.ItemName;
         }
 
         private string GetLocalizedTraderName(HideoutTraderRequirement trader)
         {
-            return trader.TraderNameKo ?? trader.TraderName;
+            var lang = _loc.CurrentLanguage;
+            if (lang == AppLanguage.KO && !string.IsNullOrEmpty(trader.TraderNameKo))
+                return trader.TraderNameKo;
+            if (lang == AppLanguage.JA && !string.IsNullOrEmpty(trader.TraderNameJa))
+                return trader.TraderNameJa;
+            return trader.TraderName;
         }
 
         private string GetLocalizedSkillName(HideoutSkillRequirement skill)
         {
-            return skill.NameKo ?? skill.Name;
+            var lang = _loc.CurrentLanguage;
+            if (lang == AppLanguage.KO && !string.IsNullOrEmpty(skill.NameKo))
+                return skill.NameKo;
+            if (lang == AppLanguage.JA && !string.IsNullOrEmpty(skill.NameJa))
+                return skill.NameJa;
+            return skill.Name;
         }
 
         private string GetLocalizedStationName(HideoutStationRequirement station)
         {
-            return station.StationNameKo ?? station.StationName;
+            var lang = _loc.CurrentLanguage;
+            if (lang == AppLanguage.KO && !string.IsNullOrEmpty(station.StationNameKo))
+                return station.StationNameKo;
+            if (lang == AppLanguage.JA && !string.IsNullOrEmpty(station.StationNameJa))
+                return station.StationNameJa;
+            return station.StationName;
         }
 
         private void BtnWiki_Click(object sender, RoutedEventArgs e)

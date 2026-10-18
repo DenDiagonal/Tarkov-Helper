@@ -365,14 +365,16 @@ namespace TarkovHelper.Pages
 
         private (string DisplayName, string Subtitle, bool ShowSubtitle) GetLocalizedNames(TarkovTask task)
         {
-            var localizedName = task.NameKo;
-
-            if (!string.IsNullOrEmpty(localizedName))
+            var lang = _loc.CurrentLanguage;
+            if (lang == AppLanguage.KO && !string.IsNullOrEmpty(task.NameKo))
             {
-                return (localizedName, task.Name, true);
+                return (task.NameKo, task.Name, true);
+            }
+            if (lang == AppLanguage.JA && !string.IsNullOrEmpty(task.NameJa))
+            {
+                return (task.NameJa, task.Name, true);
             }
 
-            // Fallback to English only
             return (task.Name, string.Empty, false);
         }
 
@@ -1459,7 +1461,13 @@ namespace TarkovHelper.Pages
             if (item == null)
                 return !string.IsNullOrEmpty(displayNameFallback) ? displayNameFallback : normalizedName;
 
-            return item.NameKo ?? item.Name;
+            var lang = _loc.CurrentLanguage;
+            if (lang == AppLanguage.KO && !string.IsNullOrEmpty(item.NameKo))
+                return item.NameKo;
+            if (lang == AppLanguage.JA && !string.IsNullOrEmpty(item.NameJa))
+                return item.NameJa;
+
+            return item.Name;
         }
 
         private TarkovItem? GetItemByNormalizedName(string normalizedName, string? displayName = null)

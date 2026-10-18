@@ -300,7 +300,9 @@ namespace TarkovHelper.Services
                 {
                     if (string.Equals(questItem.ItemNormalizedName, itemNormalizedName, StringComparison.OrdinalIgnoreCase))
                     {
-                        var questName = task.NameKo ?? task.Name;
+                        var questName = (LocalizationService.Instance.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(task.NameKo))
+                            ? task.NameKo
+                            : task.Name;
                         sources.Add(new QuestItemSourceViewModel
                         {
                             QuestName = questName,
@@ -332,7 +334,9 @@ namespace TarkovHelper.Services
                     {
                         if (string.Equals(itemReq.ItemNormalizedName, itemNormalizedName, StringComparison.OrdinalIgnoreCase))
                         {
-                            var moduleName = module.NameKo ?? module.Name;
+                            var moduleName = (LocalizationService.Instance.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(module.NameKo))
+                                ? module.NameKo
+                                : module.Name;
                             sources.Add(new HideoutItemSourceViewModel
                             {
                                 ModuleName = moduleName,
@@ -510,7 +514,9 @@ namespace TarkovHelper.Services
                 {
                     sources.Add(new CollectorQuestItemSourceViewModel
                     {
-                        QuestName = task.NameKo ?? task.Name,
+                        QuestName = (LocalizationService.Instance.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(task.NameKo))
+                            ? task.NameKo
+                            : task.Name,
                         TraderName = task.Trader,
                         Amount = questItem.Amount,
                         FoundInRaid = questItem.FoundInRaid,
@@ -528,7 +534,16 @@ namespace TarkovHelper.Services
     private (string DisplayName, string Subtitle, bool ShowSubtitle) GetLocalizedNames(
         string name, string? nameKo, string? nameJa)
     {
-        return (!string.IsNullOrEmpty(nameKo)) ? (nameKo, name, true) : (name, string.Empty, false);
+        var lang = LocalizationService.Instance.CurrentLanguage;
+        if (lang == AppLanguage.KO && !string.IsNullOrEmpty(nameKo))
+        {
+            return (nameKo, name, true);
+        }
+        if (lang == AppLanguage.JA && !string.IsNullOrEmpty(nameJa))
+        {
+            return (nameJa, name, true);
+        }
+        return (name, string.Empty, false);
     }
 }
 }
