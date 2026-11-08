@@ -158,3 +158,5 @@ scratch/
 .agents/
 __pycache__/
 *.pyc
+# Release binary archives
+TarkovHelper-*.zip
