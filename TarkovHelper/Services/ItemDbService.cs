@@ -91,6 +91,10 @@ public sealed class ItemDbService
         foreach (var kvp in _itemsById)
         {
             lookup.TryAdd(kvp.Key, kvp.Value);
+            if (!string.IsNullOrEmpty(kvp.Value.BsgId))
+            {
+                lookup.TryAdd(kvp.Value.BsgId, kvp.Value);
+            }
         }
 
         // Dogtag aliases 추가 (wiki-parsed names -> API names)
@@ -200,6 +204,7 @@ public sealed class ItemDbService
             var item = new TarkovItem
             {
                 Id = id,
+                BsgId = reader.IsDBNull(1) ? null : reader.GetString(1),
                 Name = name,
                 NormalizedName = GenerateNormalizedName(name, id),
                 NameKo = reader.IsDBNull(4) ? null : reader.GetString(4),

@@ -35,6 +35,11 @@ public sealed class UserDataDbService
     public event Action<string>? MigrationProgress;
 
     /// <summary>
+    /// 커스텀 마커 변경 이벤트 (추가/수정/삭제)
+    /// </summary>
+    public event Action? CustomMarkersChanged;
+
+    /// <summary>
     /// 마이그레?�션???�요?��? ?�인
     /// </summary>
     public bool NeedsMigration()
@@ -170,7 +175,15 @@ public sealed class UserDataDbService
                         CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         PRIMARY KEY (Id, ProfileType)
                     );
+                    CREATE TABLE IF NOT EXISTS NeededItemProgress (
+                        Id TEXT,
+                        ProfileType INTEGER NOT NULL DEFAULT 0,
+                        Count INTEGER NOT NULL DEFAULT 0,
+                        UpdatedAt TEXT NOT NULL,
+                        PRIMARY KEY (Id, ProfileType)
+                    );
                     CREATE INDEX IF NOT EXISTS idx_quest_progress_normalized ON QuestProgress(NormalizedName);
+                    CREATE INDEX IF NOT EXISTS idx_needed_item_progress_profile ON NeededItemProgress(ProfileType);
                     ";
 
                     using (var cmd = new SqliteCommand(createTablesSql, connection))
@@ -314,6 +327,15 @@ public sealed class UserDataDbService
                 PRIMARY KEY (Id, ProfileType)
             );
 
+            -- Needed Item Progress
+            CREATE TABLE IF NOT EXISTS NeededItemProgress (
+                Id TEXT,
+                ProfileType INTEGER NOT NULL DEFAULT 0,
+                Count INTEGER NOT NULL DEFAULT 0,
+                UpdatedAt TEXT NOT NULL,
+                PRIMARY KEY (Id, ProfileType)
+            );
+
             -- ?�덱??
             CREATE INDEX IF NOT EXISTS idx_quest_progress_normalized ON QuestProgress(NormalizedName);
             CREATE INDEX IF NOT EXISTS idx_objective_progress_quest ON ObjectiveProgress(QuestId);
@@ -321,10 +343,12 @@ public sealed class UserDataDbService
             CREATE INDEX IF NOT EXISTS idx_raid_history_map_key ON RaidHistory(MapKey);
             CREATE INDEX IF NOT EXISTS idx_raid_history_raid_type ON RaidHistory(RaidType);
             CREATE INDEX IF NOT EXISTS idx_custom_markers_map_key ON CustomMapMarkers(MapKey);
+            CREATE INDEX IF NOT EXISTS idx_needed_item_progress_profile ON NeededItemProgress(ProfileType);
         ";
 
         await using var cmd = new SqliteCommand(createTablesSql, connection);
         await cmd.ExecuteNonQueryAsync();
+        CustomMarkersChanged?.Invoke();
     }
 
     /// <summary>
@@ -478,6 +502,9 @@ public sealed class UserDataDbService
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
 
+        // Migrate any historical Base64 IDs in QuestProgress to canonical BSG IDs
+        await MigrateLegacyBase64QuestProgressAsync(connection);
+
         var sql = "SELECT Id, NormalizedName, Status FROM QuestProgress WHERE ProfileType = @profileType";
         await using var cmd = new SqliteCommand(sql, connection);
         cmd.Parameters.AddWithValue("@profileType", (int)actualProfileType);
@@ -491,9 +518,10 @@ public sealed class UserDataDbService
 
             if (Enum.TryParse<QuestStatus>(statusStr, out var status))
             {
-                // NormalizedName???�로 ?�용 (기존 ?�환??
-                var key = normalizedName ?? id;
-                result[key] = status;
+                if (!string.IsNullOrEmpty(id))
+                    result[id] = status;
+                if (!string.IsNullOrEmpty(normalizedName))
+                    result[normalizedName] = status;
             }
         }
 
@@ -501,11 +529,119 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
+    /// Migrates any historical Base64 Wiki URLs in QuestProgress to canonical BSG IDs.
+    /// Runs seamlessly in a single atomic transaction without modifying statuses or timestamps.
+    /// </summary>
+    public async Task MigrateLegacyBase64QuestProgressAsync(SqliteConnection connection)
+    {
+        try
+        {
+            var checkSql = "SELECT COUNT(*) FROM QuestProgress WHERE Id LIKE 'aHR0%'";
+            await using (var checkCmd = new SqliteCommand(checkSql, connection))
+            {
+                var count = Convert.ToInt64(await checkCmd.ExecuteScalarAsync());
+                if (count == 0) return;
+            }
+
+            _log.Info("Migrating legacy Base64 quest IDs in QuestProgress to canonical BSG IDs...");
+            var selectSql = "SELECT Id, ProfileType, NormalizedName, Status, UpdatedAt FROM QuestProgress WHERE Id LIKE 'aHR0%'";
+            var itemsToMigrate = new List<(string OldId, int ProfileType, string? NormalizedName, string Status, string UpdatedAt)>();
+
+            await using (var selectCmd = new SqliteCommand(selectSql, connection))
+            await using (var reader = await selectCmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    itemsToMigrate.Add((
+                        reader.GetString(0),
+                        reader.GetInt32(1),
+                        reader.IsDBNull(2) ? null : reader.GetString(2),
+                        reader.GetString(3),
+                        reader.IsDBNull(4) ? DateTime.UtcNow.ToString("o") : reader.GetString(4)
+                    ));
+                }
+            }
+
+            await using var tx = await connection.BeginTransactionAsync();
+            try
+            {
+                foreach (var item in itemsToMigrate)
+                {
+                    var newBsgId = CanonicalQuestMap.ResolveBsgId(item.OldId);
+                    if (string.Equals(newBsgId, item.OldId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var checkExistingSql = "SELECT rowid FROM QuestProgress WHERE Id = @newId AND ProfileType = @profileType";
+                    long existingRowId = 0;
+                    await using (var checkExistCmd = new SqliteCommand(checkExistingSql, connection, (SqliteTransaction)tx))
+                    {
+                        checkExistCmd.Parameters.AddWithValue("@newId", newBsgId);
+                        checkExistCmd.Parameters.AddWithValue("@profileType", item.ProfileType);
+                        var obj = await checkExistCmd.ExecuteScalarAsync();
+                        if (obj != null && obj != DBNull.Value)
+                        {
+                            existingRowId = Convert.ToInt64(obj);
+                        }
+                    }
+
+                    if (existingRowId > 0)
+                    {
+                        var updateExistingSql = "UPDATE QuestProgress SET Status = @status, UpdatedAt = @updatedAt WHERE rowid = @rowid";
+                        await using (var updateCmd = new SqliteCommand(updateExistingSql, connection, (SqliteTransaction)tx))
+                        {
+                            updateCmd.Parameters.AddWithValue("@status", item.Status);
+                            updateCmd.Parameters.AddWithValue("@updatedAt", item.UpdatedAt);
+                            updateCmd.Parameters.AddWithValue("@rowid", existingRowId);
+                            await updateCmd.ExecuteNonQueryAsync();
+                        }
+
+                        var deleteOldSql = "DELETE FROM QuestProgress WHERE Id = @oldId AND ProfileType = @profileType";
+                        await using (var deleteCmd = new SqliteCommand(deleteOldSql, connection, (SqliteTransaction)tx))
+                        {
+                            deleteCmd.Parameters.AddWithValue("@oldId", item.OldId);
+                            deleteCmd.Parameters.AddWithValue("@profileType", item.ProfileType);
+                            await deleteCmd.ExecuteNonQueryAsync();
+                        }
+                    }
+                    else
+                    {
+                        var updateInPlaceSql = "UPDATE QuestProgress SET Id = @newId WHERE Id = @oldId AND ProfileType = @profileType";
+                        await using (var updateCmd = new SqliteCommand(updateInPlaceSql, connection, (SqliteTransaction)tx))
+                        {
+                            updateCmd.Parameters.AddWithValue("@newId", newBsgId);
+                            updateCmd.Parameters.AddWithValue("@oldId", item.OldId);
+                            updateCmd.Parameters.AddWithValue("@profileType", item.ProfileType);
+                            await updateCmd.ExecuteNonQueryAsync();
+                        }
+                    }
+                }
+
+                await tx.CommitAsync();
+                _log.Info($"Successfully migrated {itemsToMigrate.Count} legacy Base64 quest IDs in user_data.db.");
+            }
+            catch (Exception ex)
+            {
+                await tx.RollbackAsync();
+                _log.Error($"Failed to migrate legacy Base64 quest IDs: {ex.Message}");
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Error in MigrateLegacyBase64QuestProgressAsync: {ex.Message}");
+        }
+    }
+
+
+    /// <summary>
     /// ?�스??진행 ?�태 ?�??
     /// </summary>
     public async Task SaveQuestProgressAsync(string id, string? normalizedName, QuestStatus status, ProfileType? profileType = null)
     {
         await InitializeAsync();
+        id = CanonicalQuestMap.ResolveBsgId(id);
         var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
 
         var connectionString = GetConnectionString();
@@ -581,6 +717,7 @@ public sealed class UserDataDbService
     public async Task DeleteQuestProgressAsync(string id, ProfileType? profileType = null)
     {
         await InitializeAsync();
+        id = CanonicalQuestMap.ResolveBsgId(id);
         var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
 
         var connectionString = GetConnectionString();
@@ -610,6 +747,7 @@ public sealed class UserDataDbService
         await using var cmd = new SqliteCommand("DELETE FROM QuestProgress WHERE ProfileType = @profileType", connection);
         cmd.Parameters.AddWithValue("@profileType", (int)actualProfileType);
         await cmd.ExecuteNonQueryAsync();
+        CustomMarkersChanged?.Invoke();
     }
 
     #endregion
@@ -619,10 +757,10 @@ public sealed class UserDataDbService
     /// <summary>
     /// 모든 목표 진행 ?�태 로드
     /// </summary>
-    public async Task<Dictionary<string, bool>> LoadObjectiveProgressAsync()
+    public async Task<Dictionary<string, bool>> LoadObjectiveProgressAsync(ProfileType? profileType = null)
     {
         await InitializeAsync();
-        var profileType = ProfileService.Instance.CurrentProfile;
+        var actualProfile = profileType ?? ProfileService.Instance.CurrentProfile;
 
         var result = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
@@ -632,7 +770,7 @@ public sealed class UserDataDbService
 
         var sql = "SELECT Id, IsCompleted FROM ObjectiveProgress WHERE ProfileType = @profileType";
         await using var cmd = new SqliteCommand(sql, connection);
-        cmd.Parameters.AddWithValue("@profileType", (int)profileType);
+        cmd.Parameters.AddWithValue("@profileType", (int)actualProfile);
         await using var reader = await cmd.ExecuteReaderAsync();
 
         while (await reader.ReadAsync())
@@ -648,6 +786,59 @@ public sealed class UserDataDbService
     /// <summary>
     /// 목표 진행 ?�태 ?�??
     /// </summary>
+    public async Task SaveObjectiveProgressBatchAsync(IEnumerable<(string Key, string? QuestId, bool IsCompleted)> items, ProfileType? profileType = null)
+    {
+        if (items == null) return;
+        var list = items as IList<(string Key, string? QuestId, bool IsCompleted)> ?? items.ToList();
+        if (list.Count == 0) return;
+
+        await InitializeAsync().ConfigureAwait(false);
+        var actualProfile = profileType ?? ProfileService.Instance.CurrentProfile;
+
+        var connectionString = GetConnectionString();
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync().ConfigureAwait(false);
+        await using var tx = await connection.BeginTransactionAsync().ConfigureAwait(false);
+
+        try
+        {
+            foreach (var (key, questId, isCompleted) in list)
+            {
+                if (!isCompleted)
+                {
+                    var delSql = "DELETE FROM ObjectiveProgress WHERE Id = @id AND ProfileType = @profileType";
+                    await using var delCmd = new SqliteCommand(delSql, connection, (SqliteTransaction)tx);
+                    delCmd.Parameters.AddWithValue("@id", key);
+                    delCmd.Parameters.AddWithValue("@profileType", (int)actualProfile);
+                    await delCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+                }
+                else
+                {
+                    var sql = @"
+                        INSERT INTO ObjectiveProgress (Id, ProfileType, QuestId, IsCompleted, UpdatedAt)
+                        VALUES (@id, @profileType, @questId, 1, @updatedAt)
+                        ON CONFLICT(Id, ProfileType) DO UPDATE SET
+                            QuestId = @questId,
+                            IsCompleted = 1,
+                            UpdatedAt = @updatedAt";
+                    await using var cmd = new SqliteCommand(sql, connection, (SqliteTransaction)tx);
+                    cmd.Parameters.AddWithValue("@id", key);
+                    cmd.Parameters.AddWithValue("@profileType", (int)actualProfile);
+                    cmd.Parameters.AddWithValue("@questId", questId ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow.ToString("o"));
+                    await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+                }
+            }
+            await tx.CommitAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync().ConfigureAwait(false);
+            _log.Error($"Failed to batch save objective progress: {ex.Message}");
+            throw;
+        }
+    }
+
     public async Task SaveObjectiveProgressAsync(string id, string? questId, bool isCompleted)
     {
         await InitializeAsync();
@@ -731,6 +922,7 @@ public sealed class UserDataDbService
         await using var cmd = new SqliteCommand("DELETE FROM ObjectiveProgress WHERE ProfileType = @profileType", connection);
         cmd.Parameters.AddWithValue("@profileType", (int)profileType);
         await cmd.ExecuteNonQueryAsync();
+        CustomMarkersChanged?.Invoke();
     }
 
     #endregion
@@ -820,6 +1012,7 @@ public sealed class UserDataDbService
         await using var cmd = new SqliteCommand("DELETE FROM HideoutProgress WHERE ProfileType = @profileType", connection);
         cmd.Parameters.AddWithValue("@profileType", (int)actualProfileType);
         await cmd.ExecuteNonQueryAsync();
+        CustomMarkersChanged?.Invoke();
     }
 
     #endregion
@@ -912,6 +1105,170 @@ public sealed class UserDataDbService
         await using var cmd = new SqliteCommand("DELETE FROM ItemInventory WHERE ProfileType = @profileType", connection);
         cmd.Parameters.AddWithValue("@profileType", (int)actualProfileType);
         await cmd.ExecuteNonQueryAsync();
+        CustomMarkersChanged?.Invoke();
+    }
+
+    #endregion
+
+    #region Needed Item Progress
+
+    /// <summary>
+    /// Load needed item progress counts for profile
+    /// </summary>
+    public async Task<Dictionary<string, int>> LoadNeededItemProgressAsync(ProfileType? profileType = null)
+    {
+        await InitializeAsync().ConfigureAwait(false);
+        var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        var connectionString = GetConnectionString();
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync().ConfigureAwait(false);
+
+        var sql = "SELECT Id, Count FROM NeededItemProgress WHERE ProfileType = @profileType";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@profileType", (int)actualProfileType);
+        await using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
+
+        while (await reader.ReadAsync().ConfigureAwait(false))
+        {
+            var id = reader.GetString(0);
+            var count = reader.GetInt32(1);
+            result[id] = count;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Save needed item progress count
+    /// </summary>
+    public async Task SaveNeededItemProgressAsync(string id, int count, ProfileType? profileType = null)
+    {
+        await InitializeAsync().ConfigureAwait(false);
+        var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
+
+        var connectionString = GetConnectionString();
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync().ConfigureAwait(false);
+
+        if (count <= 0)
+        {
+            var deleteSql = "DELETE FROM NeededItemProgress WHERE Id = @id AND ProfileType = @profileType";
+            await using var deleteCmd = new SqliteCommand(deleteSql, connection);
+            deleteCmd.Parameters.AddWithValue("@id", id);
+            deleteCmd.Parameters.AddWithValue("@profileType", (int)actualProfileType);
+            await deleteCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+            return;
+        }
+
+        var sql = @"
+            INSERT INTO NeededItemProgress (Id, ProfileType, Count, UpdatedAt)
+            VALUES (@id, @profileType, @count, @updatedAt)
+            ON CONFLICT(Id, ProfileType) DO UPDATE SET
+                Count = @count,
+                UpdatedAt = @updatedAt";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@profileType", (int)actualProfileType);
+        cmd.Parameters.AddWithValue("@count", count);
+        cmd.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow.ToString("o"));
+
+        await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Save needed item progress counts in batch
+    /// </summary>
+    public async Task SaveNeededItemProgressBatchAsync(IEnumerable<(string Id, int Count)> items, ProfileType? profileType = null)
+    {
+        if (items == null) return;
+        var itemsList = items as IList<(string Id, int Count)> ?? items.ToList();
+        if (itemsList.Count == 0) return;
+
+        await InitializeAsync().ConfigureAwait(false);
+        var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
+
+        var connectionString = GetConnectionString();
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync().ConfigureAwait(false);
+        await using var tx = await connection.BeginTransactionAsync().ConfigureAwait(false);
+
+        try
+        {
+            foreach (var (id, count) in itemsList)
+            {
+                if (count <= 0)
+                {
+                    var deleteSql = "DELETE FROM NeededItemProgress WHERE Id = @id AND ProfileType = @profileType";
+                    await using var deleteCmd = new SqliteCommand(deleteSql, connection, (SqliteTransaction)tx);
+                    deleteCmd.Parameters.AddWithValue("@id", id);
+                    deleteCmd.Parameters.AddWithValue("@profileType", (int)actualProfileType);
+                    await deleteCmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+                }
+                else
+                {
+                    var sql = @"
+                        INSERT INTO NeededItemProgress (Id, ProfileType, Count, UpdatedAt)
+                        VALUES (@id, @profileType, @count, @updatedAt)
+                        ON CONFLICT(Id, ProfileType) DO UPDATE SET
+                            Count = @count,
+                            UpdatedAt = @updatedAt";
+
+                    await using var cmd = new SqliteCommand(sql, connection, (SqliteTransaction)tx);
+                    cmd.Parameters.AddWithValue("@id", id);
+                    cmd.Parameters.AddWithValue("@profileType", (int)actualProfileType);
+                    cmd.Parameters.AddWithValue("@count", count);
+                    cmd.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow.ToString("o"));
+                    await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+                }
+            }
+
+            await tx.CommitAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            await tx.RollbackAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Delete needed item progress for an ID
+    /// </summary>
+    public async Task DeleteNeededItemProgressAsync(string id, ProfileType? profileType = null)
+    {
+        await InitializeAsync().ConfigureAwait(false);
+        var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
+
+        var connectionString = GetConnectionString();
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync().ConfigureAwait(false);
+
+        var sql = "DELETE FROM NeededItemProgress WHERE Id = @id AND ProfileType = @profileType";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@profileType", (int)actualProfileType);
+
+        await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Clear all needed item progress
+    /// </summary>
+    public async Task ClearAllNeededItemProgressAsync(ProfileType? profileType = null)
+    {
+        await InitializeAsync().ConfigureAwait(false);
+        var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
+
+        var connectionString = GetConnectionString();
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync().ConfigureAwait(false);
+
+        await using var cmd = new SqliteCommand("DELETE FROM NeededItemProgress WHERE ProfileType = @profileType", connection);
+        cmd.Parameters.AddWithValue("@profileType", (int)actualProfileType);
+        await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
     #endregion
@@ -1268,6 +1625,45 @@ public sealed class UserDataDbService
     }
 
     /// <summary>
+    /// Batch load all settings for a given profile type (and global 99) in a single query.
+    /// </summary>
+    public Dictionary<string, string> GetAllSettings(ProfileType? profileType = null)
+    {
+        EnsureInitialized();
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var actualProfileType = profileType.HasValue ? (int)profileType.Value : 99;
+        var connectionString = GetConnectionString();
+
+        lock (_dbLock)
+        {
+            try
+            {
+                using var connection = new SqliteConnection(connectionString);
+                connection.Open();
+                var sql = "SELECT Key, Value, ProfileType FROM UserSettings WHERE ProfileType IN (99, @profileType) ORDER BY CASE WHEN ProfileType = 99 THEN 0 ELSE 1 END";
+                using var cmd = new SqliteCommand(sql, connection);
+                cmd.Parameters.AddWithValue("@profileType", actualProfileType);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var k = reader.IsDBNull(0) ? null : reader.GetString(0);
+                    var v = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+                    if (!string.IsNullOrEmpty(k))
+                    {
+                        result[k] = v;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[UserDataDbService] GetAllSettings Error: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// ?�정 �??�??(?�기 버전 - 모든 코드??중심)
     /// </summary>
     public void SetSetting(string key, string value, ProfileType? profileType = null)
@@ -1523,6 +1919,7 @@ public sealed class UserDataDbService
                 }
             }
         }
+        CustomMarkersChanged?.Invoke();
     }
 
     /// <summary>
@@ -1543,6 +1940,7 @@ public sealed class UserDataDbService
         cmd.Parameters.AddWithValue("@profileType", (int)profileType);
 
         await cmd.ExecuteNonQueryAsync();
+        CustomMarkersChanged?.Invoke();
     }
 
     #endregion

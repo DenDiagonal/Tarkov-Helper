@@ -115,7 +115,7 @@ public sealed class MapTrackerSettings
     /// <summary>
     /// 퀘스트 마커 스타일
     /// </summary>
-    public QuestMarkerStyle QuestMarkerStyle { get; set; } = QuestMarkerStyle.DefaultWithName;
+    public QuestMarkerStyle QuestMarkerStyle { get; set; } = QuestMarkerStyle.Default;
 
     /// <summary>
     /// 퀘스트명 텍스트 크기 (기본 20, 범위 16~32)
@@ -160,21 +160,60 @@ public sealed class MapTrackerSettings
     /// <summary>
     /// 퀘스트 마커 색상 커스터마이징 (타입별 Hex 색상)
     /// </summary>
-    public Dictionary<string, string> MarkerColors { get; set; } = new()
+    public Dictionary<string, string> MarkerColors { get; set; } = new(StringComparer.OrdinalIgnoreCase)
     {
-        { "visit", "#4CAF50" },      // Green
-        { "mark", "#FF9800" },       // Orange
-        { "plantItem", "#9C27B0" },  // Purple
-        { "extract", "#2196F3" },    // Blue
+        { "visit", "#00E5FF" },      // Cyan / Teal
+        { "mark", "#FFA000" },       // Amber / Orange
+        { "plantItem", "#AB47BC" },  // Purple
+        { "extract", "#29B6F6" },    // Blue
         { "findItem", "#FFEB3B" }    // Yellow
     };
 
     /// <summary>
-    /// 특정 타입의 마커 색상을 가져옵니다.
+    /// 특정 타입의 마커 색상을 가져옵니다 (DB 타입 및 동의어 매핑 지원).
     /// </summary>
     public string GetMarkerColor(string objectiveType)
     {
-        return MarkerColors.TryGetValue(objectiveType, out var color) ? color : "#4CAF50";
+        if (string.IsNullOrWhiteSpace(objectiveType))
+            return "#00E5FF";
+
+        var norm = objectiveType.Trim().ToLowerInvariant();
+        var lookupKey = norm switch
+        {
+            "collect" or "handover" or "find" => "findItem",
+            "stash" or "plant" => "plantItem",
+            "survive" => "extract",
+            _ => norm
+        };
+
+        if (MarkerColors.TryGetValue(lookupKey, out var color) && !string.IsNullOrEmpty(color))
+        {
+            // Migrar viejos valores #FFC107 o #4CAF50 a R3
+            if (string.Equals(color, "#FFC107", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(color, "#4CAF50", StringComparison.OrdinalIgnoreCase))
+            {
+                return lookupKey switch
+                {
+                    "visit" => "#00E5FF",
+                    "mark" => "#FFA000",
+                    "finditem" => "#FFEB3B",
+                    "plantitem" => "#AB47BC",
+                    "extract" => "#29B6F6",
+                    _ => "#00E5FF"
+                };
+            }
+            return color;
+        }
+
+        return lookupKey switch
+        {
+            "visit" => "#00E5FF",
+            "mark" => "#FFA000",
+            "finditem" => "#FFEB3B",
+            "plantitem" => "#AB47BC",
+            "extract" => "#29B6F6",
+            _ => "#00E5FF"
+        };
     }
 
     /// <summary>
@@ -182,7 +221,15 @@ public sealed class MapTrackerSettings
     /// </summary>
     public void SetMarkerColor(string objectiveType, string hexColor)
     {
-        MarkerColors[objectiveType] = hexColor;
+        var norm = objectiveType.Trim().ToLowerInvariant();
+        var key = norm switch
+        {
+            "collect" or "handover" or "find" => "findItem",
+            "stash" or "plant" => "plantItem",
+            "survive" => "extract",
+            _ => norm
+        };
+        MarkerColors[key] = hexColor;
     }
 
     /// <summary>

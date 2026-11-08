@@ -1,0 +1,782 @@
+<UserControl x:Class="TarkovHelper.Controls.TaskCardControl"
+x:Name="RootControl"
+xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+mc:Ignorable="d" 
+d:DesignWidth="450"
+TextOptions.TextFormattingMode="Display"
+TextOptions.TextRenderingMode="ClearType"
+RenderOptions.ClearTypeHint="Enabled"
+SnapsToDevicePixels="True"
+UseLayoutRounding="True">
+<UserControl.Resources>
+<!-- Stepper Button Style -->
+<Style x:Key="StepperButtonStyle" TargetType="Button">
+<Setter Property="Width" Value="22"/>
+<Setter Property="Height" Value="22"/>
+<Setter Property="Padding" Value="0"/>
+<Setter Property="Background" Value="{DynamicResource TacticalSurface4Brush}"/>
+<Setter Property="Foreground" Value="{DynamicResource TacticalTextPrimaryBrush}"/>
+<Setter Property="BorderBrush" Value="{DynamicResource TacticalBorderMediumBrush}"/>
+<Setter Property="BorderThickness" Value="1"/>
+<Setter Property="Cursor" Value="Hand"/>
+<Setter Property="FontWeight" Value="Bold"/>
+<Setter Property="FontSize" Value="11"/>
+<Setter Property="Template">
+<Setter.Value>
+<ControlTemplate TargetType="Button">
+<Border x:Name="Bd" Background="{TemplateBinding Background}"
+BorderBrush="{TemplateBinding BorderBrush}"
+BorderThickness="{TemplateBinding BorderThickness}"
+CornerRadius="3">
+<ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+</Border>
+<ControlTemplate.Triggers>
+<Trigger Property="IsMouseOver" Value="True">
+<Setter TargetName="Bd" Property="Background" Value="{DynamicResource TacticalSurface4Brush}"/>
+<Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TacticalGoldBrush}"/>
+</Trigger>
+<Trigger Property="IsPressed" Value="True">
+<Setter TargetName="Bd" Property="Background" Value="{DynamicResource TacticalGoldBrush}"/>
+<Setter Property="Foreground" Value="{DynamicResource TacticalTextInvertedBrush}"/>
+</Trigger>
+</ControlTemplate.Triggers>
+</ControlTemplate>
+</Setter.Value>
+</Setter>
+</Style>
+<!-- Action Check Button Style -->
+<Style x:Key="ActionToggleButtonStyle" TargetType="Button">
+<Setter Property="Width" Value="22"/>
+<Setter Property="Height" Value="22"/>
+<Setter Property="Padding" Value="0"/>
+<Setter Property="Background" Value="{DynamicResource TacticalSurface4Brush}"/>
+<Setter Property="Foreground" Value="{DynamicResource TacticalTextSecondaryBrush}"/>
+<Setter Property="BorderBrush" Value="{DynamicResource TacticalBorderMediumBrush}"/>
+<Setter Property="BorderThickness" Value="1"/>
+<Setter Property="Cursor" Value="Hand"/>
+<Setter Property="FontWeight" Value="Bold"/>
+<Setter Property="FontSize" Value="11"/>
+<Setter Property="Template">
+<Setter.Value>
+<ControlTemplate TargetType="Button">
+<Border x:Name="Bd" Background="{TemplateBinding Background}"
+BorderBrush="{TemplateBinding BorderBrush}"
+BorderThickness="{TemplateBinding BorderThickness}"
+CornerRadius="3">
+<ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+</Border>
+<ControlTemplate.Triggers>
+<Trigger Property="IsMouseOver" Value="True">
+<Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TacticalSuccessBrush}"/>
+</Trigger>
+</ControlTemplate.Triggers>
+</ControlTemplate>
+</Setter.Value>
+</Setter>
+</Style>
+        <!-- Tactical Alternative ComboBox Styles -->
+        <Style x:Key="AlternativeComboBoxItemStyle" TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TacticalTextPrimaryBrush}"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="ItemBd" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="3" Margin="1">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBd" Property="Background" Value="{DynamicResource TacticalSurface4Brush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TacticalGoldBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBd" Property="Background" Value="{DynamicResource TacticalSurface3Brush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TacticalGoldBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AlternativeComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Background" Value="{DynamicResource TacticalSurface3Brush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TacticalGoldBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource TacticalBorderMediumBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource AlternativeComboBoxItemStyle}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="DropDownToggle"
+                                          Focusable="False"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          ClickMode="Press">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="TogBd" Background="{DynamicResource TacticalSurface3Brush}"
+                                                BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+                                                BorderThickness="1" CornerRadius="4" Padding="6,2">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <ContentPresenter Grid.Column="0"
+                                                                  Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text=" ▾" FontSize="10" Margin="4,0,0,0"
+                                                           Foreground="{DynamicResource TacticalGoldBrush}" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="TogBd" Property="BorderBrush" Value="{DynamicResource TacticalGoldBrush}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="TogBd" Property="BorderBrush" Value="{DynamicResource TacticalGoldBrush}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Popup x:Name="PART_Popup" Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
+                                <Border Background="#161920" BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+                                        BorderThickness="1" CornerRadius="4" MinWidth="{TemplateBinding ActualWidth}" Margin="0,2,0,0"
+                                        Padding="2">
+                                    <ScrollViewer MaxHeight="220" SnapsToDevicePixels="True" VerticalScrollBarVisibility="Auto">
+                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+</UserControl.Resources>
+<!-- Main Card Container -->
+<Border DataContext="{Binding CardModel, ElementName=RootControl}"
+Background="{DynamicResource TacticalSurface2Brush}"
+BorderBrush="#252A34"
+BorderThickness="3,1,1,1"
+CornerRadius="6"
+Padding="12,8"
+Margin="0,0,0,8">
+<StackPanel>
+<!-- 1. Header Row -->
+<Grid Margin="0,0,0,5">
+<Grid.ColumnDefinitions>
+<!-- Col 0: Trader Avatar Badge -->
+<ColumnDefinition Width="Auto"/>
+<!-- Col 1: Task Title & Badges WrapPanel -->
+<ColumnDefinition Width="*"/>
+<!-- Col 2: Actions & Collapse Toggle -->
+<ColumnDefinition Width="Auto"/>
+</Grid.ColumnDefinitions>
+<!-- 0. Quest Lock/Unlock Manual Override Button (28x28) -->
+<Border Grid.Column="0" Width="28" Height="28" CornerRadius="4"
+        Background="{Binding LockToggleBackground}"
+        BorderBrush="{Binding LockToggleBorder}"
+        BorderThickness="1" ClipToBounds="True"
+        VerticalAlignment="Center" Margin="0,0,8,0"
+        Cursor="Hand"
+        MouseLeftButtonUp="BtnLockToggle_Click"
+        ToolTip="{Binding LockToggleToolTip}">
+    <Border.ContextMenu>
+        <ContextMenu>
+            <MenuItem Header="🔓 Forzar Desbloqueo (Activa)" Click="MenuForceUnlock_Click"/>
+            <MenuItem Header="🔒 Forzar Bloqueo (Bloqueada)" Click="MenuForceLock_Click"/>
+            <Separator/>
+            <MenuItem Header="↺ Restablecer Automático" Click="MenuResetOverride_Click"/>
+        </ContextMenu>
+    </Border.ContextMenu>
+    <Grid>
+        <TextBlock Text="{Binding LockToggleIcon}"
+                   FontSize="13" FontWeight="Bold"
+                   Foreground="{Binding LockToggleForeground}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <Ellipse Width="6" Height="6" Fill="{DynamicResource TacticalGoldBrush}"
+                 HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,2,2,0"
+                 Visibility="{Binding ManualOverrideDotVisibility}"
+                 ToolTip="Modificada manualmente"/>
+    </Grid>
+</Border>
+<!-- Single-Line Header: Title + Trader + Map (no icon) + Required Keys -->
+<WrapPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+<!-- Task Title -->
+<TextBlock Text="{Binding Title}"
+FontSize="15" FontWeight="SemiBold"
+Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+TextTrimming="CharacterEllipsis"
+ToolTip="{Binding Title}"
+VerticalAlignment="Center" Margin="0,1,10,1"/>
+<!-- Trader Name -->
+<TextBlock Text="{Binding Trader}" FontSize="12.5" FontWeight="SemiBold"
+Foreground="{DynamicResource TacticalGoldBrush}"
+VerticalAlignment="Center" Margin="0,1,5,1"/>
+<TextBlock Text="·" FontSize="12.5"
+Foreground="{DynamicResource TacticalTextMutedBrush}"
+VerticalAlignment="Center" Margin="0,1,6,1"/>
+<!-- Map Badge Pill (No Icon) -->
+<Border Background="{DynamicResource TacticalSurface3Brush}" CornerRadius="3" Padding="6,2"
+BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
+VerticalAlignment="Center" Margin="0,1,6,1"
+ToolTip="{Binding MapBadgeToolTip}">
+<TextBlock Text="{Binding MapBadge}" FontSize="11" FontWeight="SemiBold"
+Foreground="{DynamicResource TacticalGoldBrush}" VerticalAlignment="Center"/>
+</Border>
+<!-- Seasonal Badge -->
+<Border Visibility="{Binding SeasonalBadgeVisibility}"
+        Background="#E06D28"
+        CornerRadius="3" Padding="5,2" Margin="0,1,6,1" VerticalAlignment="Center"
+        ToolTip="Seasonal wipe quest">
+    <TextBlock Text="SEASON" FontSize="10" FontWeight="Bold" Foreground="White"/>
+</Border>
+<!-- Kappa Badge (only if required) -->
+<Border Visibility="{Binding KappaBadgeVisibility}"
+Background="{DynamicResource BadgeKappaBgBrush}"
+BorderBrush="{DynamicResource BadgeKappaBorderBrush}"
+BorderThickness="1"
+CornerRadius="3" Padding="5,2" Margin="0,1,6,1" VerticalAlignment="Center"
+ToolTip="Required for Kappa">
+<TextBlock Text="Kappa" FontSize="10" FontWeight="Bold"
+Foreground="{DynamicResource BadgeKappaFgBrush}"/>
+</Border>
+
+<!-- Preserved Contract Compatibility Badges (Hidden per user request, zero layout impact) -->
+<Border Visibility="Collapsed">
+<StackPanel Orientation="Horizontal">
+    <Border Visibility="{Binding RequirementsPillVisibility}">
+        <TextBlock Text="{Binding RequirementsPillText}"/>
+    </Border>
+<Border Visibility="{Binding RequiredLevelVisibility}"><TextBlock Text="{Binding RequiredLevelText}"/></Border>
+<Border Visibility="{Binding FirBadgeVisibility}" Background="{DynamicResource BadgeFirBgBrush}"><TextBlock Text="FIR" Foreground="{DynamicResource BadgeFirFgBrush}"/></Border>
+<Border Visibility="{Binding StoryBadgeVisibility}" Background="{DynamicResource BadgeStoryBgBrush}"><TextBlock Text="Story" Foreground="{DynamicResource BadgeStoryFgBrush}"/></Border>
+<Border Background="{Binding StatusBackground}"><TextBlock Text="{Binding StatusText}"/></Border>
+<Border Visibility="{Binding NeededKeysVisibility}"/>
+    <TextBlock Text="{Binding RequirementsSummaryText}"/>
+                        </StackPanel>
+</Border>
+<!-- Needed Keys / Special Objects Inline in Header -->
+<ItemsControl ItemsSource="{Binding NeededKeys}" Visibility="{Binding NeededKeysVisibility}" VerticalAlignment="Center">
+<ItemsControl.ItemsPanel>
+<ItemsPanelTemplate>
+<WrapPanel Orientation="Horizontal" VerticalAlignment="Center"/>
+</ItemsPanelTemplate>
+</ItemsControl.ItemsPanel>
+<ItemsControl.ItemTemplate>
+<DataTemplate>
+<Border Background="{Binding StashStatusBackground}"
+BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+BorderThickness="1" CornerRadius="3" Padding="6,2" Margin="0,1,6,1"
+VerticalAlignment="Center"
+ToolTip="{Binding Name}">
+<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+<TextBlock Text="🔑 " FontSize="10" VerticalAlignment="Center"/>
+<TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
+Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+TextTrimming="CharacterEllipsis" MaxWidth="220" VerticalAlignment="Center"/>
+</StackPanel>
+</Border>
+</DataTemplate>
+</ItemsControl.ItemTemplate>
+</ItemsControl>
+</WrapPanel>
+<!-- Action Buttons (Right side, left-to-right: Hide, Mapa, Wiki, Completar, Shrink) -->
+<StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+<!-- 1. Hide / Unhide Button -->
+<Button Click="BtnHide_Click"
+ToolTip="{Binding HideButtonTooltip}"
+Width="28" Height="28" Margin="0,0,5,0"
+Background="{DynamicResource TacticalSurface3Brush}"
+BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+BorderThickness="1" Cursor="Hand">
+<Button.Template>
+<ControlTemplate TargetType="Button">
+<Border Background="{TemplateBinding Background}"
+BorderBrush="{TemplateBinding BorderBrush}"
+BorderThickness="{TemplateBinding BorderThickness}"
+CornerRadius="4">
+<TextBlock Text="{Binding HideButtonIcon}"
+FontSize="11"
+Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+HorizontalAlignment="Center" VerticalAlignment="Center"/>
+</Border>
+</ControlTemplate>
+</Button.Template>
+</Button>
+<!-- 2. Show on Map Button (Text only: Mapa) -->
+<Button Click="BtnMap_Click"
+ToolTip="Ver objetivos en el mapa"
+Visibility="{Binding MapActionVisibility}"
+Height="28" Padding="8,2" Margin="0,0,5,0"
+Background="{DynamicResource TacticalSurface3Brush}"
+BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+BorderThickness="1" Cursor="Hand">
+<Button.Template>
+<ControlTemplate TargetType="Button">
+<Border Background="{TemplateBinding Background}"
+BorderBrush="{TemplateBinding BorderBrush}"
+BorderThickness="{TemplateBinding BorderThickness}"
+CornerRadius="4" Padding="{TemplateBinding Padding}">
+<TextBlock Text="Map" FontSize="11" FontWeight="SemiBold"
+Foreground="{DynamicResource TacticalGoldBrush}" VerticalAlignment="Center"/>
+</Border>
+</ControlTemplate>
+</Button.Template>
+</Button>
+<!-- 3. Wiki Button (Text only: Wiki) -->
+<Button Click="BtnWiki_Click"
+ToolTip="Abrir página wiki"
+Visibility="{Binding WikiVisibility}"
+Height="28" Padding="8,2" Margin="0,0,5,0"
+Background="{DynamicResource TacticalSurface3Brush}"
+BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+BorderThickness="1" Cursor="Hand">
+<Button.Template>
+<ControlTemplate TargetType="Button">
+<Border Background="{TemplateBinding Background}"
+BorderBrush="{TemplateBinding BorderBrush}"
+BorderThickness="{TemplateBinding BorderThickness}"
+CornerRadius="4" Padding="{TemplateBinding Padding}">
+<TextBlock Text="Wiki" FontSize="11" FontWeight="SemiBold"
+Foreground="{DynamicResource TacticalTextPrimaryBrush}" VerticalAlignment="Center"/>
+</Border>
+</ControlTemplate>
+</Button.Template>
+</Button>
+<!-- 4. Complete Button -->
+<Button Click="BtnComplete_Click"
+ToolTip="Marcar misión completa"
+Height="28" Padding="8,2" Margin="0,0,5,0"
+Background="{Binding CompleteButtonBackground}"
+BorderBrush="{Binding CompleteButtonBorder}"
+BorderThickness="1"
+Cursor="Hand">
+<Button.Template>
+<ControlTemplate TargetType="Button">
+<Border Background="{TemplateBinding Background}"
+BorderBrush="{TemplateBinding BorderBrush}"
+BorderThickness="{TemplateBinding BorderThickness}"
+CornerRadius="4" Padding="{TemplateBinding Padding}">
+<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+<TextBlock Text="✓" FontWeight="Bold" FontSize="12" Margin="0,0,4,0"
+Foreground="{Binding CompleteButtonForeground}"/>
+<TextBlock Text="{Binding CompleteButtonText}" FontSize="11" FontWeight="SemiBold"
+Foreground="{Binding CompleteButtonForeground}"/>
+</StackPanel>
+</Border>
+</ControlTemplate>
+</Button.Template>
+</Button>
+<!-- 5. Collapse / Expand Toggle Button -->
+<Button Click="BtnToggleExpand_Click"
+Width="28" Height="28"
+ToolTip="Plegar / Desplegar detalles"
+Background="{DynamicResource TacticalSurface3Brush}"
+BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+BorderThickness="1" Cursor="Hand">
+<Button.Template>
+<ControlTemplate TargetType="Button">
+<Border Background="{TemplateBinding Background}"
+BorderBrush="{TemplateBinding BorderBrush}"
+BorderThickness="{TemplateBinding BorderThickness}"
+CornerRadius="4">
+<TextBlock Text="{Binding ChevronGlyph}"
+FontSize="11" FontWeight="Bold"
+Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+HorizontalAlignment="Center" VerticalAlignment="Center"/>
+</Border>
+</ControlTemplate>
+</Button.Template>
+</Button>
+</StackPanel>
+</Grid>
+<!-- Collapsible Body Area -->
+<StackPanel Visibility="{Binding ExpandedVisibility}">
+
+<!-- 3. Sub-Objectives List -->
+<!-- Action Objectives Toggles (Eliminations, Survival/Extraction, Visits, Transits) -->
+<ItemsControl ItemsSource="{Binding ActionToggles}">
+<ItemsControl.ItemTemplate>
+<DataTemplate>
+<Border Background="Transparent"
+BorderBrush="#181B22"
+BorderThickness="0,0,0,1"
+Padding="6,3" Margin="0,1">
+<Grid>
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="Auto"/>
+<ColumnDefinition Width="*"/>
+</Grid.ColumnDefinitions>
+<!-- Check / Toggle Button -->
+<Button Grid.Column="0"
+Content="{Binding ToggleGlyph}"
+Style="{StaticResource ActionToggleButtonStyle}"
+Background="{Binding ToggleBackground}"
+Foreground="{Binding ToggleForeground}"
+BorderBrush="{Binding ToggleBorder}"
+Click="BtnActionToggle_Click" Tag="{Binding}"
+Margin="0,0,8,0" VerticalAlignment="Center"/>
+<!-- Objective Description -->
+<TextBlock Grid.Column="1"
+Text="{Binding Description}"
+FontSize="11.5"
+Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+TextWrapping="Wrap"
+TextDecorations="{Binding TextDecorations}"
+Opacity="{Binding TextOpacity}"
+VerticalAlignment="Center"/>
+</Grid>
+</Border>
+</DataTemplate>
+</ItemsControl.ItemTemplate>
+</ItemsControl>
+<!-- Item Turn-in Steppers (Hand over items section) -->
+<StackPanel Visibility="{Binding ItemSteppersVisibility}" Margin="0,4,0,2">
+<TextBlock Text="Hand over / Entregar:"
+FontSize="11.5" FontWeight="Bold"
+Foreground="{DynamicResource TacticalTextMutedBrush}"
+Margin="2,2,0,4"/>
+<ItemsControl ItemsSource="{Binding ItemSteppers}">
+<ItemsControl.ItemTemplate>
+<DataTemplate>
+<Border Background="{Binding RowBackground}"
+BorderBrush="{Binding RowBorderBrush}"
+BorderThickness="1"
+CornerRadius="4"
+Padding="6,2.5" Margin="0,1.5">
+<Grid>
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="*"/>
+<ColumnDefinition Width="Auto"/>
+</Grid.ColumnDefinitions>
+<!-- Item Name & Alternative Selector (Dropdown when alternatives exist, static text otherwise) -->
+                                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <TextBlock Text="📦 " FontSize="10" VerticalAlignment="Center"/>
+
+                                                <!-- Single Item Display (when there are NO alternatives) -->
+                                                <TextBlock Text="{Binding ItemName}"
+                                                           FontSize="13" FontWeight="SemiBold"
+                                                           Foreground="{Binding ItemNameForeground}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center"
+                                                           Visibility="{Binding SingleItemVisibility}"/>
+
+                                                <!-- Alternatives Dropdown Selector (when alternatives exist, e.g. Ironclad Proof) -->
+                                                <ComboBox ItemsSource="{Binding Alternatives}"
+                                                          DisplayMemberPath="DisplayName"
+                                                          SelectedItem="{Binding SelectedAlternative, Mode=TwoWay}"
+                                                          Visibility="{Binding AlternativesVisibility}"
+                                                          Style="{StaticResource AlternativeComboBoxStyle}"
+                                                          VerticalAlignment="Center"
+                                                          ToolTip="{Binding AlternativesTooltip}"
+                                                          PreviewMouseWheel="AlternativeComboBox_PreviewMouseWheel"/>
+
+                                                <!-- FIR Badge -->
+                                                <Border Visibility="{Binding FirVisibility}"
+                                                        Background="{DynamicResource BadgeFirBgBrush}"
+                                                        BorderBrush="{DynamicResource BadgeFirBorderBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="3"
+                                                        Padding="4,1" Margin="6,0,0,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="FIR" FontSize="9.5" FontWeight="Bold"
+                                                               Foreground="{DynamicResource BadgeFirFgBrush}"/>
+                                                </Border>
+                                            </StackPanel>
+<!-- Stepper Controls: [-] X/Y [+] [✓] -->
+<Border Grid.Column="1" Background="{DynamicResource TacticalSurface1Brush}"
+BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+BorderThickness="1" CornerRadius="4" Padding="2,1"
+VerticalAlignment="Center">
+<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+<!-- Decrement Button -->
+<Button Content="-" Style="{StaticResource StepperButtonStyle}"
+Click="BtnStepperDecrement_Click" Tag="{Binding}"
+ToolTip="Disminuir"/>
+<!-- Progress Fraction Badge -->
+<Border Background="{DynamicResource TacticalSurface0Brush}"
+BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+BorderThickness="1"
+CornerRadius="3" Padding="5,1" Margin="3,0" MinWidth="40">
+<TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"
+FontSize="10.5" FontWeight="Bold"
+Foreground="{Binding ProgressForeground}">
+<Run Text="{Binding CurrentCount}"/>
+<Run Text="/"/>
+<Run Text="{Binding MaxCount}"/>
+</TextBlock>
+</Border>
+<!-- Increment Button -->
+<Button Content="+" Style="{StaticResource StepperButtonStyle}"
+Click="BtnStepperIncrement_Click" Tag="{Binding}"
+ToolTip="Aumentar"/>
+<!-- Set Max (Check) Button -->
+<Button Content="✓" Style="{StaticResource StepperButtonStyle}"
+Click="BtnStepperMax_Click" Tag="{Binding}"
+Margin="3,0,0,0" ToolTip="Completar todo"
+Background="{Binding MaxCheckBackground}"
+Foreground="{Binding MaxCheckForeground}"/>
+</StackPanel>
+</Border>
+</Grid>
+</Border>
+</DataTemplate>
+</ItemsControl.ItemTemplate>
+</ItemsControl>
+</StackPanel>
+<!-- Guide / Notes Expander (if any) -->
+<Expander Visibility="{Binding GuideExpanderVisibility}"
+Background="{DynamicResource TacticalSurface1Brush}"
+BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+BorderThickness="1"
+Margin="0,4,0,4" Padding="6,4">
+<Expander.Header>
+<TextBlock Text="📖 Guía y notas de la wiki" FontSize="11" FontWeight="SemiBold"
+Foreground="{DynamicResource TacticalGoldBrush}"/>
+</Expander.Header>
+<TextBlock Text="{Binding GuideText}" TextWrapping="Wrap" FontSize="11"
+Foreground="{DynamicResource TacticalTextSecondaryBrush}" Margin="4,6,4,4"/>
+</Expander>
+<!-- 4. Footer: Single-Line Rewards & Impact + Expandable TarkovTracker Drawer -->
+<Border x:Name="RewardsFooterBorder"
+Visibility="{Binding RewardsFooterVisibility}"
+Background="{DynamicResource TacticalSurface1Brush}"
+BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+BorderThickness="1"
+CornerRadius="4" Padding="10,6" Margin="0,6,0,0">
+<Grid>
+<Grid.RowDefinitions>
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="Auto"/>
+</Grid.RowDefinitions>
+<!-- Single-Line Strip: REWARDS [Rep] [X items] [XP] on Left | Unlocks next: X  Impact: Y  ▾ on Right -->
+<Grid Grid.Row="0">
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="*"/>
+<ColumnDefinition Width="Auto"/>
+</Grid.ColumnDefinitions>
+<!-- Left Side: REWARDS + Rep Pills + X items button + XP Pill -->
+<WrapPanel x:Name="RewardsWrapPanel"
+Grid.Column="0"
+Orientation="Horizontal"
+VerticalAlignment="Center"
+Visibility="{Binding RewardsStripVisibility}">
+<TextBlock Text="REWARDS"
+FontSize="10" FontWeight="Bold"
+Foreground="{DynamicResource TacticalTextMutedBrush}"
+VerticalAlignment="Center" Margin="0,0,8,0"/>
+<!-- Trader Standing Changes -->
+<ItemsControl ItemsSource="{Binding FormattedRepRewards}" VerticalAlignment="Center">
+<ItemsControl.ItemsPanel>
+<ItemsPanelTemplate>
+<WrapPanel Orientation="Horizontal" VerticalAlignment="Center"/>
+</ItemsPanelTemplate>
+</ItemsControl.ItemsPanel>
+<ItemsControl.ItemTemplate>
+<DataTemplate>
+<Border Background="{Binding BackgroundBrush}"
+BorderBrush="{Binding BorderBrush}"
+BorderThickness="1" CornerRadius="4"
+Padding="6,2" Margin="0,0,6,0" VerticalAlignment="Center">
+<TextBlock Text="{Binding Text}" FontSize="11"
+FontWeight="SemiBold" Foreground="{Binding TextBrush}"/>
+</Border>
+</DataTemplate>
+</ItemsControl.ItemTemplate>
+</ItemsControl>
+<!-- Clickable "X items" Pill (TarkovTracker style) -->
+<Button Click="BtnToggleRewardsDrawer_Click"
+Visibility="{Binding ItemRewardsPillVisibility}"
+Cursor="Hand" Margin="0,0,6,0" VerticalAlignment="Center"
+ToolTip="Pincha para ver los objetos de recompensa y misiones conectadas">
+<Button.Template>
+<ControlTemplate TargetType="Button">
+<Border Background="#12352B"
+BorderBrush="#236B56"
+BorderThickness="1" CornerRadius="4"
+Padding="7,2">
+<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+<TextBlock Text="🎁 " FontSize="10" VerticalAlignment="Center"/>
+<TextBlock Text="{Binding ItemRewardsCountText}" FontSize="11"
+FontWeight="SemiBold" Foreground="#4ADE80" VerticalAlignment="Center"/>
+</StackPanel>
+</Border>
+</ControlTemplate>
+</Button.Template>
+</Button>
+<!-- XP Reward Pill -->
+<Border Background="{DynamicResource BadgeActiveBgBrush}"
+BorderBrush="{DynamicResource BadgeActiveBorderBrush}"
+BorderThickness="1"
+CornerRadius="4" Padding="7,2" Margin="0,0,6,0"
+VerticalAlignment="Center"
+Visibility="{Binding XpRewardVisibility}">
+<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+<TextBlock Text="★ " FontSize="10" Foreground="{DynamicResource BadgeActiveFgBrush}" VerticalAlignment="Center"/>
+<TextBlock Text="{Binding FormattedXpReward}"
+FontSize="11" FontWeight="SemiBold"
+Foreground="{DynamicResource BadgeActiveFgBrush}" VerticalAlignment="Center"/>
+</StackPanel>
+</Border>
+<!-- Hidden contract item rewards for C1_05 -->
+<ItemsControl ItemsSource="{Binding ItemRewards}" Visibility="Collapsed"/>
+</WrapPanel>
+<!-- Right Side: Unlocks next & Impact + Drawer Toggle Chevron (Same Line) -->
+<Button Grid.Column="1"
+Click="BtnToggleRewardsDrawer_Click"
+Cursor="Hand" VerticalAlignment="Center"
+Background="Transparent" BorderThickness="0"
+ToolTip="Desplegar / ocultar detalles de recompensas y misiones">
+<Button.Template>
+<ControlTemplate TargetType="Button">
+<Border Background="Transparent" Padding="4,2">
+<StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+<TextBlock Text="{Binding ImpactSummaryText}"
+FontSize="11" FontWeight="SemiBold"
+Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+VerticalAlignment="Center" Margin="0,0,8,0"/>
+<TextBlock Text="{Binding RewardsDrawerChevron}"
+FontSize="11" FontWeight="Bold"
+Foreground="{DynamicResource TacticalTextMutedBrush}"
+VerticalAlignment="Center"/>
+</StackPanel>
+</Border>
+</ControlTemplate>
+</Button.Template>
+</Button>
+</Grid>
+<!-- Expandable Rewards & Task Links Drawer (Photo 2 Parity) -->
+<Border Grid.Row="1"
+Visibility="{Binding RewardsDrawerVisibility}"
+BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+BorderThickness="0,1,0,0"
+Margin="0,8,0,0" Padding="0,8,0,2">
+<Grid>
+<Grid.ColumnDefinitions>
+<ColumnDefinition Width="1*"/>
+<ColumnDefinition Width="2*"/>
+<ColumnDefinition Width="1*"/>
+</Grid.ColumnDefinitions>
+<!-- Column 0: PREVIOUS TASK(S) -->
+<StackPanel Grid.Column="0" Margin="0,0,12,0">
+<TextBlock Text="PREVIOUS TASK(S):"
+FontSize="10" FontWeight="Bold"
+Foreground="{DynamicResource TacticalTextMutedBrush}"
+Margin="0,0,0,6"/>
+<ItemsControl ItemsSource="{Binding PreviousTaskNames}">
+<ItemsControl.ItemTemplate>
+<DataTemplate>
+<TextBlock Text="{Binding}"
+FontSize="11" FontWeight="SemiBold"
+Foreground="#60A5FA"
+TextTrimming="CharacterEllipsis"
+ToolTip="{Binding}"
+Margin="0,2"/>
+</DataTemplate>
+</ItemsControl.ItemTemplate>
+</ItemsControl>
+<TextBlock Text="None"
+Visibility="{Binding NoPreviousTasksVisibility}"
+FontSize="11"
+Foreground="{DynamicResource TacticalTextMutedBrush}"/>
+</StackPanel>
+<!-- Column 1: ITEMS (Visual Cards with Icon, ShortName, and xCount) -->
+<StackPanel Grid.Column="1" Margin="0,0,12,0">
+<TextBlock Text="ITEMS:"
+FontSize="10" FontWeight="Bold"
+Foreground="{DynamicResource TacticalTextMutedBrush}"
+Margin="0,0,0,6"/>
+<ItemsControl ItemsSource="{Binding DetailedItemRewards}">
+<ItemsControl.ItemsPanel>
+<ItemsPanelTemplate>
+<WrapPanel Orientation="Horizontal"/>
+</ItemsPanelTemplate>
+</ItemsControl.ItemsPanel>
+<ItemsControl.ItemTemplate>
+<DataTemplate>
+<Border Width="86" MinHeight="92"
+Background="#181B20"
+BorderBrush="#2A2F3A"
+BorderThickness="1"
+CornerRadius="6"
+Padding="6" Margin="0,0,8,6"
+ToolTip="{Binding FullName}">
+<StackPanel VerticalAlignment="Center">
+<Border Width="52" Height="48"
+Background="#12151A"
+CornerRadius="4"
+Margin="0,0,0,5">
+<Image Source="{Binding IconSource}"
+Stretch="Uniform"
+Margin="2"
+RenderOptions.BitmapScalingMode="HighQuality"/>
+</Border>
+<TextBlock Text="{Binding ShortName}"
+FontSize="10.5" FontWeight="SemiBold"
+Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+TextAlignment="Center"
+TextTrimming="CharacterEllipsis"/>
+<TextBlock Text="{Binding FormattedCount}"
+Visibility="{Binding CountVisibility}"
+FontSize="10"
+Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+TextAlignment="Center"
+Margin="0,1,0,0"/>
+</StackPanel>
+</Border>
+</DataTemplate>
+</ItemsControl.ItemTemplate>
+</ItemsControl>
+<TextBlock Text="None"
+Visibility="{Binding NoRewardItemsVisibility}"
+FontSize="11"
+Foreground="{DynamicResource TacticalTextMutedBrush}"/>
+</StackPanel>
+<!-- Column 2: NEXT TASK(S) -->
+<StackPanel Grid.Column="2">
+<TextBlock Text="NEXT TASK(S):"
+FontSize="10" FontWeight="Bold"
+Foreground="{DynamicResource TacticalTextMutedBrush}"
+Margin="0,0,0,6"/>
+<ItemsControl ItemsSource="{Binding NextTaskNames}">
+<ItemsControl.ItemTemplate>
+<DataTemplate>
+<TextBlock Text="{Binding}"
+FontSize="11" FontWeight="SemiBold"
+Foreground="#60A5FA"
+TextTrimming="CharacterEllipsis"
+ToolTip="{Binding}"
+Margin="0,2"/>
+</DataTemplate>
+</ItemsControl.ItemTemplate>
+</ItemsControl>
+<TextBlock Text="None"
+Visibility="{Binding NoNextTasksVisibility}"
+FontSize="11"
+Foreground="{DynamicResource TacticalTextMutedBrush}"/>
+</StackPanel>
+</Grid>
+</Border>
+</Grid>
+</Border>
+</StackPanel>
+</StackPanel>
+</Border>
+</UserControl>

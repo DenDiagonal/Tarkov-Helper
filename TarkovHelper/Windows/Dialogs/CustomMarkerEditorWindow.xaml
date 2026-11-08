@@ -8,7 +8,7 @@
         Width="350" Height="420"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        Background="#1E1E1E"
+        Background="{DynamicResource TacticalSurface1Brush}"
         Foreground="White"
         FontFamily="Segoe UI, Malgun Gothic">
 
@@ -116,7 +116,7 @@
             <WrapPanel x:Name="ColorPanel">
                 <RadioButton Background="#FF4444" Style="{StaticResource ColorOption}" Tag="#FF4444" IsChecked="True"/>
                 <RadioButton Background="#4CAF50" Style="{StaticResource ColorOption}" Tag="#4CAF50"/>
-                <RadioButton Background="#2196F3" Style="{StaticResource ColorOption}" Tag="#2196F3"/>
+                <RadioButton Background="{DynamicResource TacticalGoldBrush}" Style="{StaticResource ColorOption}" Tag="#2196F3"/>
                 <RadioButton Background="#FFEB3B" Style="{StaticResource ColorOption}" Tag="#FFEB3B"/>
                 <RadioButton Background="#FF9800" Style="{StaticResource ColorOption}" Tag="#FF9800"/>
                 <RadioButton Background="#9C27B0" Style="{StaticResource ColorOption}" Tag="#9C27B0"/>
@@ -128,9 +128,9 @@
         <StackPanel Grid.Row="3" Margin="0,0,0,20">
             <Grid Margin="0,0,0,6">
                 <TextBlock Text="Size" Style="{StaticResource LabelStyle}" HorizontalAlignment="Left"/>
-                <TextBlock x:Name="TxtSizeValue" Text="24" Foreground="#2196F3" HorizontalAlignment="Right" FontWeight="Bold"/>
+                <TextBlock x:Name="TxtSizeValue" Text="12" Foreground="{DynamicResource TacticalGoldBrush}" HorizontalAlignment="Right" FontWeight="Bold"/>
             </Grid>
-            <Slider x:Name="SliderSize" Minimum="12" Maximum="64" Value="24" TickFrequency="2" IsSnapToTickEnabled="True" 
+            <Slider x:Name="SliderSize" Minimum="8" Maximum="16" Value="12" TickFrequency="1" IsSnapToTickEnabled="True" 
                     ValueChanged="SliderSize_ValueChanged"/>
         </StackPanel>
 

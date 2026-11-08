@@ -264,7 +264,11 @@ public sealed class HideoutDbService
                 COALESCE(i.IconUrl, h.IconLink) as IconLink,
                 h.Count, h.FoundInRaid
             FROM HideoutItemRequirements h
-            LEFT JOIN Items i ON h.ItemId = i.BsgId";
+            LEFT JOIN Items i ON (
+                (i.BsgId IS NOT NULL AND h.ItemId = i.BsgId)
+                OR LOWER(TRIM(REPLACE(h.ItemName, '#', ''))) = LOWER(TRIM(i.NameEN))
+                OR LOWER(TRIM(REPLACE(h.ItemName, '#', ''))) = LOWER(TRIM(i.Name))
+            )";
 
         await using var cmd = new SqliteCommand(sql, connection);
         await using var reader = await cmd.ExecuteReaderAsync();

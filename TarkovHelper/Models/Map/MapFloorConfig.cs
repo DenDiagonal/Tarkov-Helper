@@ -12,6 +12,11 @@ public sealed class MapFloorConfig
     public string LayerId { get; set; } = string.Empty;
 
     /// <summary>
+    /// TarkovDev SVG 파일 내의 실제 &lt;g id="..."&gt; 레이어 ID (예: "Ground_Level", "Underground_Level", "Second_Floor")
+    /// </summary>
+    public string? SvgLayerId { get; set; }
+
+    /// <summary>
     /// UI에 표시될 층 이름 (예: "Basement", "Main Floor", "Level 2")
     /// </summary>
     public string DisplayName { get; set; } = string.Empty;

@@ -322,6 +322,10 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
         if (_aliasToKey.TryGetValue(mapKey, out var actualKey))
             return _mapConfigs.GetValueOrDefault(actualKey);
 
+        var resolved = ResolveMapKey(mapKey);
+        if (!string.IsNullOrEmpty(resolved) && _mapConfigs.TryGetValue(resolved, out var config))
+            return config;
+
         return null;
     }
 
@@ -339,6 +343,38 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
 
         if (_aliasToKey.TryGetValue(mapNameOrAlias, out var actualKey))
             return actualKey;
+
+        // Fallback: canonical normalization
+        var clean = mapNameOrAlias.Trim().ToLowerInvariant().Replace("-", "").Replace("_", "").Replace(" ", "");
+        foreach (var (key, config) in _mapConfigs)
+        {
+            var configNorm = key.ToLowerInvariant().Replace("-", "").Replace("_", "").Replace(" ", "");
+            if (configNorm == clean)
+                return key;
+
+            if (config.Aliases != null)
+            {
+                foreach (var alias in config.Aliases)
+                {
+                    var aliasNorm = alias.ToLowerInvariant().Replace("-", "").Replace("_", "").Replace(" ", "");
+                    if (aliasNorm == clean)
+                        return key;
+                }
+            }
+        }
+
+        if (clean.Contains("groundzero") || clean.Contains("sandbox")) return "GroundZero";
+        if (clean.Contains("customs") || clean.Contains("bigmap")) return "Customs";
+        if (clean.Contains("woods")) return "Woods";
+        if (clean.Contains("factory")) return "Factory";
+        if (clean.Contains("interchange") || clean.Contains("shopping")) return "Interchange";
+        if (clean.Contains("shoreline")) return "Shoreline";
+        if (clean.Contains("reserve") || clean.Contains("rezerv")) return "Reserve";
+        if (clean.Contains("lighthouse")) return "Lighthouse";
+        if (clean.Contains("street")) return "StreetsOfTarkov";
+        if (clean.Contains("labyrinth")) return "Labyrinth";
+        if (clean.Contains("terminal")) return "Terminal";
+        if (clean.Contains("lab")) return "Labs";
 
         return null;
     }

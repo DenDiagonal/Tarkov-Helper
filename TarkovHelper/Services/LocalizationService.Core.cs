@@ -11,7 +11,8 @@ public enum AppLanguage
 {
     EN,
     KO,
-    JA
+    JA,
+    ES
 }
 
 /// <summary>
@@ -473,15 +474,84 @@ public partial class LocalizationService : INotifyPropertyChanged
         _ => "Or specify path in Settings"
     };
 
+    // Story Chapters & Prerequisites Override (Feature 7)
+    public string StoryTabTitle => CurrentLanguage switch
+    {
+        AppLanguage.ES => "Historia",
+        AppLanguage.KO => "스토리",
+        AppLanguage.JA => "ストーリー",
+        _ => "Story"
+    };
+
+    public string StoryTraderName => CurrentLanguage switch
+    {
+        AppLanguage.ES => "Capítulos de Historia",
+        AppLanguage.KO => "스토리 챕터",
+        AppLanguage.JA => "ストーリーチャプター",
+        _ => "Story Chapters"
+    };
+
+    public string OverridePrerequisite => CurrentLanguage switch
+    {
+        AppLanguage.ES => "Ignorar prerequisito / Marcar disponible",
+        AppLanguage.KO => "선행 조건 무시 / 활성화",
+        AppLanguage.JA => "前提条件を無視 / 有効化",
+        _ => "Ignore prerequisite / Mark available"
+    };
+
+    public string OverrideActiveRestore => CurrentLanguage switch
+    {
+        AppLanguage.ES => "Anulación activa (Restaurar)",
+        AppLanguage.KO => "수동 활성화 됨 (복원)",
+        AppLanguage.JA => "手動オーバーライド有効 (復元)",
+        _ => "Override Active (Restore)"
+    };
+
+    public string RemoveManualOverride => CurrentLanguage switch
+    {
+        AppLanguage.ES => "Quitar anulación manual",
+        AppLanguage.KO => "수동 활성화 해제",
+        AppLanguage.JA => "手動オーバーライド解除",
+        _ => "Override Active (Re-lock)"
+    };
+
+    public string ToggleCompletedTooltip => CurrentLanguage switch
+    {
+        AppLanguage.ES => "Alternar completado (1 clic)",
+        AppLanguage.KO => "완료 토글 (1 클릭)",
+        AppLanguage.JA => "完了を切り替え (1クリック)",
+        _ => "Toggle completed (1-click)"
+    };
+
+    public string UnresolvedPrerequisiteWarning => CurrentLanguage switch
+    {
+        AppLanguage.ES => "Prerequisito no resuelto",
+        AppLanguage.KO => "미해결 선행 조건",
+        AppLanguage.JA => "未解決の前提条件",
+        _ => "Unresolved prerequisite"
+    };
+
     #endregion
 
     #region Common Name Localization (Trader, Map)
 
     public string GetLocalizedTraderName(string? englishName)
     {
+        var lower = englishName?.ToLowerInvariant();
+        if (lower == "story" || lower == "story chapters")
+        {
+            return CurrentLanguage switch
+            {
+                AppLanguage.ES => "Capítulos de Historia",
+                AppLanguage.KO => "스토리 챕터",
+                AppLanguage.JA => "ストーリーチャプター",
+                _ => "Story Chapters"
+            };
+        }
+
         if (CurrentLanguage == AppLanguage.KO)
         {
-            return englishName?.ToLowerInvariant() switch
+            return lower switch
             {
                 "prapor" => "프라포",
                 "therapist" => "테라피스트",
@@ -499,7 +569,70 @@ public partial class LocalizationService : INotifyPropertyChanged
                 _ => englishName ?? Unknown
             };
         }
-        return englishName ?? Unknown;
+
+        if (CurrentLanguage == AppLanguage.JA)
+        {
+            return lower switch
+            {
+                "prapor" => "プラポール",
+                "therapist" => "セラピスト",
+                "skier" => "スキーヤー",
+                "peacekeeper" => "ピースキーパー",
+                "mechanic" => "メカニック",
+                "ragman" => "ラグマン",
+                "jaeger" => "イェーガー",
+                "fence" => "フェンス",
+                "lightkeeper" => "ライトキーパー",
+                "ref" => "レフ",
+                "arena" => "アリーナ",
+                "the labyrinth" => "迷宮",
+                "btr driver" => "BTRドライバー",
+                _ => englishName ?? Unknown
+            };
+        }
+
+        if (CurrentLanguage == AppLanguage.ES)
+        {
+            return lower switch
+            {
+                "prapor" => "Prapor",
+                "therapist" => "Therapist",
+                "skier" => "Skier",
+                "peacekeeper" => "Peacekeeper",
+                "mechanic" => "Mechanic",
+                "ragman" => "Ragman",
+                "jaeger" => "Jaeger",
+                "fence" => "Fence",
+                "lightkeeper" => "Lightkeeper",
+                "ref" => "Ref",
+                "arena" => "Arena",
+                "the labyrinth" => "El Laberinto",
+                "btr driver" => "Conductor BTR",
+                _ => englishName ?? Unknown
+            };
+        }
+
+        return lower switch
+        {
+            "story" or "story chapters" => "Story Chapters",
+            _ => englishName ?? Unknown
+        };
+    }
+
+    public string GetLocalizedTraderShortName(string? englishName)
+    {
+        var lower = englishName?.ToLowerInvariant();
+        if (lower == "story" || lower == "story chapters")
+        {
+            return CurrentLanguage switch
+            {
+                AppLanguage.ES => "Historia",
+                AppLanguage.KO => "스토리",
+                AppLanguage.JA => "ストーリー",
+                _ => "Story"
+            };
+        }
+        return GetLocalizedTraderName(englishName);
     }
 
     public string GetLocalizedMapName(string? englishName)

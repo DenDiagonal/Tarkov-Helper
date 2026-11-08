@@ -1,4008 +1,4130 @@
+using System;
+using System.CodeDom.Compiler;
+using System.Collections;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Drawing;
 using System.Globalization;
 using System.IO;
-using System.Windows.Data;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Forms;
 using System.Windows.Input;
+using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using SharpVectors.Converters;
 using SharpVectors.Renderers.Wpf;
 using TarkovHelper.Models;
 using TarkovHelper.Models.Map;
+using TarkovHelper.Pages.Map.Components;
+using TarkovHelper.Pages.Map.ViewModels;
 using TarkovHelper.Services;
 using TarkovHelper.Services.Logging;
 using TarkovHelper.Services.Map;
 using TarkovHelper.Services.Settings;
-using TarkovHelper.Pages.Map.Components;
-using LegacyMapConfig = TarkovHelper.Models.Map.MapConfig;
-using SvgStylePreprocessor = TarkovHelper.Services.Map.SvgStylePreprocessor;
+using TarkovHelper.ViewModels;
+using TarkovHelper.Windows;
 
 namespace TarkovHelper.Pages.Map;
 
-/// <summary>
-/// 맵 위치 추적 페이지.
-/// 스크린샷 폴더를 감시하고 플레이어 위치를 맵 위에 표시합니다.
-/// </summary>
-public partial class MapPage : UserControl
+public partial class MapPage : System.Windows.Controls.UserControl
 {
-    private static readonly ILogger _log = Log.For<MapPage>();
-    private readonly MapTrackerService? _trackerService;
-    private readonly QuestObjectiveService _objectiveService = QuestObjectiveService.Instance;
-    private readonly QuestProgressService _progressService = QuestProgressService.Instance;
-    private readonly LocalizationService _loc = LocalizationService.Instance;
-    private readonly OverlayMiniMapService _overlayService = OverlayMiniMapService.Instance;
-    private string? _currentMapKey;
-    private double _zoomLevel = 1.0;
-    private const double MinZoom = 0.1;
-    private const double MaxZoom = 5.0;
-
-    // 드래그 관련 필드
-    private bool _isDragging;
-    private Point _dragStartPoint;
-    private double _dragStartTranslateX;
-    private double _dragStartTranslateY;
-
-    // 줌 레벨 프리셋
-    private static readonly double[] ZoomPresets = { 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0 };
-
-    // 퀘스트 마커 관련 필드
-    private List<TaskObjectiveWithLocation> _currentMapObjectives = new();
-    private bool _showQuestMarkers = true;
-    private QuestMarkerStyle _questMarkerStyle = QuestMarkerStyle.DefaultWithName;
-    private double _questNameTextSize = 12.0;
-    private TaskObjectiveWithLocation? _selectedObjective;
-
-    // 탈출구 마커 관련 필드
-    private readonly ExtractService _extractService = ExtractService.Instance;
-    private bool _showExtractMarkers = true;
-    private bool _showPmcExtracts = true;
-    private bool _showScavExtracts = true;
-    private bool _showTransitExtracts = true;
-    private double _extractNameTextSize = 10.0;
-    private bool _hideCompletedObjectives = true;
-
-    // Map Markers 오버레이 관련 필드
-    private bool _showPmcSpawnsMarker = true;
-    private bool _showSniperScavsMarker = true;
-    private bool _showRoguesMarker = true;
-    private bool _showCultistsMarker = true;
-    private bool _showLeversMarkerOverlay = true;
-    private bool _showBossesMarker = true;
-    private bool _isMapMarkersPanelCollapsed;
-    private bool _isCustomMarkersPanelCollapsed;
-
-    // EFT 레이드 이벤트 서비스 (자동 맵 전환 및 레이드 감지용)
-    private readonly EftRaidEventService _raidEventService = EftRaidEventService.Instance;
-
-    // 맵별 줌 레벨 캐시 (DB 접근 최소화)
-    private readonly Dictionary<string, double> _mapZoomLevelCache = new(StringComparer.OrdinalIgnoreCase);
-
-    // 퀘스트 드로어 필터링 옵션
-    private string _drawerStatusFilter = "All";
-    private string _drawerTypeFilter = "All";
-    private bool _drawerCurrentMapOnly = true;  // XAML 기본값과 일치
-    private bool _drawerGroupByQuest = true;    // XAML 기본값과 일치
-
-    // 보정 모드 관련 필드
-    private readonly MapCalibrationService _calibrationService = MapCalibrationService.Instance;
-#pragma warning disable CS0649 // 보정 모드 기능 미구현 - 추후 구현 예정
-    private bool _isCalibrationMode;
-#pragma warning restore CS0649
-    private FrameworkElement? _draggingExtractMarker;
-    private Point _extractDragStartPoint;
-    private double _extractMarkerOriginalLeft;
-    private double _extractMarkerOriginalTop;
-    private MapExtract? _draggingExtract;
-
-    // 층 전환 관련 필드
-    private string? _currentFloorId;
-
-    // 리팩터링된 컴포넌트들
-    private MapQuestMarkerManager? _questMarkerManager;
-    private MapExtractMarkerManager? _extractMarkerManager;
-    private MapCalibrationController? _calibrationController;
-    private MapMarkersManager? _mapMarkersManager;
-    private MapCustomMarkerManager? _customMarkerManager;
-    private Point _lastRightClickPosition;
-    private CancellationTokenSource? _loadingCts;
-    private bool _isInitializing;
-
-    public MapPage()
-    {
-        try
-        {
-            InitializeComponent();
-
-            _trackerService = MapTrackerService.Instance;
-
-            // 이벤트 연결
-            _trackerService.PositionUpdated += OnPositionUpdated;
-            _trackerService.ErrorOccurred += OnErrorOccurred;
-            _trackerService.StatusMessage += OnStatusMessage;
-            _trackerService.WatchingStateChanged += OnWatchingStateChanged;
-            _loc.LanguageChanged += OnLanguageChanged;
-            MapMarkerDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
-            QuestObjectiveDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
-
-            Loaded += MapTrackerPage_Loaded;
-            Unloaded += MapTrackerPage_Unloaded;
-
-            // 줌 콤보박스 초기화
-            InitializeZoomComboBox();
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(
-                _loc.CurrentLanguage == AppLanguage.KO ? $"지도 추적 페이지 초기화 오류: {ex.Message}" : $"Map tracker initialization error: {ex.Message}",
-                _loc.CurrentLanguage == AppLanguage.KO ? "오류" : "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private void InitializeZoomComboBox()
-    {
-        CmbZoomLevel.Items.Clear();
-        foreach (var preset in ZoomPresets)
-        {
-            CmbZoomLevel.Items.Add($"{preset * 100:F0}%");
-        }
-        CmbZoomLevel.Text = "100%";
-    }
-
-    /// <summary>
-    /// 리팩터링된 컴포넌트들을 초기화합니다.
-    /// </summary>
-    private void InitializeComponents()
-    {
-        if (_trackerService == null) return;
-
-        // MapQuestMarkerManager 초기화
-        _questMarkerManager = new MapQuestMarkerManager(
-            QuestMarkersContainer,
-            _trackerService,
-            _objectiveService,
-            _progressService,
-            _loc);
-        _questMarkerManager.ObjectiveSelected += OnObjectiveSelectedFromManager;
-        _questMarkerManager.FloorChangeRequested += OnFloorChangeRequestedFromManager;
-        _questMarkerManager.StatusUpdated += msg => Dispatcher.Invoke(() => TxtStatus.Text = msg);
-
-        // MapExtractMarkerManager 초기화
-        _extractMarkerManager = new MapExtractMarkerManager(
-            ExtractMarkersContainer,
-            _trackerService,
-            _extractService,
-            _loc);
-        _extractMarkerManager.CalibrationMarkerSetup += OnCalibrationMarkerSetup;
-
-        // MapCalibrationController 초기화
-        _calibrationController = new MapCalibrationController(
-            ExtractMarkersContainer,
-            _trackerService,
-            _calibrationService);
-        _calibrationController.StatusUpdated += msg => Dispatcher.Invoke(() => TxtStatus.Text = msg);
-        _calibrationController.CalibrationCompleted += OnCalibrationCompleted;
-
-        // MapMarkersManager 초기화
-        _mapMarkersManager = new MapMarkersManager(
-            MapMarkersContainer,
-            _trackerService,
-            MapMarkerDbService.Instance,
-            _loc);
-
-        // MapCustomMarkerManager 초기화
-        _customMarkerManager = new MapCustomMarkerManager(
-            CustomMarkersContainer,
-            _trackerService,
-            _trackerService.Transformer,
-            _loc);
-        _customMarkerManager.StatusUpdated += msg => Dispatcher.Invoke(() => TxtStatus.Text = msg);
-        
-        // 마커 목록 바인딩
-        LstCustomMarkers.ItemsSource = _customMarkerManager.Markers;
-    }
-
-    private void UpdateCustomMarkersParam()
-    {
-        _customMarkerManager?.SetParameters(_currentMapKey, _currentFloorId, _zoomLevel);
-    }
-
-    private void OnObjectiveSelectedFromManager(object? sender, TaskObjectiveWithLocation objective)
-    {
-        _selectedObjective = objective;
-        ShowQuestDrawer(objective);
-    }
-
-    private void OnFloorChangeRequestedFromManager(object? sender, TaskObjectiveWithLocation objective)
-    {
-        SelectFloorForObjective(objective);
-    }
-
-    private void OnCalibrationMarkerSetup(FrameworkElement marker, MapExtract extract)
-    {
-        _calibrationController?.SetupMarkerForCalibration(marker, extract);
-    }
-
-    private async void OnCalibrationCompleted(object? sender, EventArgs e)
-    {
-        try
-        {
-            var ct = GetNewCancellationToken();
-            await RefreshExtractMarkers(ct);
-        }
-        catch (OperationCanceledException) { }
-    }
-
-    private CancellationToken GetNewCancellationToken()
-    {
-        // 초기화 중에는 기존 토큰을 취소하지 않고 현재 토큰을 반환합니다.
-        // RestoreMapState()에 의해 유발된 이벤트 핸들러가 메인 로딩 루틴을 취소하는 것을 방지합니다.
-        if (_isInitializing && _loadingCts != null)
-        {
-            return _loadingCts.Token;
-        }
-
-        _loadingCts?.Cancel();
-        _loadingCts?.Dispose();
-        _loadingCts = new CancellationTokenSource();
-        return _loadingCts.Token;
-    }
-
-    private async void MapTrackerPage_Loaded(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            // 초기화 시작 (GetNewCancellationToken이 기존 작업을 취소하도록 하되, 
-            // 이후 RestoreMapState 등이 이 토큰을 취소하지 못하게 함)
-            _loadingCts?.Cancel();
-            _loadingCts?.Dispose();
-            _loadingCts = new CancellationTokenSource();
-            var ct = _loadingCts.Token;
-
-            _isInitializing = true;
-
-            // 페이지 로드 시 Trail 초기화
-            _trackerService?.ClearTrail();
-            TrailPath.Points.Clear();
-
-            LoadSettings();
-
-            // 리팩터링된 컴포넌트 초기화
-            InitializeComponents();
-
-            PopulateMapComboBox();
-
-            // 레이드 이벤트 모니터링 시작 (자동 맵 전환 및 레이드 감지용)
-            StartRaidEventMonitoring();
-
-            // 로그에서 맵이 감지되지 않은 경우에만 저장된 맵 상태 복원
-            RestoreMapState();
-
-            UpdateUI();
-
-            // [v1.1.37] 무거운 작업 전에 UI가 렌더링될 기회를 줌
-            await Task.Delay(50, ct);
-
-            // 퀘스트 목표 데이터 로드
-            await LoadQuestObjectivesAsync(ct);
-            await Task.Delay(20, ct);
-
-            // 탈출구 데이터 로드
-            await LoadExtractsAsync(ct);
-            await Task.Delay(20, ct);
-
-            // Map Markers 데이터 로드
-            await LoadMapMarkersAsync(ct);
-            await Task.Delay(20, ct);
-
-            // 층 감지 데이터 로드 (자동 층 전환용)
-            await FloorDetectionService.Instance.LoadFloorRangesAsync().WaitAsync(ct);
-
-            // Drawer 기본 열기 및 내용 새로고침
-            OpenQuestDrawer();
-
-            // 퀘스트 진행 상태 변경 이벤트 구독
-            _progressService.ProgressChanged += OnQuestProgressChanged;
-            ObjectiveProgressService.Instance.ObjectiveProgressChanged += OnObjectiveProgressChanged;
-
-            // Global Keyboard Hook 시작 (NumPad 키로 층 변경)
-            GlobalKeyboardHookService.Instance.FloorKeyPressed += OnFloorKeyPressed;
-            GlobalKeyboardHookService.Instance.IsEnabled = true;
-
-            // 오버레이 미니맵 서비스 초기화
-            await InitializeOverlayServiceAsync().WaitAsync(ct);
-
-            // 오버레이 가시성 변경 이벤트 구독
-            _overlayService.OverlayVisibilityChanged += OnOverlayVisibilityChanged;
-            UpdateMinimapButtonState(_overlayService.IsOverlayVisible);
-
-            // 자동 Tracking 시작 (Map 탭 활성화 시)
-            StartAutoTracking();
-        }
-        catch (Exception ex)
-        {
-            // 취소 관련 예외이거나 토큰이 이미 취소된 경우 무시 (가장 확실한 방법)
-            if (ex is OperationCanceledException || 
-                ex is TaskCanceledException || 
-                (_loadingCts?.IsCancellationRequested ?? false) ||
-                ex.Message.Contains("canceled", StringComparison.OrdinalIgnoreCase))
-            {
-                _log.Debug("Map loading task was cancelled, ignoring exception.");
-                return;
-            }
-
-            _log.Error("Critical error loading map page", ex);
-            MessageBox.Show(
-                _loc.CurrentLanguage == AppLanguage.KO ? $"지도 추적 페이지 로드 오류: {ex.Message}" : $"Map tracker loading error: {ex.Message}",
-                _loc.CurrentLanguage == AppLanguage.KO ? "오류" : "Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        finally
-        {
-            _isInitializing = false;
-        }
-    }
-
-    private void MapTrackerPage_Unloaded(object sender, RoutedEventArgs e)
-    {
-        // 로딩 작업 취소
-        _loadingCts?.Cancel();
-
-        // 현재 맵 상태 저장
-        SaveMapState();
-
-        // 이벤트 구독 해제
-        _progressService.ProgressChanged -= OnQuestProgressChanged;
-        ObjectiveProgressService.Instance.ObjectiveProgressChanged -= OnObjectiveProgressChanged;
-        MapMarkerDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
-        QuestObjectiveDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
-
-        // Global Keyboard Hook 중지
-        GlobalKeyboardHookService.Instance.FloorKeyPressed -= OnFloorKeyPressed;
-        GlobalKeyboardHookService.Instance.IsEnabled = false;
-
-        // 오버레이 가시성 변경 이벤트 구독 해제
-        _overlayService.OverlayVisibilityChanged -= OnOverlayVisibilityChanged;
-
-        // 오버레이 숨기기 (Map 탭 이탈 시)
-        _overlayService.HideOverlay();
-
-        // 자동 Tracking 중지 (다른 탭으로 이동 시)
-        StopAutoTracking();
-
-        // 레이드 이벤트 모니터링 중지
-        StopRaidEventMonitoring();
-    }
-
-    private void SaveMapState()
-    {
-        // 모든 설정을 SettingsService(DB)에 저장
-        var settingsService = SettingsService.Instance;
-
-        settingsService.MapLastSelectedMap = _currentMapKey;
-        settingsService.MapLastZoomLevel = _zoomLevel;
-        settingsService.MapLastTranslateX = MapTranslate.X;
-        settingsService.MapLastTranslateY = MapTranslate.Y;
-    }
-
-    private async void OnDatabaseRefreshed(object? sender, EventArgs e)
-    {
-        // DB 업데이트 후 마커 데이터 다시 로드
-        try
-        {
-            var ct = GetNewCancellationToken();
-            // 퀘스트 목표 데이터 다시 로드
-            await LoadQuestObjectivesAsync(ct);
-
-            // 탈출구 데이터 다시 로드
-            await LoadExtractsAsync(ct);
-
-            // 퀘스트 마커 갱신
-            await RefreshQuestMarkers(ct);
-        }
-        catch (OperationCanceledException) { }
-    }
-
-    private void RestoreMapState()
-    {
-        // SettingsService(DB)에서 맵 상태 복원
-        var settingsService = SettingsService.Instance;
-
-        // 로그에서 이미 맵이 감지되어 선택된 경우 맵 선택 건너뜀
-        // _currentMapKey가 없는 경우에만 저장된 맵 복원
-        var lastSelectedMap = settingsService.MapLastSelectedMap;
-        if (string.IsNullOrEmpty(_currentMapKey) && !string.IsNullOrEmpty(lastSelectedMap))
-        {
-            // 맵 선택 복원
-            for (int i = 0; i < CmbMapSelect.Items.Count; i++)
-            {
-                if (CmbMapSelect.Items[i] is ComboBoxItem item &&
-                    string.Equals(item.Tag as string, lastSelectedMap, StringComparison.OrdinalIgnoreCase))
-                {
-                    CmbMapSelect.SelectedIndex = i;
-                    break;
-                }
-            }
-
-            // 마지막 맵 복원 시 100% 배율로 리셋
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                SetZoom(1.0);
-                CenterMapInView();
-            }), System.Windows.Threading.DispatcherPriority.Loaded);
-        }
-    }
-
-    private void OnLanguageChanged(object? sender, AppLanguage e)
-    {
-        UpdateLocalizedText();
-    }
-
-    private void UpdateLocalizedText()
-    {
-        // 상단 컨트롤 바
-        TxtPageTitle.Text = _loc.MapPositionTracker;
-        TxtMapLabel.Text = _loc.MapLabel;
-        ChkShowQuestMarkers.Content = _loc.QuestMarkers;
-        ChkShowExtractMarkers.Content = _loc.Extracts;
-        ChkFixedView.Content = _loc.FixedView;
-        BtnClearTrail.Content = _loc.ClearTrail;
-        BtnFullScreen.Content = _loc.FullScreen;
-        BtnExitFullScreen.Content = _loc.ExitFullScreen;
-        BtnMinimap.Content = _loc.Minimap;
-        BtnSettings.Content = _loc.Settings;
-        MenuAddCustomMarker.Header = _loc.AddCustomMarker;
-
-        // 추적 버튼 (상태에 따라)
-        var isTracking = _trackerService?.IsWatching ?? false;
-        BtnToggleTracking.Content = isTracking ? _loc.StopTracking : _loc.StartTracking;
-
-        // 상태 표시 바
-        if (!isTracking)
-        {
-            TxtStatus.Text = _loc.StatusWaiting;
-        }
-        TxtPositionLabel.Text = _loc.PositionLabel;
-        TxtLastUpdateLabel.Text = _loc.LastUpdateLabel;
-
-        // 퀘스트 드로어
-        TxtQuestObjectivesTitle.Text = _loc.QuestObjectives;
-        TxtMapProgressLabel.Text = _loc.ProgressOnThisMap;
-
-        // 필터 콤보박스
-        CmbStatusAll.Content = _loc.FilterAll;
-        CmbStatusIncomplete.Content = _loc.FilterIncomplete;
-        CmbStatusCompleted.Content = _loc.FilterCompleted;
-
-        CmbTypeAll.Content = _loc.FilterAllTypes;
-        CmbTypeVisit.Content = _loc.FilterVisit;
-        CmbTypeMark.Content = _loc.FilterMark;
-        CmbTypePlant.Content = _loc.FilterPlant;
-        CmbTypeExtract.Content = _loc.FilterExtract;
-        CmbTypeFind.Content = _loc.FilterFind;
-
-        TxtCurrentMapOnly.Text = _loc.ThisMapOnly;
-        TxtGroupByQuest.Text = _loc.GroupByQuest;
-
-        // 설정 패널
-        TxtSettingsTitle.Text = _loc.Settings;
-        TxtScreenshotFolderLabel.Text = _loc.ScreenshotFolder;
-        BtnAutoDetect.Content = _loc.AutoDetect;
-        BtnBrowseFolder.Content = _loc.Browse;
-        TxtMarkerSettingsLabel.Text = _loc.MarkerSettings;
-        ChkHideCompletedObjectives.Content = _loc.HideCompletedObjectives;
-        TxtQuestStyleLabel.Text = _loc.QuestStyle;
-        TxtQuestNameSizeLabel.Text = _loc.QuestNameSize;
-        TxtQuestMarkerSizeLabel.Text = _loc.QuestMarkerSize;
-        TxtPlayerMarkerSizeLabel.Text = _loc.PlayerMarkerSize;
-        TxtExtractSettingsLabel.Text = _loc.ExtractSettings;
-        ChkShowPmcExtracts.Content = _loc.PmcExtracts;
-        ChkShowScavExtracts.Content = _loc.ScavExtracts;
-        TxtExtractNameSizeLabel.Text = _loc.ExtractNameSize;
-        TxtMarkerOpacityLabel.Text = _loc.MarkerOpacity;
-
-        // 마커 색상 설정
-        TxtMarkerColorsLabel.Text = _loc.MarkerColors;
-        TxtColorVisit.Text = _loc.FilterVisit;
-        TxtColorMark.Text = _loc.FilterMark;
-        TxtColorPlant.Text = _loc.FilterPlant;
-        TxtColorExtract.Text = _loc.FilterExtract;
-        TxtColorFind.Text = _loc.FilterFind;
-        BtnResetColors.Content = _loc.ResetColors;
-
-        // 퀘스트 스타일 옵션
-        CmbStyleIconOnly.Content = _loc.StyleIconOnly;
-        CmbStyleGreenCircle.Content = _loc.StyleGreenCircle;
-        CmbStyleIconWithName.Content = _loc.StyleIconWithName;
-        CmbStyleCircleWithName.Content = _loc.StyleCircleWithName;
-
-        // 맵 없음 안내
-        TxtNoMapImage.Text = _loc.NoMapImage;
-        TxtAddMapImageHint.Text = _loc.AddMapImageHint;
-        TxtSetImagePathHint.Text = _loc.SetImagePathHint;
-
-        // 줌 컨트롤
-        BtnResetView.Content = _loc.ResetView;
-
-        // 퀘스트 드로어가 열려있으면 새로고침
-        if (QuestDrawerPanel?.Visibility == Visibility.Visible)
-        {
-            RefreshQuestDrawer();
-        }
-
-        // Refresh map selection names
-        var selectedKey = (CmbMapSelect.SelectedItem as ComboBoxItem)?.Tag as string;
-        PopulateMapComboBox();
-        if (!string.IsNullOrEmpty(selectedKey))
-        {
-            for (int i = 0; i < CmbMapSelect.Items.Count; i++)
-            {
-                if (CmbMapSelect.Items[i] is ComboBoxItem item && 
-                    string.Equals(item.Tag as string, selectedKey, StringComparison.OrdinalIgnoreCase))
-                {
-                    CmbMapSelect.SelectedIndex = i;
-                    break;
-                }
-            }
-        }
-    }
-
-    private void LoadSettings()
-    {
-        // 모든 설정을 SettingsService(DB)에서 로드
-        var settingsService = SettingsService.Instance;
-
-        // 스크린샷 폴더 설정 (사용자 지정 경로 또는 자동 감지)
-        var screenshotPath = settingsService.MapScreenshotPath;
-        if (string.IsNullOrEmpty(screenshotPath))
-        {
-            screenshotPath = Models.Map.MapTrackerSettings.TryDetectScreenshotFolder() ??
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\Escape from Tarkov\\Screenshots";
-        }
-        TxtScreenshotFolder.Text = screenshotPath;
-
-        // 마커 크기 설정
-        SliderMarkerSize.Value = settingsService.MapQuestMarkerSize;
-        SliderPlayerMarkerSize.Value = settingsService.MapPlayerMarkerSize;
-        UpdatePlayerMarkerSize(settingsService.MapPlayerMarkerSize);
-
-        // 탈출구 설정 로드 (DB에서)
-        _showPmcExtracts = settingsService.MapShowPmcExtracts;
-        _showScavExtracts = settingsService.MapShowScavExtracts;
-        _showTransitExtracts = settingsService.MapShowTransits;
-        _extractNameTextSize = settingsService.MapExtractNameSize;
-        _showExtractMarkers = settingsService.MapShowExtracts;
-        _showQuestMarkers = settingsService.MapShowQuests;
-        _questNameTextSize = settingsService.MapQuestNameSize;
-
-        // 퀘스트 마커 스타일 및 완료 목표 숨기기 설정
-        _questMarkerStyle = (QuestMarkerStyle)settingsService.MapQuestMarkerStyle;
-        _hideCompletedObjectives = settingsService.MapHideCompletedObjectives;
-
-        // UI 업데이트 (이벤트 트리거 방지를 위해 직접 설정)
-        ChkShowPmcExtracts.IsChecked = _showPmcExtracts;
-        ChkShowScavExtracts.IsChecked = _showScavExtracts;
-        ChkShowTransitExtracts.IsChecked = _showTransitExtracts;
-        SliderExtractTextSize.Value = _extractNameTextSize;
-        ChkShowExtractMarkers.IsChecked = _showExtractMarkers;
-        ChkShowQuestMarkers.IsChecked = _showQuestMarkers;
-        CmbQuestMarkerStyle.SelectedIndex = (int)_questMarkerStyle;
-        SliderQuestNameTextSize.Value = _questNameTextSize;
-        ChkHideCompletedObjectives.IsChecked = _hideCompletedObjectives;
-        SliderMarkerOpacity.Value = MapSettings.Instance.MarkerOpacity;
-
-        // 컨테이너 가시성 설정
-        if (ExtractMarkersContainer != null)
-            ExtractMarkersContainer.Visibility = _showExtractMarkers ? Visibility.Visible : Visibility.Collapsed;
-        if (QuestMarkersContainer != null)
-            QuestMarkersContainer.Visibility = _showQuestMarkers ? Visibility.Visible : Visibility.Collapsed;
-
-        // 마커 색상 UI 업데이트
-        UpdateMarkerColorUI();
-
-        // Map Markers 오버레이 설정 로드
-        LoadMapMarkersSettings();
-
-        // 커스텀 마커 사이드바 접힘 상태 로드
-        _isCustomMarkersPanelCollapsed = settingsService.IsCustomMarkersPanelCollapsed;
-        UpdateCustomMarkersPanelUI(_isCustomMarkersPanelCollapsed);
-
-        // 자동 중앙 정렬(고정 뷰) 설정 로드
-        if (ChkFixedView != null)
-            ChkFixedView.IsChecked = !MapSettings.Instance.AutoCenterEnabled;
-    }
-
-    private void LoadMapMarkersSettings()
-    {
-        var mapSettings = MapSettings.Instance;
-
-        _showPmcSpawnsMarker = mapSettings.ShowPmcSpawns;
-        _showSniperScavsMarker = mapSettings.ShowSniperScavs;
-        _showRoguesMarker = mapSettings.ShowRogues;
-        _showCultistsMarker = mapSettings.ShowCultists;
-        _showLeversMarkerOverlay = mapSettings.ShowLevers;
-        _showBossesMarker = mapSettings.ShowBosses;
-
-        // UI 업데이트
-        ChkShowPmcSpawns.IsChecked = _showPmcSpawnsMarker;
-        ChkShowSniperScavs.IsChecked = _showSniperScavsMarker;
-        ChkShowRogues.IsChecked = _showRoguesMarker;
-        ChkShowCultists.IsChecked = _showCultistsMarker;
-        ChkShowLeversMarker.IsChecked = _showLeversMarkerOverlay;
-        ChkShowBosses.IsChecked = _showBossesMarker;
-
-        // SVG 아이콘 로드
-        LoadMapMarkerIcons();
-    }
-
-    private void LoadMapMarkerIcons()
-    {
-        try
-        {
-            var basePath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "DB", "Icons", "Markers");
-
-            LoadSvgIcon(IconPmcSpawn, System.IO.Path.Combine(basePath, "PMC Spawn.svg"));
-            LoadSvgIcon(IconSniperScav, System.IO.Path.Combine(basePath, "SniperScav.svg"));
-            LoadSvgIcon(IconRogue, System.IO.Path.Combine(basePath, "Rogue.svg"));
-            LoadSvgIcon(IconCultist, System.IO.Path.Combine(basePath, "Cultist.svg"));
-            LoadSvgIcon(IconLever, System.IO.Path.Combine(basePath, "Lever.svg"));
-            LoadSvgIcon(IconBoss, System.IO.Path.Combine(basePath, "Boss.svg"));
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Failed to load map marker icons: {ex.Message}");
-        }
-    }
-
-    private void LoadSvgIcon(SharpVectors.Converters.SvgViewbox svgViewbox, string path)
-    {
-        if (svgViewbox == null) return;
-
-        try
-        {
-            if (File.Exists(path))
-            {
-                svgViewbox.Source = new Uri(path);
-            }
-        }
-        catch (Exception ex)
-        {
-            _log.Warning($"Failed to load SVG icon {path}: {ex.Message}");
-        }
-    }
-
-    private void PopulateMapComboBox()
-    {
-        if (_trackerService == null) return;
-        CmbMapSelect.Items.Clear();
-        foreach (var mapKey in _trackerService.GetAllMapKeys())
-        {
-            var config = _trackerService.GetMapConfig(mapKey);
-            CmbMapSelect.Items.Add(new ComboBoxItem
-            {
-                Content = _loc.GetLocalizedMapName(mapKey),
-                Tag = mapKey
-            });
-        }
-
-        if (CmbMapSelect.Items.Count > 0 && CmbMapSelect.SelectedIndex < 0)
-            CmbMapSelect.SelectedIndex = 0;
-    }
-
-    private void UpdateUI()
-    {
-        // 감시 상태에 따른 UI 업데이트
-        var isWatching = _trackerService?.IsWatching ?? false;
-        BtnToggleTracking.Content = isWatching ? _loc.StopTracking : _loc.StartTracking;
-
-        var successBrush = TryFindResource("SuccessBrush") as Brush ?? Brushes.Green;
-        var secondaryBrush = TryFindResource("TextSecondaryBrush") as Brush ?? Brushes.Gray;
-        StatusIndicator.Fill = isWatching ? successBrush : secondaryBrush;
-        TxtStatus.Text = isWatching ? _loc.StatusTracking : _loc.StatusWaiting;
-
-        // Localization 적용
-        UpdateLocalizedText();
-    }
-
-    #region 이벤트 핸들러 - 서비스
-
-    private void OnPositionUpdated(object? sender, ScreenPosition position)
-    {
-        Dispatcher.Invoke(() =>
-        {
-            UpdateMarkerPosition(position);
-            UpdateTrailPath();
-            UpdateCoordinatesDisplay(position);
-
-            // Y 좌표(높이)를 기반으로 층 자동 전환
-            TryAutoSwitchFloor(position);
-
-            // 자동 중앙 정렬이 활성화되어 있으면 플레이어 위치로 맵 이동
-            if (MapSettings.Instance.AutoCenterEnabled)
-            {
-                CenterOnPosition(position);
-            }
-        });
-    }
-
-    /// <summary>
-    /// 플레이어 위치로 맵을 중앙 정렬합니다.
-    /// </summary>
-    private void CenterOnPosition(ScreenPosition position)
-    {
-        var viewerWidth = MapViewerGrid.ActualWidth;
-        var viewerHeight = MapViewerGrid.ActualHeight;
-
-        if (viewerWidth <= 0 || viewerHeight <= 0) return;
-
-        // 화면 중심을 플레이어 위치로 이동
-        MapTranslate.X = viewerWidth / 2 - position.X * _zoomLevel;
-        MapTranslate.Y = viewerHeight / 2 - position.Y * _zoomLevel;
-    }
-
-    /// <summary>
-    /// X, Y, Z 좌표를 기반으로 층을 자동 전환합니다.
-    /// DB의 MapFloorLocations 테이블에 설정된 범위를 사용합니다.
-    /// XZ 범위가 설정된 영역은 해당 영역 내에서만 층이 전환됩니다.
-    /// </summary>
-    private void TryAutoSwitchFloor(ScreenPosition position)
-    {
-        // 현재 맵이 없거나 단일 층 맵이면 스킵
-        if (string.IsNullOrEmpty(_currentMapKey))
-            return;
-
-        if (CmbFloorSelect.Visibility != Visibility.Visible)
-            return;
-
-        // 원본 EFT 좌표에서 X, Y, Z 가져오기
-        var originalPos = position.OriginalPosition;
-        if (originalPos == null)
-            return;
-
-        // FloorDetectionService로 층 감지 (X, Y, Z 좌표 모두 사용)
-        // Z가 null인 경우 0으로 처리 (XZ 범위 체크 시 영향 없음)
-        var detectedFloorId = FloorDetectionService.Instance.DetectFloor(
-            _currentMapKey, originalPos.X, originalPos.Y, originalPos.Z ?? 0);
-        // 어떤 Boundary에도 해당하지 않으면 main 층으로 기본 설정
-        if (string.IsNullOrEmpty(detectedFloorId))
-            detectedFloorId = "main";
-
-        // 현재 층과 같으면 스킵
-        if (string.Equals(_currentFloorId, detectedFloorId, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        // 층 콤보박스에서 해당 층 찾아서 선택
-        for (int i = 0; i < CmbFloorSelect.Items.Count; i++)
-        {
-            if (CmbFloorSelect.Items[i] is ComboBoxItem item &&
-                string.Equals(item.Tag as string, detectedFloorId, StringComparison.OrdinalIgnoreCase))
-            {
-                CmbFloorSelect.SelectedIndex = i;
-                break;
-            }
-        }
-    }
-
-    private void OnErrorOccurred(object? sender, string message)
-    {
-        Dispatcher.Invoke(() =>
-        {
-            TxtStatus.Text = _loc.CurrentLanguage == AppLanguage.KO ? $"오류: {message}" : $"Error: {message}";
-            TxtStatus.Foreground = TryFindResource("WarningBrush") as Brush ?? Brushes.Orange;
-        });
-    }
-
-    private void OnStatusMessage(object? sender, string message)
-    {
-        Dispatcher.Invoke(() =>
-        {
-            TxtStatus.Text = message;
-            TxtStatus.Foreground = TryFindResource("TextSecondaryBrush") as Brush ?? Brushes.Gray;
-        });
-    }
-
-    private void OnWatchingStateChanged(object? sender, bool isWatching)
-    {
-        Dispatcher.Invoke(UpdateUI);
-    }
-
-    #endregion
-
-    #region 자동 Tracking 및 맵 감시
-
-    /// <summary>
-    /// Map 탭 활성화 시 자동으로 Tracking을 시작합니다.
-    /// </summary>
-    private void StartAutoTracking()
-    {
-        if (_trackerService == null) return;
-
-        // 이미 감시 중이면 스킵
-        if (_trackerService.IsWatching) return;
-
-        // 스크린샷 폴더가 설정되어 있으면 자동 시작
-        if (!string.IsNullOrEmpty(_trackerService.Settings.ScreenshotFolderPath))
-        {
-            _trackerService.StartTracking();
-        }
-    }
-
-    /// <summary>
-    /// Map 탭 비활성화 시 Tracking을 중지합니다.
-    /// </summary>
-    private void StopAutoTracking()
-    {
-        if (_trackerService == null) return;
-
-        if (_trackerService.IsWatching)
-        {
-            _trackerService.StopTracking();
-        }
-    }
-
-    /// <summary>
-    /// 레이드 이벤트 모니터링을 시작합니다 (자동 맵 전환 및 레이드 감지용).
-    /// </summary>
-    private void StartRaidEventMonitoring()
-    {
-        // 이벤트 구독
-        _raidEventService.RaidEvent += OnRaidEvent;
-
-        // Settings에서 설정된 로그 폴더 경로 사용
-        var logFolderPath = SettingsService.Instance.LogFolderPath;
-        _raidEventService.StartMonitoring(logFolderPath);
-    }
-
-    /// <summary>
-    /// 레이드 이벤트 모니터링을 중지합니다.
-    /// </summary>
-    private void StopRaidEventMonitoring()
-    {
-        // 이벤트 구독 해제
-        _raidEventService.RaidEvent -= OnRaidEvent;
-
-        // 모니터링 중지
-        _raidEventService.StopMonitoring();
-    }
-
-    /// <summary>
-    /// 레이드 이벤트가 발생했을 때 호출됩니다.
-    /// RaidStarted: 맵 자동 전환, 중앙 정렬, 맵별 줌 레벨 적용
-    /// RaidEnded/Disconnected/NetworkTimeout/NetworkError: Trail 초기화
-    /// </summary>
-    private void OnRaidEvent(object? sender, EftRaidEventArgs e)
-    {
-        Dispatcher.Invoke(() =>
-        {
-            switch (e.EventType)
-            {
-                case EftRaidEventType.RaidStarted:
-                    HandleRaidStarted(e);
-                    break;
-
-                case EftRaidEventType.RaidEnded:
-                case EftRaidEventType.Disconnected:
-                case EftRaidEventType.NetworkTimeout:
-                case EftRaidEventType.NetworkError:
-                    HandleRaidEnded(e);
-                    break;
-            }
-        });
-    }
-
-    /// <summary>
-    /// 레이드 시작 시 맵 자동 전환, 중앙 정렬, 맵별 줌 레벨 적용, Extraction 자동 스위칭
-    /// </summary>
-    private void HandleRaidStarted(EftRaidEventArgs e)
-    {
-        var mapKey = e.RaidInfo?.MapKey;
-        if (string.IsNullOrEmpty(mapKey))
-            return;
-
-        var raidType = e.RaidInfo?.RaidType ?? RaidType.Unknown;
-
-        // PMC/SCAV에 따른 Extraction 자동 스위칭
-        ApplyRaidTypeExtracts(raidType);
-
-        // 현재 맵과 같으면 Trail만 초기화
-        if (string.Equals(_currentMapKey, mapKey, StringComparison.OrdinalIgnoreCase))
-        {
-            ClearTrailAndMarkers();
-            var raidTypeStr = raidType == RaidType.PMC ? "PMC" : "SCAV";
-            TxtStatus.Text = _loc.CurrentLanguage == AppLanguage.KO ? $"레이드 시작: {mapKey} ({raidTypeStr})" : $"Raid started: {mapKey} ({raidTypeStr})";
-            return;
-        }
-
-        // 맵 콤보박스에서 해당 맵 찾기
-        for (int i = 0; i < CmbMapSelect.Items.Count; i++)
-        {
-            if (CmbMapSelect.Items[i] is ComboBoxItem item &&
-                string.Equals(item.Tag as string, mapKey, StringComparison.OrdinalIgnoreCase))
-            {
-                // 현재 맵의 줌 레벨 저장 (맵 전환 전에)
-                if (!string.IsNullOrEmpty(_currentMapKey))
-                {
-                    SaveMapZoomLevel(_currentMapKey, _zoomLevel);
-                }
-
-                // Trail 초기화
-                ClearTrailAndMarkers();
-
-                // 맵 선택 변경 (이로 인해 CmbMapSelect_SelectionChanged가 호출됨)
-                CmbMapSelect.SelectedIndex = i;
-
-                // 해당 맵의 저장된 줌 레벨 적용
-                var savedZoom = LoadMapZoomLevel(mapKey);
-                SetZoom(savedZoom);
-
-                // 맵을 중앙으로 이동
-                CenterMapInView();
-
-                var raidTypeStr = raidType == RaidType.PMC ? "PMC" : "SCAV";
-                TxtStatus.Text = _loc.CurrentLanguage == AppLanguage.KO ? $"레이드 시작: {mapKey} ({raidTypeStr})" : $"Raid started: {mapKey} ({raidTypeStr})";
-                break;
-            }
-        }
-    }
-
-    /// <summary>
-    /// RaidType에 따라 Extraction 표시를 자동으로 스위칭합니다.
-    /// PMC: PMC Extracts + Shared 표시, SCAV Extracts 숨김
-    /// SCAV: SCAV Extracts 표시, PMC Extracts 숨김 (Shared는 PMC 설정을 따름)
-    /// </summary>
-    private void ApplyRaidTypeExtracts(RaidType raidType)
-    {
-        bool showPmc, showScav;
-
-        switch (raidType)
-        {
-            case RaidType.PMC:
-                showPmc = true;
-                showScav = false;
-                break;
-            case RaidType.Scav:
-                showPmc = false;
-                showScav = true;
-                break;
-            default:
-                // Unknown인 경우 둘 다 표시
-                showPmc = true;
-                showScav = true;
-                break;
-        }
-
-        // 내부 상태 업데이트
-        _showPmcExtracts = showPmc;
-        _showScavExtracts = showScav;
-
-        // UI 체크박스 업데이트 (이벤트 트리거 방지)
-        ChkShowPmcExtracts.Checked -= ChkExtractFilter_Changed;
-        ChkShowPmcExtracts.Unchecked -= ChkExtractFilter_Changed;
-        ChkShowScavExtracts.Checked -= ChkExtractFilter_Changed;
-        ChkShowScavExtracts.Unchecked -= ChkExtractFilter_Changed;
-
-        ChkShowPmcExtracts.IsChecked = showPmc;
-        ChkShowScavExtracts.IsChecked = showScav;
-
-        ChkShowPmcExtracts.Checked += ChkExtractFilter_Changed;
-        ChkShowPmcExtracts.Unchecked += ChkExtractFilter_Changed;
-        ChkShowScavExtracts.Checked += ChkExtractFilter_Changed;
-        ChkShowScavExtracts.Unchecked += ChkExtractFilter_Changed;
-
-        // ExtractMarkerManager에 설정 적용
-        if (_extractMarkerManager != null)
-        {
-            _extractMarkerManager.SetShowPmcExtracts(showPmc);
-            _extractMarkerManager.SetShowScavExtracts(showScav);
-        }
-
-        // 마커 새로고침
-        RefreshExtractMarkers();
-    }
-
-    /// <summary>
-    /// 레이드 종료 시 Trail 초기화
-    /// </summary>
-    private void HandleRaidEnded(EftRaidEventArgs e)
-    {
-        ClearTrailAndMarkers();
-
-        var mapKey = e.RaidInfo?.MapKey ?? _currentMapKey;
-        var duration = e.RaidInfo?.Duration;
-        var durationStr = duration.HasValue
-            ? (_loc.CurrentLanguage == AppLanguage.KO
-                ? $" ({duration.Value.Minutes}분 {duration.Value.Seconds}초)"
-                : $" ({duration.Value.Minutes}m {duration.Value.Seconds}s)")
-            : "";
-        TxtStatus.Text = _loc.CurrentLanguage == AppLanguage.KO ? $"레이드 종료: {mapKey}{durationStr}" : $"Raid ended: {mapKey}{durationStr}";
-    }
-
-    /// <summary>
-    /// Trail과 플레이어 마커를 초기화합니다.
-    /// </summary>
-    private void ClearTrailAndMarkers()
-    {
-        _trackerService?.ClearTrail();
-        TrailPath.Points.Clear();
-        PlayerMarker.Visibility = Visibility.Collapsed;
-        PlayerDot.Visibility = Visibility.Collapsed;
-        TxtCoordinates.Text = "--";
-        TxtLastUpdateTime.Text = "--";
-    }
-
-    /// <summary>
-    /// 특정 맵의 줌 레벨을 DB에 저장합니다.
-    /// </summary>
-    private void SaveMapZoomLevel(string mapKey, double zoomLevel)
-    {
-        _mapZoomLevelCache[mapKey] = zoomLevel;
-
-        // 백그라운드에서 DB에 저장
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var settingKey = $"map.zoomLevel.{mapKey}";
-                await UserDataDbService.Instance.SetSettingAsync(settingKey, zoomLevel.ToString("F2"));
-            }
-            catch
-            {
-                // 저장 실패 시 무시
-            }
-        });
-    }
-
-    /// <summary>
-    /// 특정 맵의 저장된 줌 레벨을 로드합니다.
-    /// </summary>
-    private double LoadMapZoomLevel(string mapKey)
-    {
-        // 캐시에서 먼저 확인
-        if (_mapZoomLevelCache.TryGetValue(mapKey, out var cachedZoom))
-        {
-            return cachedZoom;
-        }
-
-        // DB에서 로드
-        try
-        {
-            var settingKey = $"map.zoomLevel.{mapKey}";
-            var value = UserDataDbService.Instance.GetSetting(settingKey);
-            if (!string.IsNullOrEmpty(value) && double.TryParse(value, out var zoom))
-            {
-                _mapZoomLevelCache[mapKey] = zoom;
-                return zoom;
-            }
-        }
-        catch
-        {
-            // 로드 실패 시 무시
-        }
-
-        // 기본값 1.0 (100%)
-        return 1.0;
-    }
-
-    #endregion
-
-    #region 이벤트 핸들러 - UI
-
-    private void BtnToggleTracking_Click(object sender, RoutedEventArgs e)
-    {
-        if (_trackerService == null) return;
-        if (_trackerService.IsWatching)
-        {
-            _trackerService.StopTracking();
-        }
-        else
-        {
-            _trackerService.StartTracking();
-        }
-    }
-
-    private void ChkFixedView_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_isInitializing || ChkFixedView == null) return;
-
-        bool isFixed = ChkFixedView.IsChecked ?? false;
-        MapSettings.Instance.AutoCenterEnabled = !isFixed;
-        
-        if (_trackerService != null)
-        {
-            _trackerService.Settings.AutoCenterOnPosition = !isFixed;
-        }
-    }
-
-    private void BtnClearTrail_Click(object sender, RoutedEventArgs e)
-    {
-        _trackerService?.ClearTrail();
-        TrailPath.Points.Clear();
-        PlayerMarker.Visibility = Visibility.Collapsed;
-        PlayerDot.Visibility = Visibility.Collapsed;
-        TxtCoordinates.Text = "--";
-        TxtLastUpdateTime.Text = "--";
-    }
-
-    private async Task InitializeOverlayServiceAsync()
-    {
-        try
-        {
-            await _overlayService.InitializeAsync();
-            _log.Info("Overlay MiniMap service initialized");
-        }
-        catch (Exception ex)
-        {
-            _log.Error("Failed to initialize Overlay MiniMap service", ex);
-        }
-    }
-
-    private void BtnSettings_Click(object sender, RoutedEventArgs e)
-    {
-        ToggleSettingsPanel(true);
-    }
-
-    private void BtnMinimap_Click(object sender, RoutedEventArgs e)
-    {
-        _overlayService.ToggleOverlay();
-    }
-
-    private void OnOverlayVisibilityChanged(bool isVisible)
-    {
-        Dispatcher.Invoke(() => UpdateMinimapButtonState(isVisible));
-    }
-
-    private void UpdateMinimapButtonState(bool isVisible)
-    {
-        if (BtnMinimap == null) return;
-
-        if (isVisible)
-        {
-            // 강조색 적용 (AccentBrush)
-            BtnMinimap.Background = TryFindResource("AccentBrush") as Brush ?? Brushes.RoyalBlue;
-            BtnMinimap.Foreground = Brushes.White;
-        }
-        else
-        {
-            // 기본 스타일로 복구 (버튼 기본 배경색이 없으면 투명 또는 기본 브러시)
-            BtnMinimap.ClearValue(Button.BackgroundProperty);
-            BtnMinimap.ClearValue(Button.ForegroundProperty);
-        }
-    }
-
-    private void BtnCloseSettings_Click(object sender, RoutedEventArgs e)
-    {
-        ToggleSettingsPanel(false);
-    }
-
-    private void ToggleSettingsPanel(bool show)
-    {
-        if (show)
-        {
-            SettingsColumn.Width = new GridLength(320);
-            SettingsPanel.Visibility = Visibility.Visible;
-            LoadCurrentMapSettings();
-        }
-        else
-        {
-            SettingsColumn.Width = new GridLength(0);
-            SettingsPanel.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private async void CmbMapSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (CmbMapSelect.SelectedItem is ComboBoxItem item && item.Tag is string mapKey)
-        {
-            try
-            {
-                var ct = GetNewCancellationToken();
-                _currentMapKey = mapKey;
-                _trackerService?.SetCurrentMap(mapKey);
-
-                // 줌 초기화 및 위치 리셋 (새 지도가 튀는 현상 방지)
-                SetZoom(1.0);
-                MapTranslate.X = 0;
-                MapTranslate.Y = 0;
-
-                // 패널이 열려있으면 즉시 내용 갱신 (비동기 작업 대기 없이 실시간성 보장)
-                if (QuestDrawerPanel?.Visibility == Visibility.Visible)
-                {
-                    RefreshQuestDrawer();
-                }
-
-                // 맵 변경 시 Trail 초기화
-                _trackerService?.ClearTrail();
-                TrailPath.Points.Clear();
-                PlayerMarker.Visibility = Visibility.Collapsed;
-                PlayerDot.Visibility = Visibility.Collapsed;
-
-                // 층 콤보박스 업데이트
-                UpdateFloorComboBox(mapKey);
-
-                await LoadMapImageAsync(mapKey, true, ct);
-                LoadCurrentMapSettings();
-
-                // 맵별 마커 스케일 적용 (플레이어 마커 크기 업데이트)
-                var playerMarkerSize = _trackerService?.Settings.PlayerMarkerSize ?? 16;
-                UpdatePlayerMarkerSize(playerMarkerSize);
-
-                // 초기화 완료 후에만 호출
-                if (_objectiveService.IsLoaded)
-                {
-                    await RefreshQuestMarkers(ct);
-                }
-                if (_extractService.IsLoaded)
-                {
-                    await RefreshExtractMarkers(ct);
-                }
-                if (MapMarkerDbService.Instance.IsLoaded)
-                {
-                    await RefreshMapMarkers(ct);
-                }
-
-                // 커스텀 마커 새로고침
-                UpdateCustomMarkersParam();
-                if (_customMarkerManager != null)
-                {
-                    await _customMarkerManager.RefreshMarkersAsync(ct);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                _log.Info("CmbMapSelect_SelectionChanged cancelled");
-            }
-            catch (Exception ex)
-            {
-                _log.Error("Error in CmbMapSelect_SelectionChanged", ex);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Global Keyboard Hook에서 NumPad 키가 눌렸을 때 호출됩니다.
-    /// NumPad 0-5로 층을 선택합니다.
-    /// </summary>
-    private void OnFloorKeyPressed(int floorIndex)
-    {
-        // 층 콤보박스가 보이지 않으면 (단일 층 맵) 무시
-        if (CmbFloorSelect.Visibility != Visibility.Visible)
-            return;
-
-        // 유효한 인덱스인지 확인
-        if (floorIndex < 0 || floorIndex >= CmbFloorSelect.Items.Count)
-            return;
-
-        // 층 선택
-        CmbFloorSelect.SelectedIndex = floorIndex;
-    }
-
-    private async void CmbFloorSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (CmbFloorSelect.SelectedItem is ComboBoxItem floorItem && floorItem.Tag is string floorId)
-        {
-            if (_currentFloorId != floorId)
-            {
-                try
-                {
-                    var ct = GetNewCancellationToken();
-                    _currentFloorId = floorId;
-
-                    // 층이 변경되면 맵 이미지 다시 로드 (화면 위치는 유지)
-                    if (!string.IsNullOrEmpty(_currentMapKey))
-                    {
-                        await LoadMapImageAsync(_currentMapKey, centerView: false, ct);
-
-                        // 마커들도 새로고침 (층 정보에 따른 표시 업데이트)
-                        await RefreshExtractMarkers(ct);
-                        await RefreshQuestMarkers(ct);
-                        await RefreshMapMarkers(ct);
-                        UpdateCustomMarkersParam();
-                        _customMarkerManager?.UpdateMarkerDisplay();
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    _log.Info("CmbFloorSelect_SelectionChanged cancelled");
-                }
-                catch (Exception ex)
-                {
-                    _log.Error("Error in CmbFloorSelect_SelectionChanged", ex);
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// 층 콤보박스를 현재 맵의 층 정보로 업데이트합니다.
-    /// </summary>
-    private void UpdateFloorComboBox(string mapKey)
-    {
-        var config = _trackerService?.GetMapConfig(mapKey);
-        var floors = config?.Floors;
-
-        // 이벤트 중복 방지를 위해 일시 해제
-        CmbFloorSelect.SelectionChanged -= CmbFloorSelect_SelectionChanged;
-
-        try
-        {
-            CmbFloorSelect.Items.Clear();
-            _currentFloorId = null;
-
-            if (floors == null || floors.Count == 0)
-            {
-                // 단일 층 맵: 층 선택 UI 숨김
-                TxtFloorLabel.Visibility = Visibility.Collapsed;
-                CmbFloorSelect.Visibility = Visibility.Collapsed;
-                return;
-            }
-
-            // 다층 맵: 층 선택 UI 표시
-            TxtFloorLabel.Visibility = Visibility.Visible;
-            CmbFloorSelect.Visibility = Visibility.Visible;
-
-            // 층 목록을 Order 순으로 정렬하여 추가
-            var sortedFloors = floors.OrderBy(f => f.Order).ToList();
-            int defaultIndex = 0;
-
-            for (int i = 0; i < sortedFloors.Count; i++)
-            {
-                var floor = sortedFloors[i];
-                CmbFloorSelect.Items.Add(new ComboBoxItem
-                {
-                    Content = floor.DisplayName,
-                    Tag = floor.LayerId
-                });
-
-                if (floor.IsDefault)
-                {
-                    defaultIndex = i;
-                }
-            }
-
-            // 기본 층 선택
-            if (CmbFloorSelect.Items.Count > 0)
-            {
-                CmbFloorSelect.SelectedIndex = defaultIndex;
-                _currentFloorId = sortedFloors[defaultIndex].LayerId;
-            }
-        }
-        finally
-        {
-            // 이벤트 재연결
-            CmbFloorSelect.SelectionChanged += CmbFloorSelect_SelectionChanged;
-        }
-    }
-
-    private void BtnAutoDetect_Click(object sender, RoutedEventArgs e)
-    {
-        var detectedPath = MapTrackerSettings.TryDetectScreenshotFolder();
-        if (!string.IsNullOrEmpty(detectedPath))
-        {
-            TxtScreenshotFolder.Text = detectedPath;
-            _trackerService?.ChangeScreenshotFolder(detectedPath);
-            // DB에 저장
-            SettingsService.Instance.MapScreenshotPath = detectedPath;
-            MessageBox.Show(
-                _loc.CurrentLanguage == AppLanguage.KO ? $"스크린샷 폴더를 찾았습니다:\n{detectedPath}" : $"Screenshot folder found:\n{detectedPath}",
-                _loc.CurrentLanguage == AppLanguage.KO ? "자동 탐지 성공" : "Auto Detect Success",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        else
-        {
-            // 가능한 경로 목록 표시
-            var possiblePaths = MapTrackerSettings.GetPossibleScreenshotPaths();
-            if (possiblePaths.Count > 0)
-            {
-                var pathList = string.Join("\n", possiblePaths);
-                MessageBox.Show(
-                    _loc.CurrentLanguage == AppLanguage.KO
-                        ? $"스크린샷 폴더를 자동으로 찾지 못했습니다.\n\n발견된 EFT 폴더:\n{pathList}\n\n수동으로 선택해주세요."
-                        : $"Could not automatically find screenshot folder.\n\nFound EFT folder:\n{pathList}\n\nPlease select manually.",
-                    "Auto Detect Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-            else
-            {
-                MessageBox.Show(
-                    _loc.CurrentLanguage == AppLanguage.KO
-                        ? "EFT 스크린샷 폴더를 찾을 수 없습니다.\n수동으로 폴더를 선택해주세요."
-                        : "Could not find EFT screenshot folder.\nPlease select folder manually.",
-                    "Auto Detect Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-        }
-    }
-
-    private void BtnBrowseFolder_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFolderDialog
-        {
-            Title = "Select Screenshot Folder",
-            InitialDirectory = TxtScreenshotFolder.Text
-        };
-
-        if (dialog.ShowDialog() == true)
-        {
-            TxtScreenshotFolder.Text = dialog.FolderName;
-            _trackerService?.ChangeScreenshotFolder(dialog.FolderName);
-            // DB에 저장
-            SettingsService.Instance.MapScreenshotPath = dialog.FolderName;
-        }
-    }
-
-    private void SliderMarkerSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (TxtMarkerSize != null)
-        {
-            var size = (int)e.NewValue;
-            TxtMarkerSize.Text = size.ToString();
-            UpdateMarkerSize(size);
-
-            // DB에 저장
-            SettingsService.Instance.MapQuestMarkerSize = size;
-        }
-    }
-
-    private void SliderPlayerMarkerSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (TxtPlayerMarkerSize != null)
-        {
-            var size = (int)e.NewValue;
-            TxtPlayerMarkerSize.Text = size.ToString();
-            UpdatePlayerMarkerSize(size);
-
-            // DB에 저장
-            SettingsService.Instance.MapPlayerMarkerSize = size;
-        }
-    }
-
-    private void CmbQuestMarkerStyle_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (CmbQuestMarkerStyle.SelectedIndex < 0) return;
-
-        _questMarkerStyle = (QuestMarkerStyle)CmbQuestMarkerStyle.SelectedIndex;
-
-        // 설정 저장 (SettingsService를 통해 DB에 저장)
-        SettingsService.Instance.MapQuestMarkerStyle = (int)_questMarkerStyle;
-
-        // 마커 다시 그리기
-        RefreshQuestMarkers();
-    }
-
-    private void SliderMarkerOpacity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (TxtMarkerOpacity == null) return;
-        var val = (int)e.NewValue;
-        TxtMarkerOpacity.Text = $"{val}%";
-        MapSettings.Instance.MarkerOpacity = e.NewValue;
-        
-        // 커스텀 마커 즉시 갱신
-        _customMarkerManager?.UpdateMarkerDisplay();
-    }
-
-    private void SliderQuestNameTextSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (TxtQuestNameTextSize != null)
-        {
-            var size = (int)e.NewValue;
-            TxtQuestNameTextSize.Text = size.ToString();
-            _questNameTextSize = size;
-
-            // DB에 저장
-            SettingsService.Instance.MapQuestNameSize = size;
-
-            // 마커 다시 그리기
-            RefreshQuestMarkers();
-        }
-    }
-
-    private void BtnFullScreen_Click(object sender, RoutedEventArgs e)
-    {
-        EnterFullScreen();
-    }
-
-    private void BtnExitFullScreen_Click(object sender, RoutedEventArgs e)
-    {
-        ExitFullScreen();
-    }
-
-    private void EnterFullScreen()
-    {
-        var mainWindow = Window.GetWindow(this) as MainWindow;
-        if (mainWindow == null) return;
-
-        // MainWindow의 공통 메뉴바 숨기기
-        mainWindow.SetFullScreenMode(true);
-
-        // Exit Full Screen 버튼 표시
-        BtnExitFullScreen.Visibility = Visibility.Visible;
-    }
-
-    private void ExitFullScreen()
-    {
-        var mainWindow = Window.GetWindow(this) as MainWindow;
-        if (mainWindow == null) return;
-
-        // MainWindow의 공통 메뉴바 다시 표시
-        mainWindow.SetFullScreenMode(false);
-
-        // Exit Full Screen 버튼 숨기기
-        BtnExitFullScreen.Visibility = Visibility.Collapsed;
-    }
-
-    private void BtnZoomIn_Click(object sender, RoutedEventArgs e)
-    {
-        // 다음 프리셋으로 줌
-        var nextPreset = ZoomPresets.FirstOrDefault(p => p > _zoomLevel);
-        var newZoom = nextPreset > 0 ? nextPreset : _zoomLevel * 1.25;
-        ZoomToMouse(newZoom);
-    }
-
-    private void BtnZoomOut_Click(object sender, RoutedEventArgs e)
-    {
-        // 이전 프리셋으로 줌
-        var prevPreset = ZoomPresets.LastOrDefault(p => p < _zoomLevel);
-        var newZoom = prevPreset > 0 ? prevPreset : _zoomLevel * 0.8;
-        ZoomToMouse(newZoom);
-    }
-
-    /// <summary>
-    /// 마우스 위치를 중심으로 줌합니다.
-    /// </summary>
-    private void ZoomToMouse(double newZoom)
-    {
-        var oldZoom = _zoomLevel;
-        newZoom = Math.Clamp(newZoom, MinZoom, MaxZoom);
-
-        if (Math.Abs(newZoom - oldZoom) < 0.001) return;
-
-        // 마우스 위치 가져오기 (MapViewerGrid 기준)
-        var mousePos = Mouse.GetPosition(MapViewerGrid);
-
-        // 마우스 위치에서 캔버스상의 실제 좌표 계산
-        var canvasX = (mousePos.X - MapTranslate.X) / oldZoom;
-        var canvasY = (mousePos.Y - MapTranslate.Y) / oldZoom;
-
-        // 줌 후에도 마우스 위치가 동일한 캔버스 좌표를 가리키도록 translate 조정
-        MapTranslate.X = mousePos.X - canvasX * newZoom;
-        MapTranslate.Y = mousePos.Y - canvasY * newZoom;
-
-        SetZoom(newZoom);
-    }
-
-    private void CmbZoomLevel_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (CmbZoomLevel.SelectedItem is string selected)
-        {
-            ParseAndSetZoom(selected);
-        }
-    }
-
-    private void CmbZoomLevel_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter)
-        {
-            ParseAndSetZoom(CmbZoomLevel.Text);
-            e.Handled = true;
-        }
-    }
-
-    private void ParseAndSetZoom(string zoomText)
-    {
-        // "100%" 형식에서 숫자 추출
-        var text = zoomText.Trim().TrimEnd('%');
-        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var percent))
-        {
-            SetZoom(percent / 100.0);
-        }
-    }
-
-    private void BtnResetView_Click(object sender, RoutedEventArgs e)
-    {
-        // 줌을 100%로 초기화하고 맵을 중앙에 배치
-        SetZoom(1.0);
-        CenterMapInView();
-    }
-
-    #region 드래그 이벤트 핸들러
-
-    private void MapViewer_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (NoMapPanel.Visibility == Visibility.Visible) return;
-
-        _isDragging = true;
-        _dragStartPoint = e.GetPosition(MapViewerGrid);
-        _dragStartTranslateX = MapTranslate.X;
-        _dragStartTranslateY = MapTranslate.Y;
-        MapViewerGrid.CaptureMouse();
-        MapCanvas.Cursor = Cursors.ScrollAll;
-    }
-
-    private void MapViewer_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        if (_isDragging)
-        {
-            _isDragging = false;
-            MapViewerGrid.ReleaseMouseCapture();
-            MapCanvas.Cursor = Cursors.Arrow;
-        }
-    }
-
-    private void MapViewer_MouseMove(object sender, MouseEventArgs e)
-    {
-        if (!_isDragging) return;
-
-        var currentPoint = e.GetPosition(MapViewerGrid);
-        var deltaX = currentPoint.X - _dragStartPoint.X;
-        var deltaY = currentPoint.Y - _dragStartPoint.Y;
-
-        MapTranslate.X = _dragStartTranslateX + deltaX;
-        MapTranslate.Y = _dragStartTranslateY + deltaY;
-    }
-
-    private void MapViewer_MouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        // 마우스 위치를 중심으로 줌 (MapViewerGrid 기준)
-        var mousePos = e.GetPosition(MapViewerGrid);
-        var oldZoom = _zoomLevel;
-
-        // 줌 계산
-        var zoomFactor = e.Delta > 0 ? 1.15 : 0.87;
-        var newZoom = Math.Clamp(_zoomLevel * zoomFactor, MinZoom, MaxZoom);
-
-        if (Math.Abs(newZoom - oldZoom) < 0.001) return;
-
-        // 마우스 위치에서 캔버스상의 실제 좌표 계산
-        // mousePos = canvasPos * oldZoom + translate
-        // canvasPos = (mousePos - translate) / oldZoom
-        var canvasX = (mousePos.X - MapTranslate.X) / oldZoom;
-        var canvasY = (mousePos.Y - MapTranslate.Y) / oldZoom;
-
-        // 줌 후에도 마우스 위치가 동일한 캔버스 좌표를 가리키도록 translate 조정
-        // mousePos = canvasPos * newZoom + newTranslate
-        // newTranslate = mousePos - canvasPos * newZoom
-        MapTranslate.X = mousePos.X - canvasX * newZoom;
-        MapTranslate.Y = mousePos.Y - canvasY * newZoom;
-
-        SetZoom(newZoom);
-        e.Handled = true;
-    }
-
-    #endregion
-
-    #endregion
-
-    #region 맵/마커 관련 메서드
-
-    private async Task LoadMapImageAsync(string mapKey, bool centerView = true, CancellationToken ct = default)
-    {
-        ct.ThrowIfCancellationRequested();
-        var config = _trackerService?.GetMapConfig(mapKey);
-        if (config == null)
-        {
-            ShowNoMapPanel(true);
-            return;
-        }
-
-        // ImagePath가 비어있으면 SvgFileName을 기반으로 경로 생성
-        var imagePath = config.ImagePath;
-        if (string.IsNullOrEmpty(imagePath) && !string.IsNullOrEmpty(config.SvgFileName))
-        {
-            imagePath = System.IO.Path.Combine("Assets", "DB", "Maps", config.SvgFileName);
-        }
-
-        // 상대 경로인 경우 앱 디렉토리 기준으로 변환
-        if (!string.IsNullOrEmpty(imagePath) && !System.IO.Path.IsPathRooted(imagePath))
-        {
-            imagePath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, imagePath);
-        }
-
-        if (string.IsNullOrEmpty(imagePath) || !File.Exists(imagePath))
-        {
-            ShowNoMapPanel(true);
-            return;
-        }
-
-        try
-        {
-            var extension = System.IO.Path.GetExtension(imagePath).ToLowerInvariant();
-
-            if (extension == ".svg")
-            {
-                // TarkovDBEditor 방식: SvgViewbox 직접 사용 (PNG 변환 없음)
-                MapImage.Visibility = Visibility.Collapsed;
-                MapSvg.Visibility = Visibility.Visible;
-
-                // 층 필터링 정보 준비
-                IEnumerable<string>? visibleFloors = null;
-                IEnumerable<string>? allFloors = null;
-                string? backgroundFloorId = null;
-                double backgroundOpacity = 0.3;
-
-                if (config.Floors != null && config.Floors.Count > 0 && !string.IsNullOrEmpty(_currentFloorId))
-                {
-                    allFloors = config.Floors.Select(f => f.LayerId);
-                    visibleFloors = new[] { _currentFloorId };
-
-                    // 기본 층(main)을 배경으로 반투명하게 표시
-                    var defaultFloor = config.Floors.FirstOrDefault(f => f.IsDefault);
-                    var currentFloor = config.Floors.FirstOrDefault(f =>
-                        string.Equals(f.LayerId, _currentFloorId, StringComparison.OrdinalIgnoreCase));
-
-                    if (defaultFloor != null && !string.Equals(_currentFloorId, defaultFloor.LayerId, StringComparison.OrdinalIgnoreCase))
-                    {
-                        backgroundFloorId = defaultFloor.LayerId;
-
-                        // 지하층(Order < 0)을 선택한 경우 배경을 더 흐리게 표시
-                        if (currentFloor != null && currentFloor.Order < 0)
-                        {
-                            backgroundOpacity = 0.15;
-                        }
-                    }
-                }
-
-                // [v1.1.36] 층 필터링 및 SVG 전처리를 백그라운드 스레드에서 수행 (프리징 방지)
-                if (visibleFloors != null)
-                {
-                    string tempPath = await Task.Run(() =>
-                    {
-                        var preprocessor = new SvgStylePreprocessor();
-                        var processedSvg = preprocessor.ProcessSvgFile(imagePath, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity);
-
-                        var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"legacy_map_{Guid.NewGuid()}.svg");
-                        File.WriteAllText(path, processedSvg);
-                        return path;
-                    }, ct);
-
-                    ct.ThrowIfCancellationRequested();
-                    MapSvg.Source = new Uri(tempPath, UriKind.Absolute);
-                }
-                else
-                {
-                    MapSvg.Source = new Uri(imagePath, UriKind.Absolute);
-                }
-
-                MapSvg.Width = config.ImageWidth;
-                MapSvg.Height = config.ImageHeight;
-                MapCanvas.Width = config.ImageWidth;
-                MapCanvas.Height = config.ImageHeight;
-                Canvas.SetLeft(MapSvg, 0);
-                Canvas.SetTop(MapSvg, 0);
-            }
-            else
-            {
-                // 비트맵 이미지 로드 (PNG, JPG 등)
-                MapSvg.Visibility = Visibility.Collapsed;
-                MapImage.Visibility = Visibility.Visible;
-
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.UriSource = new Uri(imagePath, UriKind.Absolute);
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.EndInit();
-
-                MapImage.Source = bitmap;
-                MapCanvas.Width = bitmap.PixelWidth;
-                MapCanvas.Height = bitmap.PixelHeight;
-
-                // 이미지는 (0,0)에 위치
-                Canvas.SetLeft(MapImage, 0);
-                Canvas.SetTop(MapImage, 0);
-            }
-
-            ShowNoMapPanel(false);
-
-            // 맵을 화면 중앙에 배치 (층 변경 시에는 위치 유지)
-            if (centerView)
-            {
-                CenterMapInView();
-            }
-        }
-        catch
-        {
-            ShowNoMapPanel(true);
-        }
-    }
-
-    private void CenterMapInView()
-    {
-        // 뷰어 영역의 크기 가져오기
-        var viewerWidth = MapViewerGrid.ActualWidth;
-        var viewerHeight = MapViewerGrid.ActualHeight;
-
-        // 맵 크기 가져오기
-        var mapWidth = MapCanvas.Width;
-        var mapHeight = MapCanvas.Height;
-
-        // 뷰어가 아직 렌더링되지 않은 경우 Loaded 이벤트에서 다시 호출
-        if (viewerWidth <= 0 || viewerHeight <= 0)
-        {
-            Dispatcher.BeginInvoke(new Action(CenterMapInView), System.Windows.Threading.DispatcherPriority.Loaded);
-            return;
-        }
-
-        // 현재 줌과 맵 크기를 고려한 실제 맵 크기
-        var scaledMapWidth = mapWidth * _zoomLevel;
-        var scaledMapHeight = mapHeight * _zoomLevel;
-
-        // 맵을 화면 중앙에 배치하기 위한 이동 좌표 계산
-        var translateX = (viewerWidth - scaledMapWidth) / 2;
-        var translateY = (viewerHeight - scaledMapHeight) / 2;
-
-        MapTranslate.X = translateX;
-        MapTranslate.Y = translateY;
-    }
-
-    private void ShowNoMapPanel(bool show)
-    {
-        NoMapPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        // 맵이 없을 때는 둘 다 숨김, 있을 때는 LoadMapImage에서 관리
-        if (show)
-        {
-            MapImage.Visibility = Visibility.Collapsed;
-            MapSvg.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private void LoadCurrentMapSettings()
-    {
-        // 설정 패널에서 맵 관련 설정이 제거되어 더 이상 필요하지 않음
-    }
-
-    private void UpdateMarkerPosition(ScreenPosition position)
-    {
-        // 현재 선택된 맵과 다른 경우 맵 전환
-        if (!string.Equals(_currentMapKey, position.MapKey, StringComparison.OrdinalIgnoreCase))
-        {
-            // 맵 선택 변경
-            for (int i = 0; i < CmbMapSelect.Items.Count; i++)
-            {
-                if (CmbMapSelect.Items[i] is ComboBoxItem item &&
-                    string.Equals(item.Tag as string, position.MapKey, StringComparison.OrdinalIgnoreCase))
-                {
-                    CmbMapSelect.SelectedIndex = i;
-                    break;
-                }
-            }
-        }
-
-        var showDirection = (_trackerService?.Settings.ShowDirection ?? true) && position.Angle.HasValue;
-
-        if (showDirection)
-        {
-            PlayerMarker.Visibility = Visibility.Visible;
-            PlayerDot.Visibility = Visibility.Collapsed;
-
-            // 마커 위치 설정 (Canvas 중심 기준)
-            MarkerTranslation.X = position.X;
-            MarkerTranslation.Y = position.Y;
-
-            // 방향 화살표 회전 (화살표만 회전, 중심 원은 고정)
-            var angle = position.Angle ?? 0;
-
-            // The Lab 맵은 방향을 왼쪽으로 90도 회전
-            if (string.Equals(_currentMapKey, "Labs", StringComparison.OrdinalIgnoreCase))
-            {
-                angle -= 90;
-            }
-            // Factory 맵은 방향을 오른쪽으로 90도 회전
-            else if (string.Equals(_currentMapKey, "Factory", StringComparison.OrdinalIgnoreCase))
-            {
-                angle += 90;
-            }
-
-            MarkerRotation.Angle = angle;
-        }
-        else
-        {
-            PlayerMarker.Visibility = Visibility.Collapsed;
-            PlayerDot.Visibility = Visibility.Visible;
-
-            // 원형 마커 위치 (Canvas 중심 기준)
-            DotTranslation.X = position.X;
-            DotTranslation.Y = position.Y;
-        }
-    }
-
-    private void UpdateTrailPath()
-    {
-        if (_trackerService == null) return;
-        if (!_trackerService.Settings.ShowTrail) return;
-
-        TrailPath.Points.Clear();
-        foreach (var pos in _trackerService.TrailPositions)
-        {
-            TrailPath.Points.Add(new Point(pos.X, pos.Y));
-        }
-    }
-
-    private void UpdateCoordinatesDisplay(ScreenPosition position)
-    {
-        var orig = position.OriginalPosition;
-        if (orig != null)
-        {
-            var angleStr = orig.Angle.HasValue ? $", Angle: {orig.Angle:F1}°" : "";
-            TxtCoordinates.Text = $"Map: {orig.MapName}, X: {orig.X:F2}, Y: {orig.Y:F2}{angleStr}";
-        }
-        else
-        {
-            TxtCoordinates.Text = $"X: {position.X:F0}, Y: {position.Y:F0}";
-        }
-
-        TxtLastUpdateTime.Text = DateTime.Now.ToString("HH:mm:ss");
-    }
-
-    private async void UpdateMarkerSize(int size)
-    {
-        // 퀘스트 마커 크기 설정 저장
-        if (_trackerService != null)
-        {
-            _trackerService.Settings.MarkerSize = size;
-            _trackerService.SaveSettings();
-            // 퀘스트 마커 새로고침
-            try
-            {
-                var ct = GetNewCancellationToken();
-                await RefreshQuestMarkers(ct);
-            }
-            catch (OperationCanceledException) { }
-        }
-    }
-
-    private void UpdatePlayerMarkerSize(int size)
-    {
-        // 기본 크기(16)를 기준으로 스케일 계산
-        var baseScale = size / 16.0;
-
-        // 맵별 마커 스케일 적용
-        var mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
-        var mapScale = mapConfig?.MarkerScale ?? 1.0;
-
-        var scale = baseScale * mapScale;
-
-        // PlayerMarker와 PlayerDot에 스케일 적용
-        MarkerScale.ScaleX = scale;
-        MarkerScale.ScaleY = scale;
-        DotScale.ScaleX = scale;
-        DotScale.ScaleY = scale;
-
-        // 설정 저장
-        if (_trackerService != null)
-        {
-            _trackerService.Settings.PlayerMarkerSize = size;
-            _trackerService.SaveSettings();
-        }
-    }
-
-    private void UpdateMarkerVisibility()
-    {
-        if (_trackerService == null) return;
-        var current = _trackerService.CurrentPosition;
-        if (current == null)
-        {
-            PlayerMarker.Visibility = Visibility.Collapsed;
-            PlayerDot.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        var showDirection = _trackerService.Settings.ShowDirection && current.Angle.HasValue;
-        PlayerMarker.Visibility = showDirection ? Visibility.Visible : Visibility.Collapsed;
-        PlayerDot.Visibility = showDirection ? Visibility.Collapsed : Visibility.Visible;
-    }
-
-    private void SetZoom(double zoom)
-    {
-        // 줌 범위 제한
-        _zoomLevel = Math.Clamp(zoom, MinZoom, MaxZoom);
-        MapScale.ScaleX = _zoomLevel;
-        MapScale.ScaleY = _zoomLevel;
-
-        // 콤보박스 텍스트 업데이트 (이벤트 트리거 방지)
-        CmbZoomLevel.SelectionChanged -= CmbZoomLevel_SelectionChanged;
-        CmbZoomLevel.Text = $"{_zoomLevel * 100:F0}%";
-        CmbZoomLevel.SelectionChanged += CmbZoomLevel_SelectionChanged;
-
-        // 마커들의 역스케일 업데이트 (고정 크기 유지)
-        UpdateMarkerScales();
-    }
-
-    /// <summary>
-    /// 모든 마커의 역스케일을 현재 줌 레벨에 맞게 업데이트합니다.
-    /// </summary>
-    private void UpdateMarkerScales()
-    {
-        var inverseScale = 1.0 / _zoomLevel;
-
-        // 컴포넌트를 통해 퀘스트 마커 스케일 업데이트
-        if (_questMarkerManager != null)
-        {
-            _questMarkerManager.SetZoomLevel(_zoomLevel);
-            _questMarkerManager.UpdateMarkerScales();
-        }
-
-        // 컴포넌트를 통해 탈출구 마커 스케일 업데이트
-        if (_extractMarkerManager != null)
-        {
-            _extractMarkerManager.SetZoomLevel(_zoomLevel);
-            _extractMarkerManager.UpdateMarkerScales();
-        }
-
-        // 커스텀 마커 디스플레이 업데이트
-        UpdateCustomMarkersParam();
-        _customMarkerManager?.UpdateMarkerDisplay();
-
-        // 컴포넌트를 통해 Map Markers 스케일 업데이트
-        if (_mapMarkersManager != null)
-        {
-            _mapMarkersManager.SetZoomLevel(_zoomLevel);
-            _mapMarkersManager.UpdateMarkerScales();
-        }
-
-        // 플레이어 마커 업데이트
-        UpdatePlayerMarkerScale(inverseScale);
-
-        // Trail 두께 업데이트 (줌 레벨에 상관없이 일정한 두께 유지)
-        UpdateTrailStrokeThickness(inverseScale);
-    }
-
-    /// <summary>
-    /// Trail의 두께를 줌 레벨에 맞게 업데이트합니다 (고정 크기 유지).
-    /// </summary>
-    private void UpdateTrailStrokeThickness(double inverseScale)
-    {
-        // 기본 두께 2에 역스케일 적용
-        TrailPath.StrokeThickness = 2.0 * inverseScale;
-    }
-
-    /// <summary>
-    /// 플레이어 마커의 역스케일을 업데이트합니다.
-    /// </summary>
-    private void UpdatePlayerMarkerScale(double inverseScale)
-    {
-        if (MarkerScale != null)
-        {
-            MarkerScale.ScaleX = inverseScale;
-            MarkerScale.ScaleY = inverseScale;
-        }
-        if (DotScale != null)
-        {
-            DotScale.ScaleX = inverseScale;
-            DotScale.ScaleY = inverseScale;
-        }
-    }
-
-    /// <summary>
-    /// SVG 파일을 전처리(CSS 클래스→인라인 스타일 변환) 후 BitmapSource로 변환합니다.
-    /// </summary>
-    private BitmapSource? ConvertSvgToPngWithPreprocessing(string svgPath, int width, int height)
-    {
-        return ConvertSvgToPngWithPreprocessing(svgPath, width, height, null, null);
-    }
-
-    /// <summary>
-    /// SVG 파일을 전처리(CSS 클래스→인라인 스타일 변환 + 층 필터링) 후 BitmapSource로 변환합니다.
-    /// </summary>
-    /// <param name="svgPath">SVG 파일 경로</param>
-    /// <param name="width">출력 너비</param>
-    /// <param name="height">출력 높이</param>
-    /// <param name="visibleFloors">표시할 층 ID 목록. null이면 모든 층 표시.</param>
-    /// <param name="allFloors">맵에 정의된 모든 층 ID 목록.</param>
-    /// <param name="backgroundFloorId">배경으로 반투명하게 표시할 층의 ID (예: "main"). null이면 배경 층 없음.</param>
-    /// <param name="backgroundOpacity">배경 층의 투명도 (0.0 ~ 1.0). 기본값 0.3</param>
-    private BitmapSource? ConvertSvgToPngWithPreprocessing(
-        string svgPath,
-        int width,
-        int height,
-        IEnumerable<string>? visibleFloors,
-        IEnumerable<string>? allFloors,
-        string? backgroundFloorId = null,
-        double backgroundOpacity = 0.3)
-    {
-        try
-        {
-            // 1. SVG 전처리: CSS 클래스를 인라인 스타일로 변환 + 층 필터링
-            var preprocessor = new SvgStylePreprocessor();
-            var processedSvg = preprocessor.ProcessSvgFile(svgPath, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity);
-
-            // 2. 전처리된 SVG를 렌더링
-            return RenderSvgContent(processedSvg, width, height);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// SVG 콘텐츠 문자열을 BitmapSource로 렌더링합니다.
-    /// width, height로 확대 렌더링하여 고해상도 출력을 지원합니다.
-    /// </summary>
-    private BitmapSource? RenderSvgContent(string svgContent, int width, int height)
-    {
-        try
-        {
-            var settings = new WpfDrawingSettings
-            {
-                IncludeRuntime = true,
-                TextAsGeometry = false,
-                OptimizePath = true,
-                CultureInfo = CultureInfo.InvariantCulture,
-                EnsureViewboxSize = false,
-                EnsureViewboxPosition = false,
-                IgnoreRootViewbox = false
-            };
-
-            // 문자열에서 SVG 읽기
-            DrawingGroup? drawing;
-            using (var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(svgContent)))
-            {
-                var converter = new FileSvgReader(settings);
-                drawing = converter.Read(stream);
-            }
-
-            if (drawing == null)
-                return null;
-
-            var bounds = drawing.Bounds;
-
-            // 스케일 계산: 지정된 width/height로 확대
-            var scaleX = width / bounds.Width;
-            var scaleY = height / bounds.Height;
-
-            // DrawingVisual로 렌더링 - 스케일 적용하여 확대 렌더링
-            var drawingVisual = new DrawingVisual();
-            using (var drawingContext = drawingVisual.RenderOpen())
-            {
-                // 원점 이동 후 스케일 적용
-                var transformGroup = new TransformGroup();
-                transformGroup.Children.Add(new TranslateTransform(-bounds.X, -bounds.Y));
-                transformGroup.Children.Add(new ScaleTransform(scaleX, scaleY));
-
-                drawingContext.PushTransform(transformGroup);
-                drawingContext.DrawDrawing(drawing);
-                drawingContext.Pop();
-            }
-
-            // RenderTargetBitmap으로 변환 - 지정된 크기로 렌더링
-            var renderTarget = new RenderTargetBitmap(
-                width,
-                height,
-                96,
-                96,
-                PixelFormats.Pbgra32);
-
-            renderTarget.Render(drawingVisual);
-            renderTarget.Freeze();
-
-            return renderTarget;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    #endregion
-
-    #region 퀘스트 목표 마커
-
-    private async Task LoadQuestObjectivesAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            ct.ThrowIfCancellationRequested();
-            TxtStatus.Text = "Loading quest objectives...";
-
-            await _objectiveService.EnsureLoadedAsync(msg =>
-            {
-                Dispatcher.Invoke(() => TxtStatus.Text = msg);
-            }).WaitAsync(ct);
-
-            var count = _objectiveService.AllObjectives.Count;
-            TxtStatus.Text = $"Loaded {count} quest objectives";
-
-            if (!string.IsNullOrEmpty(_currentMapKey))
-            {
-                await RefreshQuestMarkers(ct);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // 중단됨
-        }
-        catch (Exception ex)
-        {
-            TxtStatus.Text = $"Error loading objectives: {ex.Message}";
-        }
-    }
-
-    private async void OnQuestProgressChanged(object? sender, EventArgs e)
-    {
-        try
-        {
-            var ct = GetNewCancellationToken();
-            await RefreshQuestMarkers(ct);
-        }
-        catch (OperationCanceledException) { }
-    }
-
-    private async void OnObjectiveProgressChanged(object? sender, ObjectiveProgressChangedEventArgs e)
-    {
-        try
-        {
-            var ct = GetNewCancellationToken();
-            await RefreshQuestMarkers(ct);
-        }
-        catch (OperationCanceledException) { }
-    }
-
-    private void ChkShowQuestMarkers_Changed(object sender, RoutedEventArgs e)
-    {
-        _showQuestMarkers = ChkShowQuestMarkers?.IsChecked ?? true;
-        if (QuestMarkersContainer != null)
-        {
-            QuestMarkersContainer.Visibility = _showQuestMarkers ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        // DB에 저장
-        SettingsService.Instance.MapShowQuests = _showQuestMarkers;
-
-        // 오버레이 맵도 새로고침
-        OverlayMiniMapService.Instance.RefreshMap();
-    }
-
-    /// <summary>
-    /// 위치가 현재 맵에 해당하는지 확인합니다.
-    /// </summary>
-    private bool IsLocationOnCurrentMap(QuestObjectiveLocation location, LegacyMapConfig config)
-    {
-        if (string.IsNullOrEmpty(_currentMapKey)) return false;
-
-        // 검색할 맵 이름 목록 구성
-        var mapNamesToMatch = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            _currentMapKey
-        };
-
-        if (config.Aliases != null)
-        {
-            foreach (var alias in config.Aliases)
-                mapNamesToMatch.Add(alias);
-        }
-
-        if (!string.IsNullOrEmpty(config.DisplayName))
-            mapNamesToMatch.Add(config.DisplayName);
-
-        // 위치의 맵 이름이 현재 맵과 일치하는지 확인
-        if (!string.IsNullOrEmpty(location.MapName) && mapNamesToMatch.Contains(location.MapName))
-            return true;
-
-        if (!string.IsNullOrEmpty(location.MapNormalizedName) && mapNamesToMatch.Contains(location.MapNormalizedName))
-            return true;
-
-        return false;
-    }
-
-    private async Task RefreshQuestMarkers(CancellationToken ct = default)
-    {
-        // 컴포넌트를 사용하여 마커 새로고침
-        if (_questMarkerManager == null) return;
-
-        // 컴포넌트 상태 동기화 (맵/층/줌 정보 필수!)
-        _questMarkerManager.SetCurrentMap(_currentMapKey);
-        _questMarkerManager.SetCurrentFloor(_currentFloorId);
-        _questMarkerManager.SetZoomLevel(_zoomLevel);
-        _questMarkerManager.SetShowQuestMarkers(_showQuestMarkers);
-        _questMarkerManager.SetQuestMarkerStyle(_questMarkerStyle);
-        _questMarkerManager.SetQuestNameTextSize(_questNameTextSize);
-        _questMarkerManager.SetHideCompletedObjectives(_hideCompletedObjectives);
-
-        // 마커 새로고침
-        await _questMarkerManager.RefreshMarkersAsync(ct);
-
-        // 컴포넌트에서 계산된 현재 맵 목표를 동기화 (Drawer 표시용)
-        _currentMapObjectives = _questMarkerManager.GetCurrentMapObjectives();
-    }
-
-    /// <summary>
-    /// Area 마커용 태그 클래스
-    /// </summary>
-    private class AreaMarkerTag
-    {
-        public TaskObjectiveWithLocation? Objective { get; set; }
-        public bool IsArea { get; set; }
-    }
-
-    /// <summary>
-    /// 마커의 Tag에서 TaskObjectiveWithLocation을 추출합니다.
-    /// </summary>
-    private static TaskObjectiveWithLocation? GetObjectiveFromTag(object? tag)
-    {
-        return tag switch
-        {
-            TaskObjectiveWithLocation obj => obj,
-            AreaMarkerTag areaTag => areaTag.Objective,
-            _ => null
-        };
-    }
-
-    /// <summary>
-    /// 마커의 실제 화면 위치를 반환합니다.
-    /// Area 마커의 경우 내부 centerCanvas의 위치를 반환합니다.
-    /// </summary>
-    private static (double X, double Y) GetMarkerPosition(Canvas markerCanvas)
-    {
-        // Area 마커인 경우 centerCanvas의 위치 반환
-        if (markerCanvas.Tag is AreaMarkerTag)
-        {
-            foreach (var child in markerCanvas.Children)
-            {
-                if (child is Canvas centerCanvas && centerCanvas.Tag is TaskObjectiveWithLocation)
-                {
-                    return (Canvas.GetLeft(centerCanvas), Canvas.GetTop(centerCanvas));
-                }
-            }
-        }
-
-        // 일반 마커의 경우 canvas 자체의 위치 반환
-        return (Canvas.GetLeft(markerCanvas), Canvas.GetTop(markerCanvas));
-    }
-
-    /// <summary>
-    /// 마커의 텍스트를 숨깁니다.
-    /// Area 마커의 경우 내부 centerCanvas의 텍스트도 처리합니다.
-    /// </summary>
-    private static void HideMarkerText(Canvas markerCanvas)
-    {
-        SetMarkerTextVisibility(markerCanvas, Visibility.Collapsed);
-    }
-
-    /// <summary>
-    /// 마커의 텍스트를 표시합니다.
-    /// Area 마커의 경우 내부 centerCanvas의 텍스트도 처리합니다.
-    /// </summary>
-    private static void ShowMarkerText(Canvas markerCanvas)
-    {
-        SetMarkerTextVisibility(markerCanvas, Visibility.Visible);
-    }
-
-    /// <summary>
-    /// 마커의 텍스트 가시성을 설정합니다.
-    /// Area 마커의 경우 내부 centerCanvas의 텍스트도 처리합니다.
-    /// </summary>
-    private static void SetMarkerTextVisibility(Canvas markerCanvas, Visibility visibility)
-    {
-        // Area 마커인 경우 centerCanvas 내부 검사
-        Canvas targetCanvas = markerCanvas;
-        if (markerCanvas.Tag is AreaMarkerTag)
-        {
-            foreach (var child in markerCanvas.Children)
-            {
-                if (child is Canvas centerCanvas && centerCanvas.Tag is TaskObjectiveWithLocation)
-                {
-                    targetCanvas = centerCanvas;
-                    break;
-                }
-            }
-        }
-
-        foreach (var child in targetCanvas.Children)
-        {
-            // 새 방식: StackPanel (퀘스트명 + 층 배지)
-            if (child is StackPanel stackPanel)
-            {
-                stackPanel.Visibility = visibility;
-            }
-            // 이전 방식 호환: 직접 Border
-            else if (child is Border border && border.Tag is TaskObjectiveWithLocation)
-            {
-                border.Visibility = visibility;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Objective의 층으로 맵 층을 변경합니다.
-    /// </summary>
-    private void SelectFloorForObjective(TaskObjectiveWithLocation objective)
-    {
-        // 다층 맵이 아니면 무시
-        if (CmbFloorSelect.Visibility != Visibility.Visible)
-            return;
-
-        // Objective의 첫 번째 위치에서 FloorId 가져오기
-        var location = objective.Locations.FirstOrDefault(l =>
-            !string.IsNullOrEmpty(_currentMapKey) &&
-            (l.MapName.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) ||
-             l.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true));
-
-        if (location == null)
-            location = objective.Locations.FirstOrDefault();
-
-        if (location == null || string.IsNullOrEmpty(location.FloorId))
-            return;
-
-        // 현재 층과 같으면 무시
-        if (string.Equals(_currentFloorId, location.FloorId, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        // 층 콤보박스에서 해당 층 찾아서 선택
-        for (int i = 0; i < CmbFloorSelect.Items.Count; i++)
-        {
-            if (CmbFloorSelect.Items[i] is ComboBoxItem item &&
-                string.Equals(item.Tag as string, location.FloorId, StringComparison.OrdinalIgnoreCase))
-            {
-                CmbFloorSelect.SelectedIndex = i;
-                break;
-            }
-        }
-    }
-
-    #endregion
-
-    #region 퀘스트 Drawer
-
-    private void ShowQuestDrawer(TaskObjectiveWithLocation? selectedObjective = null)
-    {
-        // 선택 상태 저장 - ObjectiveId로 매칭하여 현재 _currentMapObjectives에서 찾기
-        if (selectedObjective != null)
-        {
-            var matchingObjective = _currentMapObjectives.FirstOrDefault(o => o.ObjectiveId == selectedObjective.ObjectiveId);
-            _selectedObjective = matchingObjective ?? selectedObjective;
-        }
-        else
-        {
-            _selectedObjective = null;
-        }
-
-        // 맵의 마커 하이라이트 업데이트 (컴포넌트에 위임)
-        _questMarkerManager?.SetSelectedObjective(_selectedObjective);
-
-        // Drawer 열기 (리사이즈 가능)
-        QuestDrawerColumn.Width = new GridLength(320);
-        QuestDrawerColumn.MinWidth = 250;
-        QuestDrawerPanel.Visibility = Visibility.Visible;
-        DrawerSplitter.Visibility = Visibility.Visible;
-
-        // RefreshQuestDrawer()의 로직을 사용하여 다중 위치 지원
-        RefreshQuestDrawer();
-
-        // 선택된 목표가 있으면 해당 위치로 맵 이동
-        if (_selectedObjective != null)
-        {
-            CenterOnObjective(_selectedObjective);
-        }
-    }
-
-    private void BtnCloseQuestDrawer_Click(object sender, RoutedEventArgs e)
-    {
-        CloseQuestDrawer();
-    }
-
-    private void BtnToggleDrawer_Click(object sender, RoutedEventArgs e)
-    {
-        if (QuestDrawerPanel.Visibility == Visibility.Visible)
-        {
-            CloseQuestDrawer();
-        }
-        else
-        {
-            OpenQuestDrawer();
-        }
-    }
-
-    private void OpenQuestDrawer()
-    {
-        QuestDrawerColumn.Width = new GridLength(320);
-        QuestDrawerColumn.MinWidth = 250;
-        QuestDrawerPanel.Visibility = Visibility.Visible;
-        DrawerSplitter.Visibility = Visibility.Visible;
-        TxtDrawerToggleIcon.Text = "<<";
-
-        // Drawer 내용 새로고침
-        RefreshQuestDrawer();
-    }
-
-    private void CloseQuestDrawer()
-    {
-        // 선택 상태 초기화
-        _selectedObjective = null;
-        _questMarkerManager?.SetSelectedObjective(null);
-
-        QuestDrawerColumn.Width = new GridLength(0);
-        QuestDrawerColumn.MinWidth = 0;
-        QuestDrawerPanel.Visibility = Visibility.Collapsed;
-        DrawerSplitter.Visibility = Visibility.Collapsed;
-        TxtDrawerToggleIcon.Text = ">>";
-    }
-
-    private void QuestObjectiveItem_Click(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is FrameworkElement element &&
-            element.DataContext is QuestObjectiveViewModel vm)
-        {
-            // 선택 상태 업데이트 - _currentMapObjectives에서 매칭되는 객체 찾기
-            _selectedObjective = _currentMapObjectives.FirstOrDefault(o => o.ObjectiveId == vm.Objective.ObjectiveId) ?? vm.Objective;
-
-            // 해당 Objective의 층으로 변경
-            SelectFloorForObjective(_selectedObjective);
-
-            // 마커 하이라이트 업데이트 (컴포넌트에 위임)
-            _questMarkerManager?.SetSelectedObjective(_selectedObjective);
-
-            // 사이드바 리스트 업데이트 (선택 상태 반영) - RefreshQuestDrawer()를 호출하여 그룹화 상태 유지
-            RefreshQuestDrawer();
-
-            // 해당 마커 위치로 맵 이동
-            CenterOnObjective(_selectedObjective);
-        }
-    }
-
-    private void WikiLinkButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button button && button.Tag is string wikiLink && !string.IsNullOrEmpty(wikiLink))
-        {
-            try
-            {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = wikiLink,
-                    UseShellExecute = true
-                });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to open wiki link: {ex.Message}");
-            }
-        }
-    }
-
-    private void CenterOnObjective(TaskObjectiveWithLocation objective)
-    {
-        if (string.IsNullOrEmpty(_currentMapKey)) return;
-
-        var config = _trackerService?.GetMapConfig(_currentMapKey);
-        if (config == null) return;
-
-        // 현재 맵과 층에 맞는 위치 찾기 (MapNormalizedName도 확인)
-        var location = objective.Locations.FirstOrDefault(l =>
-            (l.MapName.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) ||
-             l.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true) &&
-            (string.IsNullOrEmpty(_currentFloorId) || string.IsNullOrEmpty(l.FloorId) ||
-             string.Equals(_currentFloorId, l.FloorId, StringComparison.OrdinalIgnoreCase)));
-
-        // 현재 층에서 못 찾으면 같은 맵의 아무 위치나 찾기
-        if (location == null)
-        {
-            location = objective.Locations.FirstOrDefault(l =>
-                l.MapName.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) ||
-                l.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true);
-        }
-
-        if (location == null) return;
-
-        // TarkovDBEditor 방식: config.GameToScreenForPlayer 사용
-        // QuestObjectiveLocation: X = game X, Y = game Z (수평면), Z = game Y (높이)
-        var (screenX, screenY) = config.GameToScreenForPlayer(location.X, location.Y);
-
-        // 맵 중심으로 이동 (현재 줌 레벨 고려)
-        var viewerWidth = MapViewerGrid.ActualWidth;
-        var viewerHeight = MapViewerGrid.ActualHeight;
-
-        // 화면 중심을 마커 위치로 이동
-        MapTranslate.X = viewerWidth / 2 - screenX * _zoomLevel;
-        MapTranslate.Y = viewerHeight / 2 - screenY * _zoomLevel;
-    }
-
-    #endregion
-
-    #region 탈출구 마커
-
-    private async Task LoadExtractsAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            ct.ThrowIfCancellationRequested();
-            TxtStatus.Text = "Loading extract data...";
-
-            await _extractService.EnsureLoadedAsync(msg =>
-            {
-                Dispatcher.Invoke(() => TxtStatus.Text = msg);
-            }).WaitAsync(ct);
-
-            var count = _extractService.AllExtracts.Count;
-            TxtStatus.Text = $"Loaded {count} extracts";
-
-            if (!string.IsNullOrEmpty(_currentMapKey))
-            {
-                await RefreshExtractMarkers(ct);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // 중단됨
-        }
-        catch (Exception ex)
-        {
-            TxtStatus.Text = $"Error loading extracts: {ex.Message}";
-        }
-    }
-
-    private async Task RefreshExtractMarkers(CancellationToken ct = default)
-    {
-        // 컴포넌트를 사용하여 마커 새로고침
-        if (_extractMarkerManager == null) return;
-
-        // 컴포넌트 상태 동기화 (맵/층/줌 정보 필수!)
-        _extractMarkerManager.SetCurrentMap(_currentMapKey);
-        _extractMarkerManager.SetCurrentFloor(_currentFloorId);
-        _extractMarkerManager.SetZoomLevel(_zoomLevel);
-
-        _extractMarkerManager.SetShowExtractMarkers(_showExtractMarkers);
-        _extractMarkerManager.SetShowPmcExtracts(_showPmcExtracts);
-        _extractMarkerManager.SetShowScavExtracts(_showScavExtracts);
-        _extractMarkerManager.SetShowTransitExtracts(_showTransitExtracts);
-        _extractMarkerManager.SetExtractNameTextSize(_extractNameTextSize);
-
-        // 마커 새로고침
-        await _extractMarkerManager.RefreshMarkersAsync(ct);
-    }
-
-    #endregion
-
-    #region Map Markers (PMC Spawn, Sniper Scav, Rogue, Cultist, Boss, Lever)
-
-    private async Task LoadMapMarkersAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            ct.ThrowIfCancellationRequested();
-            TxtStatus.Text = "Loading map markers...";
-
-            await MapMarkerDbService.Instance.LoadMarkersAsync().WaitAsync(ct);
-
-            var count = MapMarkerDbService.Instance.MarkerCount;
-            TxtStatus.Text = $"Loaded {count} map markers";
-
-            if (!string.IsNullOrEmpty(_currentMapKey))
-            {
-                await RefreshMapMarkers(ct);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // 중단됨
-        }
-        catch (Exception ex)
-        {
-            TxtStatus.Text = $"Error loading map markers: {ex.Message}";
-        }
-    }
-
-    #endregion
-
-    #region Floor Helpers
-
-    /// <summary>
-    /// 마커가 현재 선택된 층에 있는지 확인합니다.
-    /// </summary>
-    /// <param name="markerFloorId">마커의 FloorId</param>
-    /// <returns>현재 층에 있으면 true, 다른 층이면 false</returns>
-    private bool IsMarkerOnCurrentFloor(string? markerFloorId)
-    {
-        // 단일 층 맵이거나 층 선택이 없는 경우: 모든 마커를 현재 층으로 간주
-        if (string.IsNullOrEmpty(_currentFloorId))
-            return true;
-
-        // 마커에 층 정보가 없는 경우: 기본 층(main)으로 간주
-        if (string.IsNullOrEmpty(markerFloorId))
-        {
-            // 현재 선택된 층이 main이면 표시, 아니면 다른 층으로 처리
-            return string.Equals(_currentFloorId, "main", StringComparison.OrdinalIgnoreCase);
-        }
-
-        // 층 ID 비교 (대소문자 무시)
-        return string.Equals(_currentFloorId, markerFloorId, StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// 층 정보를 가져옵니다 (화살표 방향, 짧은 표시 문자, 색상).
-    /// </summary>
-    /// <param name="markerFloorId">마커의 FloorId</param>
-    /// <returns>(화살표, 층 표시, 색상) - 현재 층이면 null 반환</returns>
-    private (string arrow, string floorText, Color color)? GetFloorIndicator(string? markerFloorId)
-    {
-        if (string.IsNullOrEmpty(_currentMapKey) || string.IsNullOrEmpty(_currentFloorId))
-            return null;
-
-        var config = _trackerService?.GetMapConfig(_currentMapKey);
-        if (config?.Floors == null || config.Floors.Count == 0)
-            return null;
-
-        // 현재 층의 Order 가져오기
-        var currentFloor = config.Floors.FirstOrDefault(f =>
-            string.Equals(f.LayerId, _currentFloorId, StringComparison.OrdinalIgnoreCase));
-        var currentOrder = currentFloor?.Order ?? 0;
-
-        // 마커 층의 Order 가져오기 (FloorId가 없으면 main으로 간주)
-        var effectiveFloorId = string.IsNullOrEmpty(markerFloorId) ? "main" : markerFloorId;
-        var markerFloor = config.Floors.FirstOrDefault(f =>
-            string.Equals(f.LayerId, effectiveFloorId, StringComparison.OrdinalIgnoreCase));
-        var markerOrder = markerFloor?.Order ?? 0;
-
-        // 같은 층이면 표시 안함
-        if (currentOrder == markerOrder)
-            return null;
-
-        // 화살표 방향 결정 (마커가 현재 층보다 위에 있으면 ↑, 아래면 ↓)
-        var isAbove = markerOrder > currentOrder;
-        var arrow = isAbove ? "↑" : "↓";
-
-        // 색상 결정 (위: 하늘색, 아래: 주황색)
-        var color = isAbove
-            ? Color.FromRgb(100, 181, 246)  // Light Blue
-            : Color.FromRgb(255, 167, 38);  // Orange
-
-        // 층 표시 문자 결정 (B: 지하, G: 기본층, 2/3: 2층/3층)
-        string floorText;
-        if (markerOrder < 0)
-        {
-            floorText = "B";
-        }
-        else if (markerOrder == 0)
-        {
-            floorText = "G";
-        }
-        else
-        {
-            floorText = (markerOrder + 1).ToString(); // Order 1 = 2층
-        }
-
-        return (arrow, floorText, color);
-    }
-
-    private List<List<MapExtract>> GroupExtractsByPosition(List<MapExtract> extracts)
-    {
-        var groups = new List<List<MapExtract>>();
-        var used = new HashSet<string>();
-
-        foreach (var extract in extracts)
-        {
-            if (used.Contains(extract.Id)) continue;
-
-            var group = new List<MapExtract> { extract };
-            used.Add(extract.Id);
-
-            // 같은 위치(근접)의 다른 탈출구 찾기
-            // 단, PMC+Scav 공용 탈출구만 그룹화 (같은 이름 또는 다른 진영이면서 매우 가까운 경우)
-            foreach (var other in extracts)
-            {
-                if (used.Contains(other.Id)) continue;
-
-                // 거리 계산
-                var distance = Math.Sqrt(
-                    Math.Pow(extract.X - other.X, 2) +
-                    Math.Pow(extract.Z - other.Z, 2));
-
-                // 그룹화 조건:
-                // 1. 같은 이름이고 10유닛 이내 (PMC/Scav 공용 탈출구)
-                // 2. 다른 진영이고 10유닛 이내 (PMC+Scav 겹치는 경우)
-                var sameName = string.Equals(extract.Name, other.Name, StringComparison.OrdinalIgnoreCase);
-                var differentFaction = extract.Faction != other.Faction;
-
-                if (distance < 10 && (sameName || differentFaction))
-                {
-                    group.Add(other);
-                    used.Add(other.Id);
-                }
-            }
-
-            groups.Add(group);
-        }
-
-        return groups;
-    }
-
-    private (MapExtract extract, ExtractFaction faction) DetermineExtractDisplay(List<MapExtract> group)
-    {
-        if (group.Count == 1)
-        {
-            // Shared 탈출구는 PMC로 처리
-            var faction = group[0].Faction == ExtractFaction.Shared ? ExtractFaction.Pmc : group[0].Faction;
-            return (group[0], faction);
-        }
-
-        // PMC와 Scav 둘 다 있으면 PMC로 표시 (Shared도 PMC로 처리)
-        var hasPmc = group.Any(e => e.Faction == ExtractFaction.Pmc || e.Faction == ExtractFaction.Shared);
-        var hasScav = group.Any(e => e.Faction == ExtractFaction.Scav);
-
-        if (hasPmc && hasScav)
-        {
-            // PMC 탈출구 정보를 기준으로, PMC로 표시
-            var representative = group.FirstOrDefault(e => e.Faction == ExtractFaction.Pmc)
-                ?? group.FirstOrDefault(e => e.Faction == ExtractFaction.Shared)
-                ?? group[0];
-            return (representative, ExtractFaction.Pmc);
-        }
-
-        // Shared는 PMC로 처리
-        var resultFaction = group[0].Faction == ExtractFaction.Shared ? ExtractFaction.Pmc : group[0].Faction;
-        return (group[0], resultFaction);
-    }
-
-    private bool ShouldShowExtract(ExtractFaction faction)
-    {
-        return faction switch
-        {
-            ExtractFaction.Pmc => _showPmcExtracts,
-            ExtractFaction.Scav => _showScavExtracts,
-            ExtractFaction.Shared => _showPmcExtracts, // Shared도 PMC 필터 사용
-            ExtractFaction.Transit => _showTransitExtracts,
-            _ => true
-        };
-    }
-
-    #region Calibration Mode
-
-    private async void SaveCalibrationAndRefresh()
-    {
-        if (_trackerService == null) return;
-
-        var config = _trackerService.GetMapConfig(_currentMapKey ?? "");
-        if (config?.CalibrationPoints != null && config.CalibrationPoints.Count >= 3)
-        {
-            // 변환 행렬 재계산
-            config.CalibratedTransform = _calibrationService.CalculateAffineTransform(config.CalibrationPoints);
-
-            if (config.CalibratedTransform != null)
-            {
-                TxtStatus.Text = $"Calibration saved! ({config.CalibrationPoints.Count} points)";
-
-                // 설정 저장
-                _trackerService.SaveSettings();
-
-                // 마커 새로고침
-                await RefreshExtractMarkers();
-                await RefreshQuestMarkers();
-            }
-            else
-            {
-                TxtStatus.Text = "Calibration calculation failed.";
-            }
-        }
-        else
-        {
-            _trackerService.SaveSettings();
-        }
-    }
-
-    private void SetupExtractMarkerForCalibration(FrameworkElement marker, MapExtract extract)
-    {
-        marker.Tag = extract;
-        marker.Cursor = Cursors.SizeAll;
-        marker.MouseLeftButtonDown += ExtractMarker_CalibrationMouseDown;
-        marker.MouseMove += ExtractMarker_CalibrationMouseMove;
-        marker.MouseLeftButtonUp += ExtractMarker_CalibrationMouseUp;
-    }
-
-    private void ExtractMarker_CalibrationMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (!_isCalibrationMode) return;
-        if (sender is not FrameworkElement marker) return;
-
-        _draggingExtractMarker = marker;
-        _draggingExtract = marker.Tag as MapExtract;
-        _extractDragStartPoint = e.GetPosition(ExtractMarkersContainer);
-        _extractMarkerOriginalLeft = Canvas.GetLeft(marker);
-        _extractMarkerOriginalTop = Canvas.GetTop(marker);
-
-        marker.CaptureMouse();
-        e.Handled = true;
-    }
-
-    private void ExtractMarker_CalibrationMouseMove(object sender, MouseEventArgs e)
-    {
-        if (!_isCalibrationMode || _draggingExtractMarker == null) return;
-
-        var currentPoint = e.GetPosition(ExtractMarkersContainer);
-        var deltaX = currentPoint.X - _extractDragStartPoint.X;
-        var deltaY = currentPoint.Y - _extractDragStartPoint.Y;
-
-        Canvas.SetLeft(_draggingExtractMarker, _extractMarkerOriginalLeft + deltaX);
-        Canvas.SetTop(_draggingExtractMarker, _extractMarkerOriginalTop + deltaY);
-    }
-
-    private void ExtractMarker_CalibrationMouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (!_isCalibrationMode || _draggingExtractMarker == null || _draggingExtract == null) return;
-
-        _draggingExtractMarker.ReleaseMouseCapture();
-
-        // 최종 위치 계산 (마커 중심 기준)
-        var finalLeft = Canvas.GetLeft(_draggingExtractMarker);
-        var finalTop = Canvas.GetTop(_draggingExtractMarker);
-
-        // 마커 크기의 절반을 더해 중심점 계산
-        var markerWidth = _draggingExtractMarker.ActualWidth > 0 ? _draggingExtractMarker.ActualWidth : 20;
-        var markerHeight = _draggingExtractMarker.ActualHeight > 0 ? _draggingExtractMarker.ActualHeight : 20;
-        var centerX = finalLeft + markerWidth / 2;
-        var centerY = finalTop + markerHeight / 2;
-
-        // 보정 포인트 추가
-        var config = _trackerService?.GetMapConfig(_currentMapKey ?? "");
-        if (config != null)
-        {
-            var calibrationPoint = new CalibrationPoint
-            {
-                Id = _draggingExtract.Id,
-                Name = _draggingExtract.Name,
-                GameX = _draggingExtract.X,
-                GameZ = _draggingExtract.Z,
-                ScreenX = centerX,
-                ScreenY = centerY
-            };
-
-            var hasEnough = _calibrationService.AddCalibrationPoint(config, calibrationPoint);
-            var pointCount = config.CalibrationPoints?.Count ?? 0;
-
-            TxtStatus.Text = $"Calibration point set: {_draggingExtract.Name} ({pointCount} points)";
-            if (pointCount >= 3)
-            {
-                TxtStatus.Text += " - Ready to apply!";
-            }
-            else
-            {
-                TxtStatus.Text += $" - Need {3 - pointCount} more points";
-            }
-        }
-
-        _draggingExtractMarker = null;
-        _draggingExtract = null;
-        e.Handled = true;
-    }
-
-    #endregion
-
-    private async void ChkShowExtractMarkers_Changed(object sender, RoutedEventArgs e)
-    {
-        _showExtractMarkers = ChkShowExtractMarkers?.IsChecked ?? true;
-        if (ExtractMarkersContainer != null)
-        {
-            ExtractMarkersContainer.Visibility = _showExtractMarkers ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        // DB에 저장
-        SettingsService.Instance.MapShowExtracts = _showExtractMarkers;
-
-        // 오버레이 맵도 새로고침
-        OverlayMiniMapService.Instance.RefreshMap();
-    }
-
-    private async void ChkExtractFilter_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!IsLoaded) return;
-
-        try
-        {
-            var ct = GetNewCancellationToken();
-            _showPmcExtracts = ChkShowPmcExtracts?.IsChecked ?? true;
-            _showScavExtracts = ChkShowScavExtracts?.IsChecked ?? true;
-            _showTransitExtracts = ChkShowTransitExtracts?.IsChecked ?? true;
-
-            // DB에 저장
-            var settingsService = SettingsService.Instance;
-            settingsService.MapShowPmcExtracts = _showPmcExtracts;
-            settingsService.MapShowScavExtracts = _showScavExtracts;
-            settingsService.MapShowTransits = _showTransitExtracts;
-
-            // 마커 새로고침
-            await RefreshExtractMarkers(ct);
-
-            // 오버레이 맵도 새로고침
-            OverlayMiniMapService.Instance.RefreshMap();
-        }
-        catch (OperationCanceledException) { }
-    }
-
-    private async void SliderExtractTextSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (TxtExtractTextSize != null)
-        {
-            _extractNameTextSize = e.NewValue;
-            TxtExtractTextSize.Text = e.NewValue.ToString("F0");
-
-            // DB에 저장
-            SettingsService.Instance.MapExtractNameSize = _extractNameTextSize;
-
-            // 마커 새로고침
-            if (_extractService.IsLoaded)
-            {
-                try
-                {
-                    var ct = GetNewCancellationToken();
-                    await RefreshExtractMarkers(ct);
-                }
-                catch (OperationCanceledException) { }
-            }
-        }
-    }
-
-    private async void MarkerColor_Click(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is Border border && border.Tag is string objectiveType)
-        {
-            // Windows 색상 선택 대화상자 열기
-            var colorDialog = new System.Windows.Forms.ColorDialog();
-
-            // 현재 색상 설정
-            if (border.Background is SolidColorBrush currentBrush)
-            {
-                var c = currentBrush.Color;
-                colorDialog.Color = System.Drawing.Color.FromArgb(c.R, c.G, c.B);
-            }
-
-            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            {
-                var selectedColor = colorDialog.Color;
-                var hexColor = $"#{selectedColor.R:X2}{selectedColor.G:X2}{selectedColor.B:X2}";
-
-                // UI 업데이트
-                border.Background = new SolidColorBrush(Color.FromRgb(selectedColor.R, selectedColor.G, selectedColor.B));
-
-                // 설정 저장
-                if (_trackerService != null)
-                {
-                    _trackerService.Settings.SetMarkerColor(objectiveType, hexColor);
-                    _trackerService.SaveSettings();
-
-                    // 마커 새로고침
-                    try
-                    {
-                        var ct = GetNewCancellationToken();
-                        await RefreshQuestMarkers(ct);
-                    }
-                    catch (OperationCanceledException) { }
-                }
-            }
-        }
-    }
-
-    private async void BtnResetColors_Click(object sender, RoutedEventArgs e)
-    {
-        // 기본 색상으로 복원
-        var defaultColors = new Dictionary<string, string>
-        {
-            { "visit", "#4CAF50" },
-            { "mark", "#FF9800" },
-            { "plantItem", "#9C27B0" },
-            { "extract", "#2196F3" },
-            { "findItem", "#FFEB3B" }
-        };
-
-        if (_trackerService != null)
-        {
-            _trackerService.Settings.MarkerColors = defaultColors;
-            _trackerService.SaveSettings();
-        }
-
-        // UI 업데이트
-        UpdateMarkerColorUI();
-
-        // 마커 새로고침
-        try
-        {
-            var ct = GetNewCancellationToken();
-            await RefreshQuestMarkers(ct);
-        }
-        catch (OperationCanceledException) { }
-    }
-
-    private void UpdateMarkerColorUI()
-    {
-        if (_trackerService == null) return;
-        var colors = _trackerService.Settings.MarkerColors;
-
-        if (colors.TryGetValue("visit", out var visit))
-            ColorVisit.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(visit));
-        if (colors.TryGetValue("mark", out var mark))
-            ColorMark.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(mark));
-        if (colors.TryGetValue("plantItem", out var plant))
-            ColorPlant.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(plant));
-        if (colors.TryGetValue("extract", out var extract))
-            ColorExtract.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(extract));
-        if (colors.TryGetValue("findItem", out var find))
-            ColorFind.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(find));
-    }
-
-    #endregion
-
-    #region 퀘스트 목표 체크박스 이벤트
-
-    private async void ObjectiveCheckBox_Checked(object sender, RoutedEventArgs e)
-    {
-        if (sender is CheckBox checkBox && checkBox.Tag is TaskObjectiveWithLocation objective)
-        {
-            // ObjectiveId 기반 추적 + Quests 탭과 동기화를 위해 index도 함께 저장
-            ObjectiveProgressService.Instance.SetObjectiveCompletedById(
-                objective.ObjectiveId,
-                true,
-                objective.TaskNormalizedName,
-                objective.ObjectiveIndex);
-            // 마커 새로고침
-            try
-            {
-                var ct = GetNewCancellationToken();
-                await RefreshQuestMarkers(ct);
-            }
-            catch (OperationCanceledException) { }
-            RefreshQuestDrawer();
-        }
-    }
-
-    private async void ObjectiveCheckBox_Unchecked(object sender, RoutedEventArgs e)
-    {
-        if (sender is CheckBox checkBox && checkBox.Tag is TaskObjectiveWithLocation objective)
-        {
-            // ObjectiveId 기반 추적 + Quests 탭과 동기화를 위해 index도 함께 저장
-            ObjectiveProgressService.Instance.SetObjectiveCompletedById(
-                objective.ObjectiveId,
-                false,
-                objective.TaskNormalizedName,
-                objective.ObjectiveIndex);
-            // 마커 새로고침
-            try
-            {
-                var ct = GetNewCancellationToken();
-                await RefreshQuestMarkers(ct);
-            }
-            catch (OperationCanceledException) { }
-            RefreshQuestDrawer();
-        }
-    }
-
-    private async void ChkHideCompletedObjectives_Changed(object sender, RoutedEventArgs e)
-    {
-        _hideCompletedObjectives = ChkHideCompletedObjectives?.IsChecked ?? true;
-
-        // 설정 저장 (SettingsService를 통해 DB에 저장)
-        SettingsService.Instance.MapHideCompletedObjectives = _hideCompletedObjectives;
-
-        // 마커 새로고침
-        try
-        {
-            var ct = GetNewCancellationToken();
-            await RefreshQuestMarkers(ct);
-        }
-        catch (OperationCanceledException) { }
-
-        // Drawer 새로고침
-        if (QuestDrawerPanel.Visibility == Visibility.Visible)
-        {
-            RefreshQuestDrawer();
-        }
-
-        // 오버레이 맵도 새로고침
-        OverlayMiniMapService.Instance.RefreshMap();
-    }
-
-    private void RefreshQuestDrawer()
-    {
-        // UI 요소가 아직 초기화되지 않았으면 스킵
-        if (QuestObjectivesList == null) return;
-
-        // 현재 맵의 목표들과 다른 맵의 목표들을 구분하여 표시
-        var viewModels = new List<QuestObjectiveViewModel>();
-
-        // 현재 맵의 활성 퀘스트들에 대해 모든 위치 정보 수집 (다른 맵 목표 포함)
-        var processedQuestIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var allObjectivesForDrawer = new List<TaskObjectiveWithLocation>();
-
-        // 1. 모든 활성 퀘스트 가져오기
-        var activeTasks = _progressService.AllTasks
-            .Where(t => _progressService.GetStatus(t) == QuestStatus.Active)
-            .ToList();
-
-        foreach (var task in activeTasks)
-        {
-            var taskId = task.Ids?.FirstOrDefault();
-            if (string.IsNullOrEmpty(taskId)) continue;
-
-            if (!processedQuestIds.Contains(taskId))
-            {
-                processedQuestIds.Add(taskId);
-
-                // 이 퀘스트의 모든 목표 가져오기 (QuestId 기반)
-                var allTaskObjectives = _objectiveService.GetObjectivesForTaskById(taskId);
-
-                foreach (var taskObj in allTaskObjectives)
-                {
-                    // 목표 인덱스 및 완료 상태 설정
-                    taskObj.ObjectiveIndex = GetObjectiveIndex(task, taskObj.Description);
-                    taskObj.IsCompleted = ObjectiveProgressService.Instance.IsObjectiveCompletedById(taskObj.ObjectiveId);
-                    allObjectivesForDrawer.Add(taskObj);
-                }
-            }
-        }
-
-        // 중복 제거 후 정렬 (현재 맵 목표 먼저, 그다음 다른 맵 목표)
-        var uniqueObjectives = allObjectivesForDrawer
-            .GroupBy(o => o.ObjectiveId)
-            .Select(g => g.First())
-            .ToList();
-
-        // 현재 맵에 있는 목표 먼저, 그 다음 다른 맵 목표 (퀘스트명으로 정렬)
-        var sortedObjectives = uniqueObjectives
-            .OrderBy(obj =>
-            {
-                var isOnCurrentMap = obj.Locations.Any(loc =>
-                    loc.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true ||
-                    loc.MapName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true);
-                return isOnCurrentMap ? 0 : 1;
-            })
-            .ThenBy(obj => obj.TaskName)
-            .ToList();
-
-        foreach (var obj in sortedObjectives)
-        {
-            // 현재 맵에 해당하는 위치의 FloorId로 층 표시 정보 가져오기
-            var location = obj.Locations.FirstOrDefault(l =>
-                !string.IsNullOrEmpty(_currentMapKey) &&
-                (l.MapName.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) ||
-                 l.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true));
-            var floorIndicator = location != null ? GetFloorIndicator(location.FloorId) : null;
-
-            viewModels.Add(new QuestObjectiveViewModel(
-                obj, _loc, _progressService,
-                obj.ObjectiveId == _selectedObjective?.ObjectiveId,
-                _currentMapKey, _currentFloorId, floorIndicator));
-        }
-
-        // 맵별 진행률 업데이트 (필터 적용 전 전체 목표 기준)
-        UpdateMapProgress(viewModels);
-
-        // 필터 적용
-        var filteredViewModels = ApplyDrawerFilters(viewModels);
-
-        // 그룹화 적용
-        object? itemToScrollTo = null;
-
-        if (_drawerGroupByQuest)
-        {
-            var groupedItems = ApplyQuestGrouping(filteredViewModels);
-            QuestObjectivesList.ItemsSource = groupedItems;
-
-            // 선택된 목표 찾기
-            if (_selectedObjective != null)
-            {
-                itemToScrollTo = groupedItems.FirstOrDefault(item =>
-                    item is QuestObjectiveViewModel vm && vm.Objective.ObjectiveId == _selectedObjective.ObjectiveId);
-            }
-        }
-        else
-        {
-            QuestObjectivesList.ItemsSource = filteredViewModels;
-
-            // 선택된 목표 찾기
-            if (_selectedObjective != null)
-            {
-                itemToScrollTo = filteredViewModels.FirstOrDefault(vm =>
-                    vm.Objective.ObjectiveId == _selectedObjective.ObjectiveId);
-            }
-        }
-
-        // 선택된 항목으로 스크롤
-        if (itemToScrollTo != null)
-        {
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
-            {
-                ScrollToItemInItemsControl(QuestObjectivesList, itemToScrollTo);
-            });
-        }
-    }
-
-    /// <summary>
-    /// ItemsControl 내의 특정 항목으로 스크롤합니다.
-    /// </summary>
-    private void ScrollToItemInItemsControl(ItemsControl itemsControl, object item)
-    {
-        // ItemsControl의 부모 ScrollViewer 찾기
-        var scrollViewer = FindVisualParent<ScrollViewer>(itemsControl);
-        if (scrollViewer == null) return;
-
-        // 항목의 컨테이너 찾기
-        var container = itemsControl.ItemContainerGenerator.ContainerFromItem(item) as FrameworkElement;
-        if (container == null) return;
-
-        // 항목의 위치 계산
-        var transform = container.TransformToAncestor(scrollViewer);
-        var position = transform.Transform(new Point(0, 0));
-
-        // 스크롤 (항목이 보이는 영역 중앙에 오도록)
-        var targetOffset = scrollViewer.VerticalOffset + position.Y - scrollViewer.ViewportHeight / 3;
-        scrollViewer.ScrollToVerticalOffset(Math.Max(0, targetOffset));
-    }
-
-    /// <summary>
-    /// 시각적 트리에서 부모 요소를 찾습니다.
-    /// </summary>
-    private static T? FindVisualParent<T>(DependencyObject child) where T : DependencyObject
-    {
-        var parent = VisualTreeHelper.GetParent(child);
-        while (parent != null)
-        {
-            if (parent is T found)
-                return found;
-            parent = VisualTreeHelper.GetParent(parent);
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// 퀘스트별로 목표를 그룹화하여 표시합니다.
-    /// </summary>
-    private List<object> ApplyQuestGrouping(List<QuestObjectiveViewModel> viewModels)
-    {
-        var result = new List<object>();
-        var groupedByQuest = viewModels.GroupBy(vm => vm.Objective.TaskNormalizedName);
-
-        foreach (var group in groupedByQuest.OrderBy(g => g.First().QuestName))
-        {
-            // 퀘스트 헤더 추가
-            var firstObj = group.First();
-            var completedCount = group.Count(vm => vm.IsChecked);
-            var totalCount = group.Count();
-            // DB에서 WikiPageLink 가져오기
-            var quest = QuestDbService.Instance.GetQuestById(firstObj.Objective.QuestId);
-            result.Add(new QuestGroupHeader
-            {
-                QuestName = firstObj.QuestName,
-                QuestId = firstObj.Objective.QuestId,
-                Progress = $"{completedCount}/{totalCount}",
-                IsFullyCompleted = completedCount == totalCount,
-                WikiLink = quest?.WikiPageLink
-            });
-
-            // 해당 퀘스트의 목표들 추가 (그룹화 플래그 설정)
-            foreach (var vm in group)
-            {
-                vm.IsGrouped = true;
-                result.Add(vm);
-            }
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// 맵별 퀘스트 진행률을 업데이트합니다.
-    /// </summary>
-    private void UpdateMapProgress(List<QuestObjectiveViewModel> viewModels)
-    {
-        // UI 요소가 아직 초기화되지 않았으면 스킵
-        if (TxtMapProgressCount == null || MapProgressBar == null) return;
-
-        // 현재 맵의 목표만 카운트
-        var currentMapObjectives = viewModels.Where(vm => vm.IsOnCurrentMap).ToList();
-        var totalCount = currentMapObjectives.Count;
-        var completedCount = currentMapObjectives.Count(vm => vm.IsChecked);
-
-        // 진행률 텍스트 업데이트
-        TxtMapProgressCount.Text = $"{completedCount}/{totalCount}";
-
-        // 진행률 바 업데이트
-        if (totalCount > 0)
-        {
-            var progressPercent = (double)completedCount / totalCount;
-            // 부모 Border의 실제 너비를 계산하여 적용
-            var parentBorder = MapProgressBar.Parent as Border;
-            if (parentBorder != null)
-            {
-                // 레이아웃 업데이트 후 너비 계산
-                parentBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-                var availableWidth = parentBorder.ActualWidth > 0 ? parentBorder.ActualWidth : 280; // 기본값 280
-                MapProgressBar.Width = availableWidth * progressPercent;
-            }
-        }
-        else
-        {
-            MapProgressBar.Width = 0;
-        }
-    }
-
-    /// <summary>
-    /// 목표 설명으로 목표 인덱스를 찾습니다.
-    /// </summary>
-    private static int GetObjectiveIndex(TarkovTask task, string description)
-    {
-        if (task.Objectives == null || task.Objectives.Count == 0) return -1;
-        if (string.IsNullOrEmpty(description)) return -1;
-
-        for (int i = 0; i < task.Objectives.Count; i++)
-        {
-            if (task.Objectives[i].Equals(description, StringComparison.OrdinalIgnoreCase))
-            {
-                return i;
-            }
-        }
-
-        // 부분 매칭 시도
-        for (int i = 0; i < task.Objectives.Count; i++)
-        {
-            if (task.Objectives[i].Contains(description, StringComparison.OrdinalIgnoreCase) ||
-                description.Contains(task.Objectives[i], StringComparison.OrdinalIgnoreCase))
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    #endregion
-
-    #region 퀘스트 드로어 필터링
-
-    private void CmbStatusFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        // 초기화 중에는 스킵
-        if (!IsLoaded) return;
-
-        if (CmbStatusFilter?.SelectedItem is ComboBoxItem item && item.Tag is string filter)
-        {
-            _drawerStatusFilter = filter;
-            if (QuestDrawerPanel?.Visibility == Visibility.Visible)
-            {
-                RefreshQuestDrawer();
-            }
-        }
-    }
-
-    private void CmbTypeFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        // 초기화 중에는 스킵
-        if (!IsLoaded) return;
-
-        if (CmbTypeFilter?.SelectedItem is ComboBoxItem item && item.Tag is string filter)
-        {
-            _drawerTypeFilter = filter;
-            if (QuestDrawerPanel?.Visibility == Visibility.Visible)
-            {
-                RefreshQuestDrawer();
-            }
-        }
-    }
-
-    private void ChkCurrentMapOnly_Changed(object sender, RoutedEventArgs e)
-    {
-        // 초기화 중에는 스킵
-        if (!IsLoaded) return;
-
-        _drawerCurrentMapOnly = ChkCurrentMapOnly?.IsChecked ?? false;
-        if (QuestDrawerPanel?.Visibility == Visibility.Visible)
-        {
-            RefreshQuestDrawer();
-        }
-    }
-
-    private void ChkGroupByQuest_Changed(object sender, RoutedEventArgs e)
-    {
-        // 초기화 중에는 스킵
-        if (!IsLoaded) return;
-
-        _drawerGroupByQuest = ChkGroupByQuest?.IsChecked ?? false;
-        if (QuestDrawerPanel?.Visibility == Visibility.Visible)
-        {
-            RefreshQuestDrawer();
-        }
-    }
-
-    /// <summary>
-    /// 필터를 적용하여 목표 목록을 필터링합니다.
-    /// </summary>
-    private List<QuestObjectiveViewModel> ApplyDrawerFilters(List<QuestObjectiveViewModel> viewModels)
-    {
-        var result = viewModels.AsEnumerable();
-
-        // 완료/미완료 필터
-        if (_drawerStatusFilter == "Incomplete")
-        {
-            result = result.Where(vm => !vm.IsChecked);
-        }
-        else if (_drawerStatusFilter == "Completed")
-        {
-            result = result.Where(vm => vm.IsChecked);
-        }
-
-        // 타입별 필터
-        if (_drawerTypeFilter != "All")
-        {
-            result = result.Where(vm => vm.Objective.Type == _drawerTypeFilter);
-        }
-
-        // 현재 맵만 보기
-        if (_drawerCurrentMapOnly)
-        {
-            result = result.Where(vm => vm.IsOnCurrentMap);
-        }
-
-        return result.ToList();
-    }
-
-    #endregion
-
-    #region Map Markers 오버레이 이벤트 핸들러
-
-    private void BtnToggleMapMarkersPanel_Click(object sender, RoutedEventArgs e)
-    {
-        _isMapMarkersPanelCollapsed = !_isMapMarkersPanelCollapsed;
-
-        if (_isMapMarkersPanelCollapsed)
-        {
-            MapMarkersContent.Visibility = Visibility.Collapsed;
-            BtnToggleMapMarkersPanel.Content = "▲";
-        }
-        else
-        {
-            MapMarkersContent.Visibility = Visibility.Visible;
-            BtnToggleMapMarkersPanel.Content = "▼";
-        }
-    }
-
-    private async void ChkMapMarker_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!IsLoaded) return;
-
-        try
-        {
-            var ct = GetNewCancellationToken();
-            var mapSettings = MapSettings.Instance;
-
-            // 각 체크박스 상태 저장
-            _showPmcSpawnsMarker = ChkShowPmcSpawns?.IsChecked ?? true;
-            _showSniperScavsMarker = ChkShowSniperScavs?.IsChecked ?? true;
-            _showRoguesMarker = ChkShowRogues?.IsChecked ?? true;
-            _showCultistsMarker = ChkShowCultists?.IsChecked ?? true;
-            _showLeversMarkerOverlay = ChkShowLeversMarker?.IsChecked ?? true;
-            _showBossesMarker = ChkShowBosses?.IsChecked ?? true;
-
-            // 설정 저장
-            mapSettings.ShowPmcSpawns = _showPmcSpawnsMarker;
-            mapSettings.ShowSniperScavs = _showSniperScavsMarker;
-            mapSettings.ShowRogues = _showRoguesMarker;
-            mapSettings.ShowCultists = _showCultistsMarker;
-            mapSettings.ShowLevers = _showLeversMarkerOverlay;
-            mapSettings.ShowBosses = _showBossesMarker;
-
-            // 마커 새로고침
-            await RefreshMapMarkers(ct);
-        }
-        catch (OperationCanceledException) { }
-    }
-
-    /// <summary>
-    /// Map Markers (PMC Spawn, Sniper Scav, Rogue, Cultist, Boss, Lever) 새로고침
-    /// </summary>
-    private async Task RefreshMapMarkers(CancellationToken ct = default)
-    {
-        if (_mapMarkersManager == null) return;
-
-        // 가시성 설정 업데이트
-        _mapMarkersManager.SetShowPmcSpawns(_showPmcSpawnsMarker);
-        _mapMarkersManager.SetShowSniperScavs(_showSniperScavsMarker);
-        _mapMarkersManager.SetShowRogues(_showRoguesMarker);
-        _mapMarkersManager.SetShowCultists(_showCultistsMarker);
-        _mapMarkersManager.SetShowLevers(_showLeversMarkerOverlay);
-        _mapMarkersManager.SetShowBosses(_showBossesMarker);
-
-        // 현재 맵 및 층 설정
-        _mapMarkersManager.SetCurrentMap(_currentMapKey);
-        _mapMarkersManager.SetCurrentFloor(_currentFloorId);
-        _mapMarkersManager.SetZoomLevel(_zoomLevel);
-
-        // 마커 새로고침
-        await _mapMarkersManager.RefreshMarkersAsync(ct);
-    }
-
-    private void MapViewer_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        // MapCanvas 기준의 좌표를 저장 (WPF가 역변환을 자동으로 처리함)
-        _lastRightClickPosition = e.GetPosition(MapCanvas);
-    }
-
-    #endregion
-
-    #region 커스텀 마커 이벤트 핸들러
-
-    private async void MenuAddCustomMarker_Click(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrEmpty(_currentMapKey) || _customMarkerManager == null) return;
-
-        TxtStatus.Text = "Adding custom marker...";
-
-        // 저장해둔 좌표 사용 (이미 MapCanvas 기준임)
-        await _customMarkerManager.AddMarkerAsync(_lastRightClickPosition.X, _lastRightClickPosition.Y);
-    }
-
-    private void LstCustomMarkers_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (LstCustomMarkers.SelectedItem is CustomMapMarker marker)
-        {
-            // 1. 층 변경 (필요한 경우)
-            if (!string.IsNullOrEmpty(marker.FloorId) && marker.FloorId != _currentFloorId)
-            {
-                // 층 변경 콤보박스 업데이트 (이벤트가 트리거됨)
-                foreach (ComboBoxItem item in CmbFloorSelect.Items)
-                {
-                    if (item.Tag?.ToString() == marker.FloorId)
-                    {
-                        CmbFloorSelect.SelectedItem = item;
-                        break;
-                    }
-                }
-            }
-
-            // 2. 해당 마커 위치로 맵 이동
-            PanToMarker(marker);
-        }
-    }
-
-    private void PanToMarker(CustomMapMarker marker)
-    {
-        if (string.IsNullOrEmpty(_currentMapKey)) return;
-
-        // 마커의 화면 좌표 계산
-        if (_trackerService?.Transformer.TryTransform(_currentMapKey, marker.X, marker.Z, null, out var screenPos) == true && screenPos != null)
-        {
-            var viewerWidth = MapViewerGrid.ActualWidth;
-            var viewerHeight = MapViewerGrid.ActualHeight;
-
-            if (viewerWidth <= 0 || viewerHeight <= 0) return;
-
-            // 마커를 중앙에 배치하기 위한 이동량 계산
-            var targetX = (viewerWidth / 2.0) - (screenPos.X * _zoomLevel);
-            var targetY = (viewerHeight / 2.0) - (screenPos.Y * _zoomLevel);
-
-            MapTranslate.X = targetX;
-            MapTranslate.Y = targetY;
-        }
-    }
-
-    private async void BtnDeleteMarker_Manual_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn && btn.Tag is CustomMapMarker marker)
-        {
-            await _customMarkerManager?.DeleteMarkerAsync(marker);
-        }
-    }
-
-    private async void BtnEditMarker_Manual_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn && btn.Tag is CustomMapMarker marker)
-        {
-            await _customMarkerManager?.EditMarkerAsync(marker);
-        }
-    }
-
-    /// <summary>
-    /// 커스텀 마커 목록 패널 토글 버튼 클릭 핸들러
-    /// </summary>
-    private void BtnToggleCustomMarkersPanel_Click(object sender, RoutedEventArgs e)
-    {
-        _isCustomMarkersPanelCollapsed = !_isCustomMarkersPanelCollapsed;
-        UpdateCustomMarkersPanelUI(_isCustomMarkersPanelCollapsed);
-        
-        // 설정 저장 (앱 재시작 시 유지용)
-        SettingsService.Instance.IsCustomMarkersPanelCollapsed = _isCustomMarkersPanelCollapsed;
-    }
-
-    /// <summary>
-    /// 커스텀 마커 사이드바의 UI 상태(너비, 가시성, 아이콘)를 업데이트합니다.
-    /// </summary>
-    private void UpdateCustomMarkersPanelUI(bool isCollapsed)
-    {
-        // 아이콘 변경
-        if (TxtToggleIcon != null)
-        {
-            TxtToggleIcon.Text = isCollapsed ? "◀" : "▶";
-        }
-
-        // 사이드바 콘텐츠 영역 너비 조정
-        if (MarkerListContentColumn != null)
-        {
-            MarkerListContentColumn.Width = isCollapsed ? new GridLength(0) : new GridLength(280);
-        }
-
-        // 전체 컨테이너 가시성 조정
-        if (MarkerListContentGrid != null)
-        {
-            MarkerListContentGrid.Visibility = isCollapsed ? Visibility.Collapsed : Visibility.Visible;
-        }
-    }
-
-
-
-    #endregion
+	private class AreaMarkerTag
+	{
+		public TaskObjectiveWithLocation? Objective { get; set; }
+
+		public bool IsArea { get; set; }
+	}
+
+	private static readonly ILogger _log = Log.For<MapPage>();
+
+	private readonly MapTrackerService? _trackerService;
+
+	private readonly QuestObjectiveService _objectiveService = QuestObjectiveService.Instance;
+
+	private readonly QuestProgressService _progressService = QuestProgressService.Instance;
+
+	private readonly LocalizationService _loc = LocalizationService.Instance;
+
+	private readonly OverlayMiniMapService _overlayService = OverlayMiniMapService.Instance;
+
+	private string? _currentMapKey;
+
+	private double _zoomLevel = 1.0;
+
+	private const double MinZoom = 0.1;
+
+	private const double MaxZoom = 5.0;
+
+	private bool _isDragging;
+
+	private System.Windows.Point _dragStartPoint;
+
+	private double _dragStartTranslateX;
+
+	private double _dragStartTranslateY;
+
+	private static readonly double[] ZoomPresets = new double[9] { 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0 };
+
+	private List<TaskObjectiveWithLocation> _currentMapObjectives = new List<TaskObjectiveWithLocation>();
+
+	private bool _showQuestMarkers = true;
+
+	private QuestMarkerStyle _questMarkerStyle;
+
+	private double _questNameTextSize = 12.0;
+
+	private TaskObjectiveWithLocation? _selectedObjective;
+
+	private readonly ExtractService _extractService = ExtractService.Instance;
+
+	private bool _showExtractMarkers = true;
+
+	private bool _showPmcExtracts = true;
+
+	private bool _showScavExtracts = true;
+
+	private bool _showTransitExtracts = true;
+
+	private double _extractNameTextSize = 10.0;
+
+	private bool _hideCompletedObjectives = true;
+
+	private bool _showPmcSpawnsMarker = true;
+
+	private bool _showSniperScavsMarker = true;
+
+	private bool _showRoguesMarker = true;
+
+	private bool _showCultistsMarker = true;
+
+	private bool _showLeversMarkerOverlay = true;
+
+	private bool _showBossesMarker = true;
+
+	private bool _isMapMarkersPanelCollapsed;
+
+	private bool _isCustomMarkersPanelCollapsed;
+
+	private readonly EftRaidEventService _raidEventService = EftRaidEventService.Instance;
+
+	private readonly Dictionary<string, double> _mapZoomLevelCache = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+	private readonly MapCalibrationService _calibrationService = MapCalibrationService.Instance;
+
+	private bool _isCalibrationMode;
+
+	private FrameworkElement? _draggingExtractMarker;
+
+	private System.Windows.Point _extractDragStartPoint;
+
+	private double _extractMarkerOriginalLeft;
+
+	private double _extractMarkerOriginalTop;
+
+	private MapExtract? _draggingExtract;
+
+	private string? _currentFloorId;
+
+	private MapQuestMarkerManager? _questMarkerManager;
+
+	private MapExtractMarkerManager? _extractMarkerManager;
+
+	private MapCalibrationController? _calibrationController;
+
+	private MapMarkersManager? _mapMarkersManager;
+
+	private MapCustomMarkerManager? _customMarkerManager;
+
+	private System.Windows.Point _lastRightClickPosition;
+
+	private CancellationTokenSource? _loadingCts;
+
+	private bool _isInitializing;
+
+	private bool _isSwitchingMap;
+
+	private bool _isApplyingMapConfig;
+
+	private readonly ObservableCollection<MapPillItem> _mapPills = new ObservableCollection<MapPillItem>();
+
+	private readonly ObservableCollection<MapActiveItemStripViewModel> _requiredItems = new ObservableCollection<MapActiveItemStripViewModel>();
+
+	private readonly ObservableCollection<MapActiveKeyStripViewModel> _requiredKeys = new ObservableCollection<MapActiveKeyStripViewModel>();
+
+	private DispatcherTimer? _clockTimer;
+
+	private bool _isEmbedded;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	public bool IsEmbedded => _isEmbedded;
+
+	public event EventHandler<TaskObjectiveWithLocation>? ObjectiveSelected;
+
+	public MapPage()
+	{
+		try
+		{
+			InitializeComponent();
+			_trackerService = MapTrackerService.Instance;
+			_trackerService.PositionUpdated += OnPositionUpdated;
+			_trackerService.ErrorOccurred += OnErrorOccurred;
+			_trackerService.StatusMessage += OnStatusMessage;
+			_trackerService.WatchingStateChanged += OnWatchingStateChanged;
+			_trackerService.FloorChanged += OnTrackerFloorChanged;
+			_trackerService.MapChanged += OnTrackerMapChanged;
+			_trackerService.PinnedObjectiveChanged += OnTrackerPinnedObjectiveChanged;
+			_loc.LanguageChanged += OnLanguageChanged;
+			base.Loaded += MapTrackerPage_Loaded;
+			base.Unloaded += MapTrackerPage_Unloaded;
+			InitializeZoomComboBox();
+			InitializeMapPills();
+			InitializeClockWidget();
+		}
+		catch (Exception ex)
+		{
+			System.Windows.MessageBox.Show((_loc.CurrentLanguage == AppLanguage.KO) ? ("지도 추적 페이지 초기화 오류: " + ex.Message) : ("Map tracker initialization error: " + ex.Message), (_loc.CurrentLanguage == AppLanguage.KO) ? "오류" : "Error", MessageBoxButton.OK, MessageBoxImage.Hand);
+		}
+	}
+
+	private void InitializeZoomComboBox()
+	{
+		CmbZoomLevel.Items.Clear();
+		double[] zoomPresets = ZoomPresets;
+		foreach (double num in zoomPresets)
+		{
+			CmbZoomLevel.Items.Add($"{num * 100.0:F0}%");
+		}
+		CmbZoomLevel.Text = "100%";
+	}
+
+	private void InitializeComponents()
+	{
+		if (_trackerService == null)
+		{
+			return;
+		}
+		_questMarkerManager = new MapQuestMarkerManager(QuestMarkersContainer, _trackerService, _objectiveService, _progressService, _loc);
+		_questMarkerManager.ObjectiveSelected += OnObjectiveSelectedFromManager;
+		_questMarkerManager.FloorChangeRequested += OnFloorChangeRequestedFromManager;
+		_questMarkerManager.StatusUpdated += delegate(string msg)
+		{
+			base.Dispatcher.Invoke(() => TxtStatus.Text = msg);
+		};
+		_extractMarkerManager = new MapExtractMarkerManager(ExtractMarkersContainer, _trackerService, _extractService, _loc);
+		_extractMarkerManager.CalibrationMarkerSetup += OnCalibrationMarkerSetup;
+		_calibrationController = new MapCalibrationController(ExtractMarkersContainer, _trackerService, _calibrationService);
+		_calibrationController.StatusUpdated += delegate(string msg)
+		{
+			base.Dispatcher.Invoke(() => TxtStatus.Text = msg);
+		};
+		_calibrationController.CalibrationCompleted += OnCalibrationCompleted;
+		_mapMarkersManager = new MapMarkersManager(MapMarkersContainer, _trackerService, MapMarkerDbService.Instance, _loc);
+		_customMarkerManager = new MapCustomMarkerManager(CustomMarkersContainer, _trackerService, _trackerService.Transformer, _loc);
+		_customMarkerManager.StatusUpdated += delegate(string msg)
+		{
+			base.Dispatcher.Invoke(() => TxtStatus.Text = msg);
+		};
+		LstCustomMarkers.ItemsSource = _customMarkerManager.Markers;
+	}
+
+	private void UpdateCustomMarkersParam()
+	{
+		_customMarkerManager?.SetParameters(_currentMapKey, _currentFloorId, _zoomLevel);
+	}
+
+	private void OnObjectiveSelectedFromManager(object? sender, TaskObjectiveWithLocation objective)
+	{
+		_selectedObjective = objective;
+		ShowQuestDrawer(objective);
+		this.ObjectiveSelected?.Invoke(this, objective);
+	}
+
+	private void OnFloorChangeRequestedFromManager(object? sender, TaskObjectiveWithLocation objective)
+	{
+		SelectFloorForObjective(objective);
+	}
+
+	private void OnCalibrationMarkerSetup(FrameworkElement marker, MapExtract extract)
+	{
+		_calibrationController?.SetupMarkerForCalibration(marker, extract);
+	}
+
+	private async void OnCalibrationCompleted(object? sender, EventArgs e)
+	{
+		try
+		{
+			CancellationToken newCancellationToken = GetNewCancellationToken();
+			await RefreshExtractMarkers(newCancellationToken);
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private CancellationToken GetNewCancellationToken()
+	{
+		if ((_isInitializing || _isSwitchingMap || _isApplyingMapConfig) && _loadingCts != null && !_loadingCts.IsCancellationRequested)
+		{
+			return _loadingCts.Token;
+		}
+		_loadingCts?.Cancel();
+		_loadingCts?.Dispose();
+		_loadingCts = new CancellationTokenSource();
+		return _loadingCts.Token;
+	}
+
+	private async void MapTrackerPage_Loaded(object sender, RoutedEventArgs e)
+	{
+		_ = 9;
+		try
+		{
+			_loadingCts?.Cancel();
+			_loadingCts?.Dispose();
+			_loadingCts = new CancellationTokenSource();
+			CancellationToken ct = _loadingCts.Token;
+			_isInitializing = true;
+			_trackerService?.ClearTrail();
+			TrailPath.Points.Clear();
+			LoadSettings();
+			InitializeComponents();
+			PopulateMapComboBox();
+			StartRaidEventMonitoring();
+			RestoreMapState();
+			UpdateUI();
+			await Task.Delay(50, ct);
+			if (!string.IsNullOrEmpty(_currentMapKey))
+			{
+				await LoadMapImageAsync(_currentMapKey, centerView: true, ct);
+			}
+			await LoadQuestObjectivesAsync(ct);
+			await Task.Delay(20, ct);
+			await LoadExtractsAsync(ct);
+			await Task.Delay(20, ct);
+			await LoadMapMarkersAsync(ct);
+			await Task.Delay(20, ct);
+			await FloorDetectionService.Instance.LoadFloorRangesAsync().WaitAsync(ct);
+			OpenQuestDrawer();
+			_progressService.ProgressChanged += OnQuestProgressChanged;
+			MapSettings.Instance.HiddenQuestsChanged += OnHiddenQuestsChanged;
+			ObjectiveProgressService.Instance.ObjectiveProgressChanged += OnObjectiveProgressChanged;
+			GlobalKeyboardHookService.Instance.FloorKeyPressed += OnFloorKeyPressed;
+			GlobalKeyboardHookService.Instance.IsEnabled = true;
+			await InitializeOverlayServiceAsync().WaitAsync(ct);
+			_overlayService.OverlayVisibilityChanged += OnOverlayVisibilityChanged;
+			UpdateMinimapButtonState(_overlayService.IsOverlayVisible);
+			StartAutoTracking();
+			MapMarkerDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+			MapMarkerDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+			QuestObjectiveDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+			QuestObjectiveDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+			QuestObjectiveRelocationService.Instance.PlacementStateChanged -= OnPlacementStateChanged;
+			QuestObjectiveRelocationService.Instance.PlacementStateChanged += OnPlacementStateChanged;
+			base.PreviewKeyDown -= MapPage_PreviewKeyDown;
+			base.PreviewKeyDown += MapPage_PreviewKeyDown;
+			if (QuestObjectiveRelocationService.Instance.IsPlacementActive)
+			{
+				OnPlacementStateChanged(this, EventArgs.Empty);
+			}
+			UpdateMapPillTaskCounts();
+			if (!string.IsNullOrEmpty(_currentMapKey))
+			{
+				UpdateMapPillSelection(_currentMapKey);
+				UpdateRequiredStripsForCurrentMap();
+			}
+		}
+		catch (Exception ex)
+		{
+			if (ex is OperationCanceledException || ex is TaskCanceledException || (_loadingCts?.IsCancellationRequested ?? false) || ex.Message.Contains("canceled", StringComparison.OrdinalIgnoreCase))
+			{
+				_log.Debug("Map loading task was cancelled, ignoring exception.");
+				return;
+			}
+			_log.Error("Critical error loading map page", ex);
+			System.Windows.MessageBox.Show((_loc.CurrentLanguage == AppLanguage.KO) ? ("지도 추적 페이지 로드 오류: " + ex.Message) : ("Map tracker loading error: " + ex.Message), (_loc.CurrentLanguage == AppLanguage.KO) ? "오류" : "Error", MessageBoxButton.OK, MessageBoxImage.Hand);
+		}
+		finally
+		{
+			_isInitializing = false;
+		}
+	}
+
+	private void MapTrackerPage_Unloaded(object sender, RoutedEventArgs e)
+	{
+		_clockTimer?.Stop();
+		_loadingCts?.Cancel();
+		SaveMapState();
+		base.PreviewKeyDown -= MapPage_PreviewKeyDown;
+		_progressService.ProgressChanged -= OnQuestProgressChanged;
+		MapSettings.Instance.HiddenQuestsChanged -= OnHiddenQuestsChanged;
+		ObjectiveProgressService.Instance.ObjectiveProgressChanged -= OnObjectiveProgressChanged;
+		MapMarkerDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+		QuestObjectiveDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+		QuestObjectiveRelocationService.Instance.PlacementStateChanged -= OnPlacementStateChanged;
+		if (_trackerService != null)
+		{
+			_trackerService.FloorChanged -= OnTrackerFloorChanged;
+			_trackerService.MapChanged -= OnTrackerMapChanged;
+			_trackerService.PinnedObjectiveChanged -= OnTrackerPinnedObjectiveChanged;
+		}
+		GlobalKeyboardHookService.Instance.FloorKeyPressed -= OnFloorKeyPressed;
+		GlobalKeyboardHookService.Instance.IsEnabled = false;
+		_overlayService.OverlayVisibilityChanged -= OnOverlayVisibilityChanged;
+		_overlayService.HideOverlay();
+		StopAutoTracking();
+		StopRaidEventMonitoring();
+	}
+
+	private void SaveMapState()
+	{
+		SettingsService instance = SettingsService.Instance;
+		instance.MapLastSelectedMap = _currentMapKey;
+		instance.MapLastZoomLevel = _zoomLevel;
+		instance.MapLastTranslateX = MapTranslate.X;
+		instance.MapLastTranslateY = MapTranslate.Y;
+	}
+
+	private async void OnDatabaseRefreshed(object? sender, EventArgs e)
+	{
+		_ = 2;
+		try
+		{
+			CancellationToken ct = GetNewCancellationToken();
+			await LoadQuestObjectivesAsync(ct);
+			await LoadExtractsAsync(ct);
+			await RefreshQuestMarkers(ct);
+			RefreshQuestDrawer();
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private void RestoreMapState()
+	{
+		string mapLastSelectedMap = SettingsService.Instance.MapLastSelectedMap;
+		if (!string.IsNullOrEmpty(_currentMapKey) || string.IsNullOrEmpty(mapLastSelectedMap))
+		{
+			return;
+		}
+		for (int i = 0; i < CmbMapSelect.Items.Count; i++)
+		{
+			if (CmbMapSelect.Items[i] is ComboBoxItem comboBoxItem && string.Equals(comboBoxItem.Tag as string, mapLastSelectedMap, StringComparison.OrdinalIgnoreCase))
+			{
+				CmbMapSelect.SelectedIndex = i;
+				break;
+			}
+		}
+		base.Dispatcher.BeginInvoke((Action)delegate
+		{
+			SetZoom(1.0);
+			CenterMapInView();
+		}, DispatcherPriority.Loaded);
+	}
+
+	private void OnLanguageChanged(object? sender, AppLanguage e)
+	{
+		UpdateLocalizedText();
+	}
+
+	private void UpdateLocalizedText()
+	{
+		TxtPageTitle.Text = _loc.MapPositionTracker;
+		TxtMapLabel.Text = _loc.MapLabel;
+		ChkShowQuestMarkers.Content = _loc.QuestMarkers;
+		ChkShowExtractMarkers.Content = _loc.Extracts;
+		ChkFixedView.Content = _loc.FixedView;
+		BtnClearTrail.Content = _loc.ClearTrail;
+		BtnFullScreen.Content = _loc.FullScreen;
+		BtnExitFullScreen.Content = _loc.ExitFullScreen;
+		BtnMinimap.Content = _loc.Minimap;
+		BtnSettings.Content = _loc.Settings;
+		MenuAddCustomMarker.Header = _loc.AddCustomMarker;
+		bool flag = _trackerService?.IsWatching ?? false;
+		BtnToggleTracking.Content = (flag ? _loc.StopTracking : _loc.StartTracking);
+		if (!flag)
+		{
+			TxtStatus.Text = _loc.StatusWaiting;
+		}
+		TxtPositionLabel.Text = _loc.PositionLabel;
+		TxtLastUpdateLabel.Text = _loc.LastUpdateLabel;
+		TxtSettingsTitle.Text = _loc.Settings;
+		TxtScreenshotFolderLabel.Text = _loc.ScreenshotFolder;
+		BtnAutoDetect.Content = _loc.AutoDetect;
+		BtnBrowseFolder.Content = _loc.Browse;
+		TxtMarkerSettingsLabel.Text = _loc.MarkerSettings;
+		ChkHideCompletedObjectives.Content = _loc.HideCompletedObjectives;
+		TxtQuestStyleLabel.Text = _loc.QuestStyle;
+		TxtQuestNameSizeLabel.Text = _loc.QuestNameSize;
+		TxtQuestMarkerSizeLabel.Text = _loc.QuestMarkerSize;
+		TxtPlayerMarkerSizeLabel.Text = _loc.PlayerMarkerSize;
+		TxtExtractSettingsLabel.Text = _loc.ExtractSettings;
+		if (TxtPmcExtractsLabel != null)
+		{
+			TxtPmcExtractsLabel.Text = _loc.PmcExtracts;
+		}
+		if (TxtScavExtractsLabel != null)
+		{
+			TxtScavExtractsLabel.Text = _loc.ScavExtracts;
+		}
+		ChkShowPmcExtracts.Content = null;
+		ChkShowScavExtracts.Content = null;
+		TxtExtractNameSizeLabel.Text = _loc.ExtractNameSize;
+		TxtMarkerOpacityLabel.Text = _loc.MarkerOpacity;
+		TxtMarkerColorsLabel.Text = _loc.MarkerColors;
+		TxtColorVisit.Text = _loc.FilterVisit;
+		TxtColorMark.Text = _loc.FilterMark;
+		TxtColorPlant.Text = _loc.FilterPlant;
+		TxtColorExtract.Text = _loc.FilterExtract;
+		TxtColorFind.Text = _loc.FilterFind;
+		BtnResetColors.Content = _loc.ResetColors;
+		CmbStyleIconOnly.Content = _loc.StyleIconOnly;
+		CmbStyleGreenCircle.Content = _loc.StyleGreenCircle;
+		CmbStyleIconWithName.Content = _loc.StyleIconWithName;
+		CmbStyleCircleWithName.Content = _loc.StyleCircleWithName;
+		TxtNoMapImage.Text = _loc.NoMapImage;
+		TxtAddMapImageHint.Text = _loc.AddMapImageHint;
+		TxtSetImagePathHint.Text = _loc.SetImagePathHint;
+		BtnZoomIn.ToolTip = _loc.ZoomInTooltip;
+		BtnZoomOut.ToolTip = _loc.ZoomOutTooltip;
+		BtnResetView.ToolTip = _loc.ResetViewTooltip;
+		string text = (CmbMapSelect.SelectedItem as ComboBoxItem)?.Tag as string;
+		PopulateMapComboBox();
+		if (string.IsNullOrEmpty(text))
+		{
+			return;
+		}
+		for (int i = 0; i < CmbMapSelect.Items.Count; i++)
+		{
+			if (CmbMapSelect.Items[i] is ComboBoxItem comboBoxItem && string.Equals(comboBoxItem.Tag as string, text, StringComparison.OrdinalIgnoreCase))
+			{
+				CmbMapSelect.SelectedIndex = i;
+				break;
+			}
+		}
+	}
+
+	private void LoadSettings()
+	{
+		SettingsService instance = SettingsService.Instance;
+		string text = instance.MapScreenshotPath;
+		if (string.IsNullOrEmpty(text))
+		{
+			text = MapTrackerSettings.TryDetectScreenshotFolder() ?? (Environment.GetFolderPath(Environment.SpecialFolder.Personal) + "\\Escape from Tarkov\\Screenshots");
+		}
+		TxtScreenshotFolder.Text = text;
+		SliderMarkerSize.Value = instance.MapQuestMarkerSize;
+		SliderPlayerMarkerSize.Value = instance.MapPlayerMarkerSize;
+		UpdatePlayerMarkerSize(instance.MapPlayerMarkerSize);
+		_showPmcExtracts = instance.MapShowPmcExtracts;
+		_showScavExtracts = instance.MapShowScavExtracts;
+		_showTransitExtracts = instance.MapShowTransits;
+		_extractNameTextSize = instance.MapExtractNameSize;
+		_showExtractMarkers = instance.MapShowExtracts;
+		_showQuestMarkers = instance.MapShowQuests;
+		_questNameTextSize = instance.MapQuestNameSize;
+		_questMarkerStyle = (QuestMarkerStyle)instance.MapQuestMarkerStyle;
+		if (_questMarkerStyle == QuestMarkerStyle.DefaultWithName)
+		{
+			_questMarkerStyle = QuestMarkerStyle.Default;
+			SettingsService.Instance.MapQuestMarkerStyle = (int)_questMarkerStyle;
+		}
+		else if (_questMarkerStyle == QuestMarkerStyle.GreenCircleWithName)
+		{
+			_questMarkerStyle = QuestMarkerStyle.GreenCircle;
+			SettingsService.Instance.MapQuestMarkerStyle = (int)_questMarkerStyle;
+		}
+		_hideCompletedObjectives = instance.MapHideCompletedObjectives;
+		ChkShowPmcExtracts.IsChecked = _showPmcExtracts;
+		ChkShowScavExtracts.IsChecked = _showScavExtracts;
+		ChkShowTransitExtracts.IsChecked = _showTransitExtracts;
+		SliderExtractTextSize.Value = _extractNameTextSize;
+		ChkShowExtractMarkers.IsChecked = _showExtractMarkers;
+		ChkShowQuestMarkers.IsChecked = _showQuestMarkers;
+		CmbQuestMarkerStyle.SelectedIndex = (int)_questMarkerStyle;
+		if (ChkSettingTaskTitles != null)
+		{
+			ChkSettingTaskTitles.IsChecked = _questMarkerStyle == QuestMarkerStyle.DefaultWithName || _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
+		}
+		SliderQuestNameTextSize.Value = _questNameTextSize;
+		ChkHideCompletedObjectives.IsChecked = _hideCompletedObjectives;
+		SliderMarkerOpacity.Value = MapSettings.Instance.MarkerOpacity;
+		if (ExtractMarkersContainer != null)
+		{
+			ExtractMarkersContainer.Visibility = ((!_showExtractMarkers) ? Visibility.Collapsed : Visibility.Visible);
+		}
+		if (QuestMarkersContainer != null)
+		{
+			QuestMarkersContainer.Visibility = ((!_showQuestMarkers) ? Visibility.Collapsed : Visibility.Visible);
+		}
+		UpdateMarkerColorUI();
+		LoadMapMarkersSettings();
+		_isCustomMarkersPanelCollapsed = instance.IsCustomMarkersPanelCollapsed;
+		UpdateCustomMarkersPanelUI(_isCustomMarkersPanelCollapsed);
+		if (ChkFixedView != null)
+		{
+			ChkFixedView.IsChecked = !MapSettings.Instance.AutoCenterEnabled;
+		}
+	}
+
+	private void LoadMapMarkersSettings()
+	{
+		MapSettings instance = MapSettings.Instance;
+		_showPmcSpawnsMarker = instance.ShowPmcSpawns;
+		_showSniperScavsMarker = instance.ShowSniperScavs;
+		_showRoguesMarker = instance.ShowRogues;
+		_showCultistsMarker = instance.ShowCultists;
+		_showLeversMarkerOverlay = instance.ShowLevers;
+		_showBossesMarker = instance.ShowBosses;
+		ChkShowPmcSpawns.IsChecked = _showPmcSpawnsMarker;
+		ChkShowSniperScavs.IsChecked = _showSniperScavsMarker;
+		ChkShowRogues.IsChecked = _showRoguesMarker;
+		ChkShowCultists.IsChecked = _showCultistsMarker;
+		ChkShowLeversMarker.IsChecked = _showLeversMarkerOverlay;
+		ChkShowBosses.IsChecked = _showBossesMarker;
+		LoadMapMarkerIcons();
+	}
+
+	private void LoadMapMarkerIcons()
+	{
+		try
+		{
+			string path = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "DB", "Icons", "Markers");
+			LoadSvgIcon(IconPmcSpawn, System.IO.Path.Combine(path, "PMC Spawn.svg"));
+			LoadSvgIcon(IconSniperScav, System.IO.Path.Combine(path, "SniperScav.svg"));
+			LoadSvgIcon(IconRogue, System.IO.Path.Combine(path, "Rogue.svg"));
+			LoadSvgIcon(IconCultist, System.IO.Path.Combine(path, "Cultist.svg"));
+			LoadSvgIcon(IconLever, System.IO.Path.Combine(path, "Lever.svg"));
+			LoadSvgIcon(IconBoss, System.IO.Path.Combine(path, "Boss.svg"));
+		}
+		catch (Exception ex)
+		{
+			_log.Warning("Failed to load map marker icons: " + ex.Message);
+		}
+	}
+
+	private void LoadSvgIcon(SvgViewbox svgViewbox, string path)
+	{
+		if (svgViewbox == null)
+		{
+			return;
+		}
+		try
+		{
+			if (File.Exists(path))
+			{
+				svgViewbox.Source = new Uri(path);
+			}
+		}
+		catch (Exception ex)
+		{
+			_log.Warning("Failed to load SVG icon " + path + ": " + ex.Message);
+		}
+	}
+
+	private void PopulateMapComboBox()
+	{
+		if (_trackerService == null)
+		{
+			return;
+		}
+		CmbMapSelect.Items.Clear();
+		foreach (ComboBoxItem item in (from mapKey in _trackerService.GetAllMapKeys()
+			select new ComboBoxItem
+			{
+				Content = _loc.GetLocalizedMapName(mapKey),
+				Tag = mapKey
+			}).OrderBy<ComboBoxItem, string>((ComboBoxItem item) => item.Content?.ToString(), StringComparer.CurrentCultureIgnoreCase).ToList())
+		{
+			CmbMapSelect.Items.Add(item);
+		}
+		if (CmbMapSelect.Items.Count > 0 && CmbMapSelect.SelectedIndex < 0)
+		{
+			CmbMapSelect.SelectedIndex = 0;
+		}
+	}
+
+	private void UpdateUI()
+	{
+		bool flag = _trackerService?.IsWatching ?? false;
+		BtnToggleTracking.Content = (flag ? _loc.StopTracking : _loc.StartTracking);
+		System.Windows.Media.Brush brush = (TryFindResource("SuccessBrush") as System.Windows.Media.Brush) ?? System.Windows.Media.Brushes.Green;
+		System.Windows.Media.Brush brush2 = (TryFindResource("TextSecondaryBrush") as System.Windows.Media.Brush) ?? System.Windows.Media.Brushes.Gray;
+		StatusIndicator.Fill = (flag ? brush : brush2);
+		TxtStatus.Text = (flag ? _loc.StatusTracking : _loc.StatusWaiting);
+		UpdateLocalizedText();
+	}
+
+	private void OnPositionUpdated(object? sender, ScreenPosition position)
+	{
+		base.Dispatcher.Invoke(delegate
+		{
+			UpdateMarkerPosition(position);
+			UpdateTrailPath();
+			UpdateCoordinatesDisplay(position);
+			TryAutoSwitchFloor(position);
+			if (MapSettings.Instance.AutoCenterEnabled)
+			{
+				CenterOnPosition(position);
+			}
+		});
+	}
+
+	private void CenterOnPosition(ScreenPosition position)
+	{
+		double actualWidth = MapViewerGrid.ActualWidth;
+		double actualHeight = MapViewerGrid.ActualHeight;
+		if (!(actualWidth <= 0.0) && !(actualHeight <= 0.0))
+		{
+			MapTranslate.X = actualWidth / 2.0 - position.X * _zoomLevel;
+			MapTranslate.Y = actualHeight / 2.0 - position.Y * _zoomLevel;
+		}
+	}
+
+	private void TryAutoSwitchFloor(ScreenPosition position)
+	{
+		if (string.IsNullOrEmpty(_currentMapKey) || CmbFloorSelect.Visibility != 0)
+		{
+			return;
+		}
+		EftPosition originalPosition = position.OriginalPosition;
+		if (originalPosition == null)
+		{
+			return;
+		}
+		string text = FloorDetectionService.Instance.DetectFloor(_currentMapKey, originalPosition.X, originalPosition.Y, originalPosition.Z.GetValueOrDefault());
+		if (string.IsNullOrEmpty(text))
+		{
+			text = "main";
+		}
+		if (string.Equals(_currentFloorId, text, StringComparison.OrdinalIgnoreCase))
+		{
+			return;
+		}
+		for (int i = 0; i < CmbFloorSelect.Items.Count; i++)
+		{
+			if (CmbFloorSelect.Items[i] is ComboBoxItem comboBoxItem && string.Equals(comboBoxItem.Tag as string, text, StringComparison.OrdinalIgnoreCase))
+			{
+				CmbFloorSelect.SelectedIndex = i;
+				break;
+			}
+		}
+	}
+
+	private void OnTrackerFloorChanged(string? floorId)
+	{
+		base.Dispatcher.BeginInvoke((Action)delegate
+		{
+			if (!string.IsNullOrEmpty(floorId) && !string.Equals(_currentFloorId, floorId, StringComparison.OrdinalIgnoreCase))
+			{
+				for (int i = 0; i < CmbFloorSelect.Items.Count; i++)
+				{
+					if (CmbFloorSelect.Items[i] is ComboBoxItem comboBoxItem && string.Equals(comboBoxItem.Tag as string, floorId, StringComparison.OrdinalIgnoreCase))
+					{
+						if (CmbFloorSelect.SelectedIndex != i)
+						{
+							CmbFloorSelect.SelectedIndex = i;
+						}
+						break;
+					}
+				}
+			}
+		});
+	}
+
+	private void OnTrackerMapChanged(string mapKey)
+	{
+		base.Dispatcher.BeginInvoke((Action)delegate
+		{
+			if (!string.IsNullOrEmpty(mapKey))
+			{
+				string b = _trackerService?.Transformer.ResolveMapKey(mapKey) ?? mapKey;
+				if (!string.Equals(_currentMapKey, b, StringComparison.OrdinalIgnoreCase))
+				{
+					for (int i = 0; i < CmbMapSelect.Items.Count; i++)
+					{
+						if (CmbMapSelect.Items[i] is ComboBoxItem comboBoxItem && (string.Equals(comboBoxItem.Tag as string, b, StringComparison.OrdinalIgnoreCase) || string.Equals(comboBoxItem.Tag as string, mapKey, StringComparison.OrdinalIgnoreCase)))
+						{
+							if (CmbMapSelect.SelectedIndex != i)
+							{
+								CmbMapSelect.SelectedIndex = i;
+							}
+							break;
+						}
+					}
+				}
+			}
+		});
+	}
+
+	private void OnTrackerPinnedObjectiveChanged(TaskObjectiveWithLocation? objective)
+	{
+		base.Dispatcher.BeginInvoke((Action)delegate
+		{
+			_selectedObjective = objective;
+			_questMarkerManager?.SetSelectedObjective(objective);
+			if (objective != null)
+			{
+				SelectFloorForObjective(objective);
+				CenterOnObjective(objective);
+				if (_zoomLevel < 1.0)
+				{
+					SetZoom(1.25);
+				}
+			}
+		});
+	}
+
+	public void SelectFloor(string floorId)
+	{
+		if (string.IsNullOrEmpty(floorId) || CmbFloorSelect == null)
+		{
+			return;
+		}
+		base.Dispatcher.Invoke(delegate
+		{
+			for (int i = 0; i < CmbFloorSelect.Items.Count; i++)
+			{
+				if (CmbFloorSelect.Items[i] is ComboBoxItem comboBoxItem && string.Equals(comboBoxItem.Tag as string, floorId, StringComparison.OrdinalIgnoreCase))
+				{
+					if (CmbFloorSelect.SelectedIndex != i)
+					{
+						CmbFloorSelect.SelectedIndex = i;
+					}
+					break;
+				}
+			}
+		});
+	}
+
+	public void ApplyQuestFiltersToMapMarkers(QuestFilterCriteria criteria, IEnumerable<string>? allowedQuestIds = null, IEnumerable<string>? allowedQuestNames = null)
+	{
+		_questMarkerManager?.SetFilterCriteria(criteria, allowedQuestIds, allowedQuestNames);
+		_questMarkerManager?.RefreshMarkersAsync();
+	}
+
+	public void SetEmbeddedMode(bool isEmbedded)
+	{
+		_isEmbedded = isEmbedded;
+		base.Dispatcher.Invoke(delegate
+		{
+			if (TxtPageTitle != null)
+			{
+				TxtPageTitle.Visibility = (isEmbedded ? Visibility.Collapsed : Visibility.Visible);
+			}
+			if (TxtMapLabel != null)
+			{
+				TxtMapLabel.Visibility = (isEmbedded ? Visibility.Collapsed : Visibility.Visible);
+			}
+			if (CmbMapSelect != null)
+			{
+				CmbMapSelect.Visibility = (isEmbedded ? Visibility.Collapsed : Visibility.Visible);
+			}
+			if (isEmbedded && CmbMapSelect != null && CmbMapSelect.Items.Count == 0)
+			{
+				PopulateMapComboBox();
+			}
+			if (BtnClearTrail != null)
+			{
+				BtnClearTrail.Visibility = (isEmbedded ? Visibility.Collapsed : Visibility.Visible);
+			}
+			if (BtnFullScreen != null)
+			{
+				BtnFullScreen.Visibility = (isEmbedded ? Visibility.Collapsed : Visibility.Visible);
+			}
+			if (BtnOpenRelocationManager != null)
+			{
+				BtnOpenRelocationManager.Visibility = Visibility.Collapsed;
+			}
+			if (BtnSettings != null)
+			{
+				BtnSettings.Visibility = (isEmbedded ? Visibility.Collapsed : Visibility.Visible);
+			}
+			if (BtnToggleTracking != null)
+			{
+				BtnToggleTracking.Visibility = (isEmbedded ? Visibility.Collapsed : Visibility.Visible);
+			}
+			if (ChkFixedView != null)
+			{
+				ChkFixedView.Visibility = (isEmbedded ? Visibility.Collapsed : Visibility.Visible);
+			}
+			if (base.Content is Grid grid)
+			{
+				foreach (UIElement child in grid.Children)
+				{
+					if (child == MapRequirementsStripsPanel)
+					{
+						child.Visibility = Visibility.Visible;
+					}
+					else
+					{
+						int row = Grid.GetRow(child);
+						if (row == 0 || row == 1 || row == 2)
+						{
+							child.Visibility = (isEmbedded ? Visibility.Collapsed : Visibility.Visible);
+						}
+					}
+				}
+			}
+			if (isEmbedded)
+			{
+				_clockTimer?.Stop();
+			}
+		});
+	}
+
+	public static string ResolveCanonicalMapKey(string? mapNameOrKey)
+	{
+		if (string.IsNullOrWhiteSpace(mapNameOrKey))
+		{
+			return "Customs";
+		}
+		string text = mapNameOrKey.Trim().ToLowerInvariant().Replace("-", "")
+			.Replace("_", "")
+			.Replace(" ", "");
+		if (text.Contains("groundzero") || text.Contains("sandbox"))
+		{
+			return "GroundZero";
+		}
+		if (text.Contains("customs") || text.Contains("bigmap"))
+		{
+			return "Customs";
+		}
+		if (text.Contains("woods"))
+		{
+			return "Woods";
+		}
+		if (text.Contains("factory"))
+		{
+			return "Factory";
+		}
+		if (text.Contains("interchange") || text.Contains("shopping"))
+		{
+			return "Interchange";
+		}
+		if (text.Contains("shoreline"))
+		{
+			return "Shoreline";
+		}
+		if (text.Contains("reserve") || text.Contains("rezerv"))
+		{
+			return "Reserve";
+		}
+		if (text.Contains("lighthouse"))
+		{
+			return "Lighthouse";
+		}
+		if (text.Contains("street"))
+		{
+			return "StreetsOfTarkov";
+		}
+		if (text.Contains("labyrinth"))
+		{
+			return "Labyrinth";
+		}
+		if (text.Contains("terminal"))
+		{
+			return "Terminal";
+		}
+		if (text.Contains("lab"))
+		{
+			return "Labs";
+		}
+		return mapNameOrKey;
+	}
+
+	public void SelectMap(string mapKey)
+	{
+		if (string.IsNullOrWhiteSpace(mapKey))
+		{
+			return;
+		}
+		string text = ResolveCanonicalMapKey(mapKey);
+		_trackerService?.SetCurrentMap(text);
+		if (!base.Dispatcher.CheckAccess())
+		{
+			base.Dispatcher.Invoke(delegate
+			{
+				SelectMap(mapKey);
+			});
+			return;
+		}
+		if (!string.IsNullOrEmpty(_currentMapKey) && !string.Equals(_currentMapKey, text, StringComparison.OrdinalIgnoreCase))
+		{
+			SaveCurrentPerMapMarkerConfig();
+		}
+		_isSwitchingMap = true;
+		try
+		{
+			if (CmbMapSelect.Items.Count == 0)
+			{
+				PopulateMapComboBox();
+			}
+			int num = -1;
+			for (int i = 0; i < CmbMapSelect.Items.Count; i++)
+			{
+				if (CmbMapSelect.Items[i] is ComboBoxItem comboBoxItem)
+				{
+					string text2 = comboBoxItem.Tag as string;
+					string a = comboBoxItem.Content as string;
+					if (string.Equals(text2, text, StringComparison.OrdinalIgnoreCase) || string.Equals(text2, mapKey, StringComparison.OrdinalIgnoreCase) || string.Equals(ResolveCanonicalMapKey(text2), text, StringComparison.OrdinalIgnoreCase) || string.Equals(a, mapKey, StringComparison.OrdinalIgnoreCase))
+					{
+						num = i;
+						break;
+					}
+				}
+			}
+			CmbMapSelect.SelectionChanged -= CmbMapSelect_SelectionChanged;
+			if (num >= 0)
+			{
+				CmbMapSelect.SelectedIndex = num;
+			}
+			CmbMapSelect.SelectionChanged += CmbMapSelect_SelectionChanged;
+			_loadingCts?.Cancel();
+			_loadingCts?.Dispose();
+			_loadingCts = new CancellationTokenSource();
+			CancellationToken token = _loadingCts.Token;
+			_currentMapKey = text;
+			LoadAndApplyPerMapConfig(text);
+			UpdateFloorComboBox(text);
+			bool centerView = MapSettings.Instance.GetPerMapConfig(text).ZoomLevel < 0.1;
+			LoadMapPipelineAsync(text, centerView, token);
+		}
+		finally
+		{
+			_isSwitchingMap = false;
+		}
+	}
+
+	private async Task LoadMapPipelineAsync(string canonicalKey, bool centerView, CancellationToken ct)
+	{
+		_ = 3;
+		try
+		{
+			await LoadMapImageAsync(canonicalKey, centerView, ct);
+			LoadCurrentMapSettings();
+			int size = _trackerService?.Settings.PlayerMarkerSize ?? 16;
+			UpdatePlayerMarkerSize(size);
+			await RefreshExtractMarkers(ct);
+			await RefreshMapMarkers(ct);
+			await RefreshQuestMarkers(ct);
+			UpdateMapPillSelection(canonicalKey);
+			UpdateRequiredStripsForCurrentMap();
+		}
+		catch (OperationCanceledException)
+		{
+			_log.Info("Map pipeline cancelled for " + canonicalKey);
+		}
+		catch (Exception exception)
+		{
+			_log.Error("Error loading map pipeline for " + canonicalKey, exception);
+		}
+	}
+
+	private void OnPlacementStateChanged(object? sender, EventArgs e)
+	{
+		base.Dispatcher.Invoke(delegate
+		{
+			QuestObjectiveRelocationService instance = QuestObjectiveRelocationService.Instance;
+			if (instance.IsPlacementActive)
+			{
+				PlacementModeBanner.Visibility = Visibility.Visible;
+				TxtPlacementTargetName.Text = instance.TargetObjectiveDescription ?? instance.TargetQuestName ?? string.Empty;
+				MapCanvas.Cursor = System.Windows.Input.Cursors.Cross;
+				MapViewerGrid.Cursor = System.Windows.Input.Cursors.Cross;
+				if (!string.IsNullOrEmpty(instance.TargetMapKey) && !string.Equals(_currentMapKey, instance.TargetMapKey, StringComparison.OrdinalIgnoreCase))
+				{
+					SelectMap(instance.TargetMapKey);
+				}
+			}
+			else
+			{
+				PlacementModeBanner.Visibility = Visibility.Collapsed;
+				MapCanvas.Cursor = System.Windows.Input.Cursors.Arrow;
+				MapViewerGrid.Cursor = System.Windows.Input.Cursors.Arrow;
+			}
+		});
+	}
+
+	private void BtnCancelPlacement_Click(object sender, RoutedEventArgs e)
+	{
+		QuestObjectiveRelocationService.Instance.CancelPlacement();
+		PlacementModeBanner.Visibility = Visibility.Collapsed;
+		MapCanvas.Cursor = System.Windows.Input.Cursors.Arrow;
+		MapViewerGrid.Cursor = System.Windows.Input.Cursors.Arrow;
+	}
+
+	private void MapPage_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+	{
+		if (e.Key == Key.Escape && QuestObjectiveRelocationService.Instance.IsPlacementActive)
+		{
+			BtnCancelPlacement_Click(BtnCancelPlacement, new RoutedEventArgs());
+			e.Handled = true;
+		}
+	}
+
+	private async void HandlePlacementClick(System.Windows.Point canvasPos)
+	{
+		QuestObjectiveRelocationService service = QuestObjectiveRelocationService.Instance;
+		if (!service.IsPlacementActive)
+		{
+			return;
+		}
+		string targetObjectiveId = service.TargetObjectiveId;
+		string targetDesc = service.TargetObjectiveDescription ?? service.TargetQuestName ?? "Objetivo";
+		if (string.IsNullOrEmpty(_currentMapKey) || string.IsNullOrEmpty(targetObjectiveId))
+		{
+			service.CancelPlacement();
+			return;
+		}
+		try
+		{
+			if (service.TryCalculateWorldCoordinates(_currentMapKey, canvasPos, _currentFloorId, out LocationPoint locPoint) && locPoint != null)
+			{
+				if (await service.SaveObjectiveLocationAsync(targetObjectiveId, locPoint))
+				{
+					service.CancelPlacement();
+					TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? $"목표 위치가 설정되었습니다: {targetDesc} (X={locPoint.X:F1}, Z={locPoint.Z:F1})" : $"Objective location saved: {targetDesc} (X={locPoint.X:F1}, Z={locPoint.Z:F1})");
+				}
+				else
+				{
+					TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? "목표 위치 저장 실패" : "Failed to save objective location");
+				}
+			}
+			else
+			{
+				TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? "좌표 변환 실패" : "Coordinate calculation failed for current map");
+			}
+		}
+		catch (Exception ex)
+		{
+			_log.Error("Error handling placement click", ex);
+			TxtStatus.Text = "Error: " + ex.Message;
+		}
+	}
+
+	private void OnErrorOccurred(object? sender, string message)
+	{
+		base.Dispatcher.Invoke(delegate
+		{
+			TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? ("오류: " + message) : ("Error: " + message));
+			TxtStatus.Foreground = (TryFindResource("WarningBrush") as System.Windows.Media.Brush) ?? System.Windows.Media.Brushes.Orange;
+		});
+	}
+
+	private void OnStatusMessage(object? sender, string message)
+	{
+		base.Dispatcher.Invoke(delegate
+		{
+			TxtStatus.Text = message;
+			TxtStatus.Foreground = (TryFindResource("TextSecondaryBrush") as System.Windows.Media.Brush) ?? System.Windows.Media.Brushes.Gray;
+		});
+	}
+
+	private void OnWatchingStateChanged(object? sender, bool isWatching)
+	{
+		base.Dispatcher.Invoke(UpdateUI);
+	}
+
+	private void StartAutoTracking()
+	{
+		if (_trackerService != null && !_trackerService.IsWatching && !string.IsNullOrEmpty(_trackerService.Settings.ScreenshotFolderPath))
+		{
+			_trackerService.StartTracking();
+		}
+	}
+
+	private void StopAutoTracking()
+	{
+		if (_trackerService != null && _trackerService.IsWatching)
+		{
+			_trackerService.StopTracking();
+		}
+	}
+
+	private void StartRaidEventMonitoring()
+	{
+		_raidEventService.RaidEvent += OnRaidEvent;
+		string logFolderPath = SettingsService.Instance.LogFolderPath;
+		_raidEventService.StartMonitoring(logFolderPath);
+	}
+
+	private void StopRaidEventMonitoring()
+	{
+		_raidEventService.RaidEvent -= OnRaidEvent;
+		_raidEventService.StopMonitoring();
+	}
+
+	private void OnRaidEvent(object? sender, EftRaidEventArgs e)
+	{
+		base.Dispatcher.Invoke(delegate
+		{
+			switch (e.EventType)
+			{
+			case EftRaidEventType.RaidStarted:
+				HandleRaidStarted(e);
+				break;
+			case EftRaidEventType.Disconnected:
+			case EftRaidEventType.RaidEnded:
+			case EftRaidEventType.NetworkTimeout:
+			case EftRaidEventType.NetworkError:
+				HandleRaidEnded(e);
+				break;
+			}
+		});
+	}
+
+	private void HandleRaidStarted(EftRaidEventArgs e)
+	{
+		string text = e.RaidInfo?.MapKey;
+		if (string.IsNullOrEmpty(text))
+		{
+			return;
+		}
+		RaidType raidType = e.RaidInfo?.RaidType ?? RaidType.Unknown;
+		ApplyRaidTypeExtracts(raidType);
+		if (string.Equals(_currentMapKey, text, StringComparison.OrdinalIgnoreCase))
+		{
+			ClearTrailAndMarkers();
+			string value = ((raidType == RaidType.PMC) ? "PMC" : "SCAV");
+			TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? $"레이드 시작: {text} ({value})" : $"Raid started: {text} ({value})");
+			return;
+		}
+		for (int i = 0; i < CmbMapSelect.Items.Count; i++)
+		{
+			if (CmbMapSelect.Items[i] is ComboBoxItem comboBoxItem && string.Equals(comboBoxItem.Tag as string, text, StringComparison.OrdinalIgnoreCase))
+			{
+				if (!string.IsNullOrEmpty(_currentMapKey))
+				{
+					SaveMapZoomLevel(_currentMapKey, _zoomLevel);
+				}
+				ClearTrailAndMarkers();
+				CmbMapSelect.SelectedIndex = i;
+				double zoom = LoadMapZoomLevel(text);
+				SetZoom(zoom);
+				CenterMapInView();
+				string value2 = ((raidType == RaidType.PMC) ? "PMC" : "SCAV");
+				TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? $"레이드 시작: {text} ({value2})" : $"Raid started: {text} ({value2})");
+				break;
+			}
+		}
+	}
+
+	private void ApplyRaidTypeExtracts(RaidType raidType)
+	{
+		bool flag;
+		bool flag2;
+		switch (raidType)
+		{
+		case RaidType.PMC:
+			flag = true;
+			flag2 = false;
+			break;
+		case RaidType.Scav:
+			flag = false;
+			flag2 = true;
+			break;
+		default:
+			flag = true;
+			flag2 = true;
+			break;
+		}
+		_showPmcExtracts = flag;
+		_showScavExtracts = flag2;
+		ChkShowPmcExtracts.Checked -= ChkExtractFilter_Changed;
+		ChkShowPmcExtracts.Unchecked -= ChkExtractFilter_Changed;
+		ChkShowScavExtracts.Checked -= ChkExtractFilter_Changed;
+		ChkShowScavExtracts.Unchecked -= ChkExtractFilter_Changed;
+		ChkShowPmcExtracts.IsChecked = flag;
+		ChkShowScavExtracts.IsChecked = flag2;
+		ChkShowPmcExtracts.Checked += ChkExtractFilter_Changed;
+		ChkShowPmcExtracts.Unchecked += ChkExtractFilter_Changed;
+		ChkShowScavExtracts.Checked += ChkExtractFilter_Changed;
+		ChkShowScavExtracts.Unchecked += ChkExtractFilter_Changed;
+		if (_extractMarkerManager != null)
+		{
+			_extractMarkerManager.SetShowPmcExtracts(flag);
+			_extractMarkerManager.SetShowScavExtracts(flag2);
+		}
+		RefreshExtractMarkers();
+	}
+
+	private void HandleRaidEnded(EftRaidEventArgs e)
+	{
+		ClearTrailAndMarkers();
+		string text = e.RaidInfo?.MapKey ?? _currentMapKey;
+		TimeSpan? timeSpan = e.RaidInfo?.Duration;
+		string text2 = ((!timeSpan.HasValue) ? "" : ((_loc.CurrentLanguage == AppLanguage.KO) ? $" ({timeSpan.Value.Minutes}분 {timeSpan.Value.Seconds}초)" : $" ({timeSpan.Value.Minutes}m {timeSpan.Value.Seconds}s)"));
+		TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? ("레이드 종료: " + text + text2) : ("Raid ended: " + text + text2));
+	}
+
+	private void ClearTrailAndMarkers()
+	{
+		_trackerService?.ClearTrail();
+		TrailPath.Points.Clear();
+		PlayerMarker.Visibility = Visibility.Collapsed;
+		PlayerDot.Visibility = Visibility.Collapsed;
+		TxtCoordinates.Text = "--";
+		TxtLastUpdateTime.Text = "--";
+	}
+
+	private void SaveMapZoomLevel(string mapKey, double zoomLevel)
+	{
+		_mapZoomLevelCache[mapKey] = zoomLevel;
+		Task.Run(async delegate
+		{
+			try
+			{
+				string key = "map.zoomLevel." + mapKey;
+				await UserDataDbService.Instance.SetSettingAsync(key, zoomLevel.ToString("F2"), null);
+			}
+			catch
+			{
+			}
+		});
+	}
+
+	private double LoadMapZoomLevel(string mapKey)
+	{
+		if (_mapZoomLevelCache.TryGetValue(mapKey, out var value))
+		{
+			return value;
+		}
+		try
+		{
+			string key = "map.zoomLevel." + mapKey;
+			string setting = UserDataDbService.Instance.GetSetting(key, null);
+			if (!string.IsNullOrEmpty(setting) && double.TryParse(setting, out var result))
+			{
+				_mapZoomLevelCache[mapKey] = result;
+				return result;
+			}
+		}
+		catch
+		{
+		}
+		return 1.0;
+	}
+
+	private void BtnToggleTracking_Click(object sender, RoutedEventArgs e)
+	{
+		if (_trackerService != null)
+		{
+			if (_trackerService.IsWatching)
+			{
+				_trackerService.StopTracking();
+			}
+			else
+			{
+				_trackerService.StartTracking();
+			}
+		}
+	}
+
+	private void ChkFixedView_Changed(object sender, RoutedEventArgs e)
+	{
+		if (!_isInitializing && ChkFixedView != null)
+		{
+			bool valueOrDefault = ChkFixedView.IsChecked == true;
+			MapSettings.Instance.AutoCenterEnabled = !valueOrDefault;
+			if (_trackerService != null)
+			{
+				_trackerService.Settings.AutoCenterOnPosition = !valueOrDefault;
+			}
+		}
+	}
+
+	private void BtnClearTrail_Click(object sender, RoutedEventArgs e)
+	{
+		_trackerService?.ClearTrail();
+		TrailPath.Points.Clear();
+		PlayerMarker.Visibility = Visibility.Collapsed;
+		PlayerDot.Visibility = Visibility.Collapsed;
+		TxtCoordinates.Text = "--";
+		TxtLastUpdateTime.Text = "--";
+	}
+
+	private async Task InitializeOverlayServiceAsync()
+	{
+		try
+		{
+			await _overlayService.InitializeAsync();
+			_log.Info("Overlay MiniMap service initialized");
+		}
+		catch (Exception exception)
+		{
+			_log.Error("Failed to initialize Overlay MiniMap service", exception);
+		}
+	}
+
+	private void BtnSettings_Click(object sender, RoutedEventArgs e)
+	{
+		ToggleSettingsPanel(show: true);
+	}
+
+	private void BtnMinimap_Click(object sender, RoutedEventArgs e)
+	{
+		_overlayService.ToggleOverlay();
+	}
+
+	private void BtnMinimapSettings_Click(object sender, RoutedEventArgs e)
+	{
+		_overlayService.ShowSettingsWindow();
+	}
+
+	private void OnOverlayVisibilityChanged(bool isVisible)
+	{
+		base.Dispatcher.Invoke(delegate
+		{
+			UpdateMinimapButtonState(isVisible);
+		});
+	}
+
+	private void UpdateMinimapButtonState(bool isVisible)
+	{
+		if (BtnMinimap != null)
+		{
+			if (isVisible)
+			{
+				BtnMinimap.Background = (TryFindResource("AccentBrush") as System.Windows.Media.Brush) ?? System.Windows.Media.Brushes.RoyalBlue;
+				BtnMinimap.Foreground = System.Windows.Media.Brushes.White;
+			}
+			else
+			{
+				BtnMinimap.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
+				BtnMinimap.ClearValue(System.Windows.Controls.Control.ForegroundProperty);
+			}
+		}
+	}
+
+	private void BtnCloseSettings_Click(object sender, RoutedEventArgs e)
+	{
+		ToggleSettingsPanel(show: false);
+	}
+
+	private void ToggleSettingsPanel(bool show)
+	{
+		if (show)
+		{
+			SettingsColumn.Width = new GridLength(320.0);
+			SettingsPanel.Visibility = Visibility.Visible;
+			LoadCurrentMapSettings();
+		}
+		else
+		{
+			SettingsColumn.Width = new GridLength(0.0);
+			SettingsPanel.Visibility = Visibility.Collapsed;
+		}
+	}
+
+	private async void CmbMapSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		if (_isSwitchingMap || !(CmbMapSelect.SelectedItem is ComboBoxItem { Tag: var tag }) || !(tag is string mapKey))
+		{
+			return;
+		}
+		try
+		{
+			CancellationToken ct = GetNewCancellationToken();
+			_currentMapKey = mapKey;
+			_trackerService?.SetCurrentMap(mapKey);
+			LoadAndApplyPerMapConfig(mapKey);
+			_trackerService?.ClearTrail();
+			TrailPath.Points.Clear();
+			PlayerMarker.Visibility = Visibility.Collapsed;
+			PlayerDot.Visibility = Visibility.Collapsed;
+			UpdateFloorComboBox(mapKey);
+			await LoadMapImageAsync(mapKey, centerView: true, ct);
+			LoadCurrentMapSettings();
+			int size = _trackerService?.Settings.PlayerMarkerSize ?? 16;
+			UpdatePlayerMarkerSize(size);
+			if (_objectiveService.IsLoaded)
+			{
+				await RefreshQuestMarkers(ct);
+			}
+			if (_extractService.IsLoaded)
+			{
+				await RefreshExtractMarkers(ct);
+			}
+			if (MapMarkerDbService.Instance.IsLoaded)
+			{
+				await RefreshMapMarkers(ct);
+			}
+			UpdateCustomMarkersParam();
+			if (_customMarkerManager != null)
+			{
+				await _customMarkerManager.RefreshMarkersAsync(ct);
+			}
+			UpdateMapPillSelection(mapKey);
+			UpdateRequiredStripsForCurrentMap();
+		}
+		catch (OperationCanceledException)
+		{
+			_log.Info("CmbMapSelect_SelectionChanged cancelled");
+		}
+		catch (Exception exception)
+		{
+			_log.Error("Error in CmbMapSelect_SelectionChanged", exception);
+		}
+	}
+
+	private void OnFloorKeyPressed(int floorIndex)
+	{
+		if (CmbFloorSelect.Visibility == Visibility.Visible && floorIndex >= 0 && floorIndex < CmbFloorSelect.Items.Count)
+		{
+			CmbFloorSelect.SelectedIndex = floorIndex;
+		}
+	}
+
+	private async void CmbFloorSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		if (!(CmbFloorSelect.SelectedItem is ComboBoxItem { Tag: string tag }) || !(_currentFloorId != tag))
+		{
+			return;
+		}
+		try
+		{
+			CancellationToken ct = GetNewCancellationToken();
+			_currentFloorId = tag;
+			_trackerService?.SetCurrentFloor(tag);
+			SyncPillFloorSelector();
+			if (!string.IsNullOrEmpty(_currentMapKey))
+			{
+				await LoadMapImageAsync(_currentMapKey, centerView: false, ct);
+				await RefreshExtractMarkers(ct);
+				await RefreshQuestMarkers(ct);
+				await RefreshMapMarkers(ct);
+				UpdateCustomMarkersParam();
+				_customMarkerManager?.UpdateMarkerDisplay();
+			}
+		}
+		catch (OperationCanceledException)
+		{
+			_log.Info("CmbFloorSelect_SelectionChanged cancelled");
+		}
+		catch (Exception exception)
+		{
+			_log.Error("Error in CmbFloorSelect_SelectionChanged", exception);
+		}
+	}
+
+	private void UpdateFloorComboBox(string mapKey)
+	{
+		List<MapFloorConfig> list = (_trackerService?.GetMapConfig(mapKey))?.Floors;
+		CmbFloorSelect.SelectionChanged -= CmbFloorSelect_SelectionChanged;
+		try
+		{
+			CmbFloorSelect.Items.Clear();
+			_currentFloorId = null;
+			if (list == null || list.Count == 0)
+			{
+				TxtFloorLabel.Visibility = Visibility.Collapsed;
+				CmbFloorSelect.Visibility = Visibility.Collapsed;
+				return;
+			}
+			TxtFloorLabel.Visibility = Visibility.Visible;
+			CmbFloorSelect.Visibility = Visibility.Visible;
+			List<MapFloorConfig> list2 = list.OrderBy((MapFloorConfig f) => f.Order).ToList();
+			int num = 0;
+			for (int i = 0; i < list2.Count; i++)
+			{
+				MapFloorConfig mapFloorConfig = list2[i];
+				CmbFloorSelect.Items.Add(new ComboBoxItem
+				{
+					Content = mapFloorConfig.DisplayName,
+					Tag = mapFloorConfig.LayerId
+				});
+				if (mapFloorConfig.IsDefault)
+				{
+					num = i;
+				}
+			}
+			if (CmbFloorSelect.Items.Count > 0)
+			{
+				CmbFloorSelect.SelectedIndex = num;
+				_currentFloorId = list2[num].LayerId;
+			}
+		}
+		finally
+		{
+			CmbFloorSelect.SelectionChanged += CmbFloorSelect_SelectionChanged;
+			SyncPillFloorSelector();
+		}
+	}
+
+	private void BtnAutoDetect_Click(object sender, RoutedEventArgs e)
+	{
+		string text = MapTrackerSettings.TryDetectScreenshotFolder();
+		if (!string.IsNullOrEmpty(text))
+		{
+			TxtScreenshotFolder.Text = text;
+			_trackerService?.ChangeScreenshotFolder(text);
+			SettingsService.Instance.MapScreenshotPath = text;
+			System.Windows.MessageBox.Show((_loc.CurrentLanguage == AppLanguage.KO) ? ("스크린샷 폴더를 찾았습니다:\n" + text) : ("Screenshot folder found:\n" + text), (_loc.CurrentLanguage == AppLanguage.KO) ? "자동 탐지 성공" : "Auto Detect Success", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+			return;
+		}
+		List<string> possibleScreenshotPaths = MapTrackerSettings.GetPossibleScreenshotPaths();
+		if (possibleScreenshotPaths.Count > 0)
+		{
+			string text2 = string.Join("\n", possibleScreenshotPaths);
+			System.Windows.MessageBox.Show((_loc.CurrentLanguage == AppLanguage.KO) ? ("스크린샷 폴더를 자동으로 찾지 못했습니다.\n\n발견된 EFT 폴더:\n" + text2 + "\n\n수동으로 선택해주세요.") : ("Could not automatically find screenshot folder.\n\nFound EFT folder:\n" + text2 + "\n\nPlease select manually."), "Auto Detect Failed", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+		}
+		else
+		{
+			System.Windows.MessageBox.Show((_loc.CurrentLanguage == AppLanguage.KO) ? "EFT 스크린샷 폴더를 찾을 수 없습니다.\n수동으로 폴더를 선택해주세요." : "Could not find EFT screenshot folder.\nPlease select folder manually.", "Auto Detect Failed", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+		}
+	}
+
+	private void BtnBrowseFolder_Click(object sender, RoutedEventArgs e)
+	{
+		OpenFolderDialog openFolderDialog = new OpenFolderDialog
+		{
+			Title = "Select Screenshot Folder",
+			InitialDirectory = TxtScreenshotFolder.Text
+		};
+		if (openFolderDialog.ShowDialog() == true)
+		{
+			TxtScreenshotFolder.Text = openFolderDialog.FolderName;
+			_trackerService?.ChangeScreenshotFolder(openFolderDialog.FolderName);
+			SettingsService.Instance.MapScreenshotPath = openFolderDialog.FolderName;
+		}
+	}
+
+	private void SliderMarkerSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (TxtMarkerSize != null)
+		{
+			int num = (int)e.NewValue;
+			TxtMarkerSize.Text = num.ToString();
+			UpdateMarkerSize(num);
+			SettingsService.Instance.MapQuestMarkerSize = num;
+		}
+	}
+
+	private void SliderPlayerMarkerSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (TxtPlayerMarkerSize != null)
+		{
+			int num = (int)e.NewValue;
+			TxtPlayerMarkerSize.Text = num.ToString();
+			UpdatePlayerMarkerSize(num);
+			SettingsService.Instance.MapPlayerMarkerSize = num;
+		}
+	}
+
+	private void ChkSettingTaskTitles_Click(object sender, RoutedEventArgs e)
+	{
+		bool valueOrDefault = ChkSettingTaskTitles.IsChecked == true;
+		_questMarkerStyle = (valueOrDefault ? QuestMarkerStyle.DefaultWithName : QuestMarkerStyle.Default);
+		SettingsService.Instance.MapQuestMarkerStyle = (int)_questMarkerStyle;
+		if (CmbQuestMarkerStyle != null)
+		{
+			CmbQuestMarkerStyle.SelectedIndex = (int)_questMarkerStyle;
+		}
+		_questMarkerManager.SetQuestMarkerStyle(_questMarkerStyle);
+		RefreshQuestMarkers();
+	}
+
+	private void CmbQuestMarkerStyle_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		if (!_isInitializing && CmbQuestMarkerStyle != null && CmbQuestMarkerStyle.SelectedIndex >= 0)
+		{
+			_questMarkerStyle = (QuestMarkerStyle)CmbQuestMarkerStyle.SelectedIndex;
+			SettingsService.Instance.MapQuestMarkerStyle = (int)_questMarkerStyle;
+			RefreshQuestMarkers();
+		}
+	}
+
+	private void SliderMarkerOpacity_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (TxtMarkerOpacity != null)
+		{
+			int value = (int)e.NewValue;
+			TxtMarkerOpacity.Text = $"{value}%";
+			MapSettings.Instance.MarkerOpacity = e.NewValue;
+			_customMarkerManager?.UpdateMarkerDisplay();
+		}
+	}
+
+	private void SliderQuestNameTextSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (TxtQuestNameTextSize != null)
+		{
+			int num = (int)e.NewValue;
+			TxtQuestNameTextSize.Text = num.ToString();
+			_questNameTextSize = num;
+			SettingsService.Instance.MapQuestNameSize = num;
+			RefreshQuestMarkers();
+		}
+	}
+
+	private void BtnFullScreen_Click(object sender, RoutedEventArgs e)
+	{
+		EnterFullScreen();
+	}
+
+	private void BtnExitFullScreen_Click(object sender, RoutedEventArgs e)
+	{
+		ExitFullScreen();
+	}
+
+	private void EnterFullScreen()
+	{
+		if (Window.GetWindow(this) is MainWindow mainWindow)
+		{
+			mainWindow.SetFullScreenMode(fullScreen: true);
+			BtnExitFullScreen.Visibility = Visibility.Visible;
+		}
+	}
+
+	private void ExitFullScreen()
+	{
+		if (Window.GetWindow(this) is MainWindow mainWindow)
+		{
+			mainWindow.SetFullScreenMode(fullScreen: false);
+			BtnExitFullScreen.Visibility = Visibility.Collapsed;
+		}
+	}
+
+	private void BtnZoomIn_Click(object sender, RoutedEventArgs e)
+	{
+		double num = ZoomPresets.FirstOrDefault((double p) => p > _zoomLevel);
+		double newZoom = ((num > 0.0) ? num : (_zoomLevel * 1.25));
+		ZoomToMouse(newZoom);
+	}
+
+	private void BtnZoomOut_Click(object sender, RoutedEventArgs e)
+	{
+		double num = ZoomPresets.LastOrDefault((double p) => p < _zoomLevel);
+		double newZoom = ((num > 0.0) ? num : (_zoomLevel * 0.8));
+		ZoomToMouse(newZoom);
+	}
+
+	private void ZoomToMouse(double newZoom)
+	{
+		double zoomLevel = _zoomLevel;
+		newZoom = Math.Clamp(newZoom, 0.1, 5.0);
+		if (!(Math.Abs(newZoom - zoomLevel) < 0.001))
+		{
+			System.Windows.Point position = Mouse.GetPosition(MapViewerGrid);
+			double num = (position.X - MapTranslate.X) / zoomLevel;
+			double num2 = (position.Y - MapTranslate.Y) / zoomLevel;
+			MapTranslate.X = position.X - num * newZoom;
+			MapTranslate.Y = position.Y - num2 * newZoom;
+			SetZoom(newZoom);
+		}
+	}
+
+	private void CmbZoomLevel_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		if (CmbZoomLevel.SelectedItem is string zoomText)
+		{
+			ParseAndSetZoom(zoomText);
+		}
+	}
+
+	private void CmbZoomLevel_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+	{
+		if (e.Key == Key.Return)
+		{
+			ParseAndSetZoom(CmbZoomLevel.Text);
+			e.Handled = true;
+		}
+	}
+
+	private void ParseAndSetZoom(string zoomText)
+	{
+		if (double.TryParse(zoomText.Trim().TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
+		{
+			SetZoom(result / 100.0);
+		}
+	}
+
+	private void BtnResetView_Click(object sender, RoutedEventArgs e)
+	{
+		SetZoom(1.0);
+		CenterMapInView();
+	}
+
+	private void MapViewer_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+	{
+		if (NoMapPanel.Visibility != 0)
+		{
+			if (QuestObjectiveRelocationService.Instance.IsPlacementActive)
+			{
+				System.Windows.Point position = e.GetPosition(MapCanvas);
+				HandlePlacementClick(position);
+				e.Handled = true;
+				return;
+			}
+			_isDragging = true;
+			_dragStartPoint = e.GetPosition(MapViewerGrid);
+			_dragStartTranslateX = MapTranslate.X;
+			_dragStartTranslateY = MapTranslate.Y;
+			MapViewerGrid.CaptureMouse();
+			MapCanvas.Cursor = System.Windows.Input.Cursors.ScrollAll;
+		}
+	}
+
+	private void MapViewer_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+	{
+		if (_isDragging)
+		{
+			_isDragging = false;
+			MapViewerGrid.ReleaseMouseCapture();
+			MapCanvas.Cursor = (QuestObjectiveRelocationService.Instance.IsPlacementActive ? System.Windows.Input.Cursors.Cross : System.Windows.Input.Cursors.Arrow);
+		}
+	}
+
+	private void MapViewer_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+	{
+		if (_isDragging)
+		{
+			System.Windows.Point position = e.GetPosition(MapViewerGrid);
+			double num = position.X - _dragStartPoint.X;
+			double num2 = position.Y - _dragStartPoint.Y;
+			MapTranslate.X = _dragStartTranslateX + num;
+			MapTranslate.Y = _dragStartTranslateY + num2;
+		}
+	}
+
+	private void MapViewer_MouseWheel(object sender, MouseWheelEventArgs e)
+	{
+		System.Windows.Point position = e.GetPosition(MapViewerGrid);
+		double zoomLevel = _zoomLevel;
+		double num = ((e.Delta > 0) ? 1.15 : 0.87);
+		double num2 = Math.Clamp(_zoomLevel * num, 0.1, 5.0);
+		if (!(Math.Abs(num2 - zoomLevel) < 0.001))
+		{
+			double num3 = (position.X - MapTranslate.X) / zoomLevel;
+			double num4 = (position.Y - MapTranslate.Y) / zoomLevel;
+			MapTranslate.X = position.X - num3 * num2;
+			MapTranslate.Y = position.Y - num4 * num2;
+			SetZoom(num2);
+			e.Handled = true;
+		}
+	}
+
+	private async Task LoadMapImageAsync(string mapKey, bool centerView = true, CancellationToken ct = default(CancellationToken))
+	{
+		ct.ThrowIfCancellationRequested();
+		MapConfig config = _trackerService?.GetMapConfig(mapKey);
+		if (config == null)
+		{
+			ShowNoMapPanel(show: true);
+			return;
+		}
+		string imagePath = config.ImagePath;
+		if (string.IsNullOrEmpty(imagePath) && !string.IsNullOrEmpty(config.SvgFileName))
+		{
+			imagePath = System.IO.Path.Combine("Assets", "DB", "Maps", config.SvgFileName);
+		}
+		if (!string.IsNullOrEmpty(imagePath) && !System.IO.Path.IsPathRooted(imagePath))
+		{
+			imagePath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, imagePath);
+		}
+		if (string.IsNullOrEmpty(imagePath) || !File.Exists(imagePath))
+		{
+			ShowNoMapPanel(show: true);
+			return;
+		}
+		try
+		{
+			if (System.IO.Path.GetExtension(imagePath).ToLowerInvariant() == ".svg")
+			{
+				MapImage.Visibility = Visibility.Collapsed;
+				MapSvg.Visibility = Visibility.Visible;
+				MapSvg.Source = null;
+				IEnumerable<string> visibleFloors = null;
+				IEnumerable<string> allFloors = null;
+				string backgroundFloorId = null;
+				double backgroundOpacity = 0.3;
+				if (config.Floors != null && config.Floors.Count > 0 && !string.IsNullOrEmpty(_currentFloorId))
+				{
+					allFloors = config.Floors.Select((MapFloorConfig f) => f.LayerId);
+					visibleFloors = new string[1] { _currentFloorId };
+					MapFloorConfig mapFloorConfig = config.Floors.FirstOrDefault((MapFloorConfig f) => f.IsDefault);
+					MapFloorConfig mapFloorConfig2 = config.Floors.FirstOrDefault((MapFloorConfig f) => string.Equals(f.LayerId, _currentFloorId, StringComparison.OrdinalIgnoreCase));
+					if (mapFloorConfig != null && !string.Equals(_currentFloorId, mapFloorConfig.LayerId, StringComparison.OrdinalIgnoreCase))
+					{
+						backgroundFloorId = mapFloorConfig.LayerId;
+						if (mapFloorConfig2 != null && mapFloorConfig2.Order < 0)
+						{
+							backgroundOpacity = 0.15;
+						}
+					}
+				}
+				if (visibleFloors != null)
+				{
+					string uriString = await Task.Run(delegate
+					{
+						string contents = new SvgStylePreprocessor().ProcessSvgFile(imagePath, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity);
+						string text = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"legacy_map_{Guid.NewGuid()}.svg");
+						File.WriteAllText(text, contents);
+						return text;
+					}, ct);
+					ct.ThrowIfCancellationRequested();
+					MapSvg.Source = new Uri(uriString, UriKind.Absolute);
+				}
+				else
+				{
+					MapSvg.Source = new Uri(imagePath, UriKind.Absolute);
+				}
+				MapSvg.Width = config.ImageWidth;
+				MapSvg.Height = config.ImageHeight;
+				MapCanvas.Width = config.ImageWidth;
+				MapCanvas.Height = config.ImageHeight;
+				Canvas.SetLeft(MapSvg, 0.0);
+				Canvas.SetTop(MapSvg, 0.0);
+			}
+			else
+			{
+				MapSvg.Visibility = Visibility.Collapsed;
+				MapImage.Visibility = Visibility.Visible;
+				BitmapImage bitmapImage = new BitmapImage();
+				bitmapImage.BeginInit();
+				bitmapImage.UriSource = new Uri(imagePath, UriKind.Absolute);
+				bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+				bitmapImage.EndInit();
+				MapImage.Source = bitmapImage;
+				MapCanvas.Width = bitmapImage.PixelWidth;
+				MapCanvas.Height = bitmapImage.PixelHeight;
+				Canvas.SetLeft(MapImage, 0.0);
+				Canvas.SetTop(MapImage, 0.0);
+			}
+			ShowNoMapPanel(show: false);
+			if (centerView)
+			{
+				CenterMapInView();
+			}
+		}
+		catch (OperationCanceledException)
+		{
+			throw;
+		}
+		catch (Exception exception)
+		{
+			_log.Error("Error in LoadMapImageAsync for " + mapKey, exception);
+			ShowNoMapPanel(show: true);
+		}
+	}
+
+	private void CenterMapInView()
+	{
+		FitAndCenterMapInView();
+	}
+
+	private void FitAndCenterMapInView(bool forceFit = false)
+	{
+		double actualWidth = MapViewerGrid.ActualWidth;
+		double actualHeight = MapViewerGrid.ActualHeight;
+		if (actualWidth <= 0.0 || actualHeight <= 0.0)
+		{
+			base.Dispatcher.BeginInvoke((Action)delegate
+			{
+				FitAndCenterMapInView(forceFit);
+			}, DispatcherPriority.Loaded);
+			return;
+		}
+		Rect mapPlayableBounds = OverlayMiniMapWindow.GetMapPlayableBounds(string.IsNullOrEmpty(_currentMapKey) ? null : _trackerService?.GetMapConfig(_currentMapKey));
+		if (forceFit || _zoomLevel < 0.1 || (_zoomLevel >= 0.99 && _zoomLevel <= 1.01))
+		{
+			double val = actualWidth * 0.95 / mapPlayableBounds.Width;
+			double val2 = actualHeight * 0.95 / mapPlayableBounds.Height;
+			double value = Math.Min(val, val2);
+			value = Math.Clamp(value, 0.1, 5.0);
+			SetZoom(value);
+		}
+		double num = mapPlayableBounds.X + mapPlayableBounds.Width / 2.0;
+		double num2 = mapPlayableBounds.Y + mapPlayableBounds.Height / 2.0;
+		MapTranslate.X = actualWidth / 2.0 - num * _zoomLevel;
+		MapTranslate.Y = actualHeight / 2.0 - num2 * _zoomLevel;
+	}
+
+	private void ShowNoMapPanel(bool show)
+	{
+		NoMapPanel.Visibility = ((!show) ? Visibility.Collapsed : Visibility.Visible);
+		if (show)
+		{
+			MapImage.Visibility = Visibility.Collapsed;
+			MapSvg.Visibility = Visibility.Collapsed;
+		}
+	}
+
+	private void LoadCurrentMapSettings()
+	{
+	}
+
+	private void UpdateMarkerPosition(ScreenPosition position)
+	{
+		if (!string.Equals(_currentMapKey, position.MapKey, StringComparison.OrdinalIgnoreCase))
+		{
+			for (int i = 0; i < CmbMapSelect.Items.Count; i++)
+			{
+				if (CmbMapSelect.Items[i] is ComboBoxItem comboBoxItem && string.Equals(comboBoxItem.Tag as string, position.MapKey, StringComparison.OrdinalIgnoreCase))
+				{
+					CmbMapSelect.SelectedIndex = i;
+					break;
+				}
+			}
+		}
+		MapTrackerService? trackerService = _trackerService;
+		if ((trackerService == null || trackerService.Settings.ShowDirection) && position.Angle.HasValue)
+		{
+			PlayerMarker.Visibility = Visibility.Visible;
+			PlayerDot.Visibility = Visibility.Collapsed;
+			MarkerTranslation.X = position.X;
+			MarkerTranslation.Y = position.Y;
+			double num = position.Angle.GetValueOrDefault();
+			if (string.Equals(_currentMapKey, "Labs", StringComparison.OrdinalIgnoreCase))
+			{
+				num -= 90.0;
+			}
+			else if (string.Equals(_currentMapKey, "Factory", StringComparison.OrdinalIgnoreCase))
+			{
+				num += 90.0;
+			}
+			MarkerRotation.Angle = num;
+		}
+		else
+		{
+			PlayerMarker.Visibility = Visibility.Collapsed;
+			PlayerDot.Visibility = Visibility.Visible;
+			DotTranslation.X = position.X;
+			DotTranslation.Y = position.Y;
+		}
+	}
+
+	private void UpdateTrailPath()
+	{
+		if (_trackerService == null || !_trackerService.Settings.ShowTrail)
+		{
+			return;
+		}
+		TrailPath.Points.Clear();
+		foreach (ScreenPosition trailPosition in _trackerService.TrailPositions)
+		{
+			TrailPath.Points.Add(new System.Windows.Point(trailPosition.X, trailPosition.Y));
+		}
+	}
+
+	private void UpdateCoordinatesDisplay(ScreenPosition position)
+	{
+		EftPosition originalPosition = position.OriginalPosition;
+		if (originalPosition != null)
+		{
+			string value = (originalPosition.Angle.HasValue ? $", Angle: {originalPosition.Angle:F1}°" : "");
+			TxtCoordinates.Text = $"Map: {originalPosition.MapName}, X: {originalPosition.X:F2}, Y: {originalPosition.Y:F2}{value}";
+		}
+		else
+		{
+			TxtCoordinates.Text = $"X: {position.X:F0}, Y: {position.Y:F0}";
+		}
+		TxtLastUpdateTime.Text = DateTime.Now.ToString("HH:mm:ss");
+	}
+
+	private async void UpdateMarkerSize(int size)
+	{
+		if (_trackerService != null)
+		{
+			_trackerService.Settings.MarkerSize = size;
+			_trackerService.SaveSettings();
+			try
+			{
+				CancellationToken newCancellationToken = GetNewCancellationToken();
+				await RefreshQuestMarkers(newCancellationToken);
+			}
+			catch (OperationCanceledException)
+			{
+			}
+		}
+	}
+
+	private void UpdatePlayerMarkerSize(int size)
+	{
+		double num = (double)size / 16.0;
+		double num2 = (_trackerService?.GetMapConfig(_currentMapKey ?? ""))?.MarkerScale ?? 1.0;
+		double num3 = num * num2;
+		MarkerScale.ScaleX = num3;
+		MarkerScale.ScaleY = num3;
+		DotScale.ScaleX = num3;
+		DotScale.ScaleY = num3;
+		if (_trackerService != null)
+		{
+			_trackerService.Settings.PlayerMarkerSize = size;
+			_trackerService.SaveSettings();
+		}
+	}
+
+	private void UpdateMarkerVisibility()
+	{
+		if (_trackerService != null)
+		{
+			ScreenPosition currentPosition = _trackerService.CurrentPosition;
+			if (currentPosition == null)
+			{
+				PlayerMarker.Visibility = Visibility.Collapsed;
+				PlayerDot.Visibility = Visibility.Collapsed;
+			}
+			else
+			{
+				bool flag = _trackerService.Settings.ShowDirection && currentPosition.Angle.HasValue;
+				PlayerMarker.Visibility = ((!flag) ? Visibility.Collapsed : Visibility.Visible);
+				PlayerDot.Visibility = (flag ? Visibility.Collapsed : Visibility.Visible);
+			}
+		}
+	}
+
+	private void SetZoom(double zoom)
+	{
+		_zoomLevel = Math.Clamp(zoom, 0.1, 5.0);
+		MapScale.ScaleX = _zoomLevel;
+		MapScale.ScaleY = _zoomLevel;
+		CmbZoomLevel.SelectionChanged -= CmbZoomLevel_SelectionChanged;
+		CmbZoomLevel.Text = $"{_zoomLevel * 100.0:F0}%";
+		CmbZoomLevel.SelectionChanged += CmbZoomLevel_SelectionChanged;
+		UpdateMarkerScales();
+	}
+
+	private void UpdateMarkerScales()
+	{
+		double inverseScale = 1.0 / _zoomLevel;
+		if (_questMarkerManager != null)
+		{
+			_questMarkerManager.SetZoomLevel(_zoomLevel);
+			_questMarkerManager.UpdateMarkerScales();
+		}
+		if (_extractMarkerManager != null)
+		{
+			_extractMarkerManager.SetZoomLevel(_zoomLevel);
+			_extractMarkerManager.UpdateMarkerScales();
+		}
+		if (_customMarkerManager != null)
+		{
+			_customMarkerManager.SetZoomLevel(_zoomLevel);
+			_customMarkerManager.UpdateMarkerScales();
+		}
+		if (_mapMarkersManager != null)
+		{
+			_mapMarkersManager.SetZoomLevel(_zoomLevel);
+			_mapMarkersManager.UpdateMarkerScales();
+		}
+		UpdatePlayerMarkerScale(inverseScale);
+		UpdateTrailStrokeThickness(inverseScale);
+	}
+
+	private void UpdateTrailStrokeThickness(double inverseScale)
+	{
+		TrailPath.StrokeThickness = 2.0 * inverseScale;
+	}
+
+	private void UpdatePlayerMarkerScale(double inverseScale)
+	{
+		if (MarkerScale != null)
+		{
+			MarkerScale.ScaleX = inverseScale;
+			MarkerScale.ScaleY = inverseScale;
+		}
+		if (DotScale != null)
+		{
+			DotScale.ScaleX = inverseScale;
+			DotScale.ScaleY = inverseScale;
+		}
+	}
+
+	private BitmapSource? ConvertSvgToPngWithPreprocessing(string svgPath, int width, int height)
+	{
+		return ConvertSvgToPngWithPreprocessing(svgPath, width, height, null, null);
+	}
+
+	private BitmapSource? ConvertSvgToPngWithPreprocessing(string svgPath, int width, int height, IEnumerable<string>? visibleFloors, IEnumerable<string>? allFloors, string? backgroundFloorId = null, double backgroundOpacity = 0.3)
+	{
+		try
+		{
+			string svgContent = new SvgStylePreprocessor().ProcessSvgFile(svgPath, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity);
+			return RenderSvgContent(svgContent, width, height);
+		}
+		catch
+		{
+			return null;
+		}
+	}
+
+	private BitmapSource? RenderSvgContent(string svgContent, int width, int height)
+	{
+		try
+		{
+			WpfDrawingSettings settings = new WpfDrawingSettings
+			{
+				IncludeRuntime = true,
+				TextAsGeometry = false,
+				OptimizePath = true,
+				CultureInfo = CultureInfo.InvariantCulture,
+				EnsureViewboxSize = false,
+				EnsureViewboxPosition = false,
+				IgnoreRootViewbox = false
+			};
+			DrawingGroup drawingGroup;
+			using (MemoryStream svgStream = new MemoryStream(Encoding.UTF8.GetBytes(svgContent)))
+			{
+				drawingGroup = new FileSvgReader(settings).Read(svgStream);
+			}
+			if (drawingGroup == null)
+			{
+				return null;
+			}
+			Rect bounds = drawingGroup.Bounds;
+			double scaleX = (double)width / bounds.Width;
+			double scaleY = (double)height / bounds.Height;
+			DrawingVisual drawingVisual = new DrawingVisual();
+			using (DrawingContext drawingContext = drawingVisual.RenderOpen())
+			{
+				TransformGroup transformGroup = new TransformGroup();
+				transformGroup.Children.Add(new TranslateTransform(0.0 - bounds.X, 0.0 - bounds.Y));
+				transformGroup.Children.Add(new ScaleTransform(scaleX, scaleY));
+				drawingContext.PushTransform(transformGroup);
+				drawingContext.DrawDrawing(drawingGroup);
+				drawingContext.Pop();
+			}
+			RenderTargetBitmap renderTargetBitmap = new RenderTargetBitmap(width, height, 96.0, 96.0, PixelFormats.Pbgra32);
+			renderTargetBitmap.Render(drawingVisual);
+			renderTargetBitmap.Freeze();
+			return renderTargetBitmap;
+		}
+		catch
+		{
+			return null;
+		}
+	}
+
+	private async Task LoadQuestObjectivesAsync(CancellationToken ct = default(CancellationToken))
+	{
+		_ = 1;
+		try
+		{
+			ct.ThrowIfCancellationRequested();
+			TxtStatus.Text = "Loading quest objectives...";
+			await _objectiveService.EnsureLoadedAsync(delegate(string msg)
+			{
+				base.Dispatcher.Invoke(() => TxtStatus.Text = msg);
+			}).WaitAsync(ct);
+			int count = _objectiveService.AllObjectives.Count;
+			TxtStatus.Text = $"Loaded {count} quest objectives";
+			if (!string.IsNullOrEmpty(_currentMapKey))
+			{
+				await RefreshQuestMarkers(ct);
+			}
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (Exception ex2)
+		{
+			TxtStatus.Text = "Error loading objectives: " + ex2.Message;
+		}
+	}
+
+	private async void OnHiddenQuestsChanged()
+	{
+		try
+		{
+			CancellationToken newCancellationToken = GetNewCancellationToken();
+			await RefreshQuestMarkers(newCancellationToken);
+			UpdateMapPillTaskCounts();
+			UpdateRequiredStripsForCurrentMap();
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private async void OnQuestProgressChanged(object? sender, EventArgs e)
+	{
+		try
+		{
+			CancellationToken newCancellationToken = GetNewCancellationToken();
+			await RefreshQuestMarkers(newCancellationToken);
+			UpdateMapPillTaskCounts();
+			UpdateRequiredStripsForCurrentMap();
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private async void OnObjectiveProgressChanged(object? sender, ObjectiveProgressChangedEventArgs e)
+	{
+		try
+		{
+			CancellationToken newCancellationToken = GetNewCancellationToken();
+			await RefreshQuestMarkers(newCancellationToken);
+			UpdateMapPillTaskCounts();
+			UpdateRequiredStripsForCurrentMap();
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private void ChkShowQuestMarkers_Changed(object sender, RoutedEventArgs e)
+	{
+		_showQuestMarkers = ChkShowQuestMarkers?.IsChecked ?? true;
+		if (QuestMarkersContainer != null)
+		{
+			QuestMarkersContainer.Visibility = ((!_showQuestMarkers) ? Visibility.Collapsed : Visibility.Visible);
+		}
+		SettingsService.Instance.MapShowQuests = _showQuestMarkers;
+		OverlayMiniMapService.Instance.RefreshMap();
+	}
+
+	private bool IsLocationOnCurrentMap(QuestObjectiveLocation location, MapConfig config)
+	{
+		if (string.IsNullOrEmpty(_currentMapKey))
+		{
+			return false;
+		}
+		HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { _currentMapKey };
+		if (config.Aliases != null)
+		{
+			foreach (string alias in config.Aliases)
+			{
+				hashSet.Add(alias);
+			}
+		}
+		if (!string.IsNullOrEmpty(config.DisplayName))
+		{
+			hashSet.Add(config.DisplayName);
+		}
+		if (!string.IsNullOrEmpty(location.MapName) && hashSet.Contains(location.MapName))
+		{
+			return true;
+		}
+		if (!string.IsNullOrEmpty(location.MapNormalizedName) && hashSet.Contains(location.MapNormalizedName))
+		{
+			return true;
+		}
+		return false;
+	}
+
+	private async Task RefreshQuestMarkers(CancellationToken ct = default(CancellationToken))
+	{
+		if (_questMarkerManager != null)
+		{
+			_questMarkerManager.SetCurrentMap(_currentMapKey);
+			_questMarkerManager.SetCurrentFloor(_currentFloorId);
+			_questMarkerManager.SetZoomLevel(_zoomLevel);
+			_questMarkerManager.SetShowQuestMarkers(_showQuestMarkers);
+			_questMarkerManager.SetQuestMarkerStyle(_questMarkerStyle);
+			_questMarkerManager.SetQuestNameTextSize(_questNameTextSize);
+			_questMarkerManager.SetHideCompletedObjectives(_hideCompletedObjectives);
+			await _questMarkerManager.RefreshMarkersAsync(ct);
+			_currentMapObjectives = _questMarkerManager.GetCurrentMapObjectives();
+		}
+	}
+
+	private static TaskObjectiveWithLocation? GetObjectiveFromTag(object? tag)
+	{
+		if (!(tag is TaskObjectiveWithLocation result))
+		{
+			if (tag is AreaMarkerTag areaMarkerTag)
+			{
+				return areaMarkerTag.Objective;
+			}
+			return null;
+		}
+		return result;
+	}
+
+	private static (double X, double Y) GetMarkerPosition(Canvas markerCanvas)
+	{
+		if (markerCanvas.Tag is AreaMarkerTag)
+		{
+			foreach (object child in markerCanvas.Children)
+			{
+				if (child is Canvas canvas && canvas.Tag is TaskObjectiveWithLocation)
+				{
+					return (X: Canvas.GetLeft(canvas), Y: Canvas.GetTop(canvas));
+				}
+			}
+		}
+		return (X: Canvas.GetLeft(markerCanvas), Y: Canvas.GetTop(markerCanvas));
+	}
+
+	private static void HideMarkerText(Canvas markerCanvas)
+	{
+		SetMarkerTextVisibility(markerCanvas, Visibility.Collapsed);
+	}
+
+	private static void ShowMarkerText(Canvas markerCanvas)
+	{
+		SetMarkerTextVisibility(markerCanvas, Visibility.Visible);
+	}
+
+	private static void SetMarkerTextVisibility(Canvas markerCanvas, Visibility visibility)
+	{
+		Canvas canvas = markerCanvas;
+		if (markerCanvas.Tag is AreaMarkerTag)
+		{
+			foreach (object child in markerCanvas.Children)
+			{
+				if (child is Canvas canvas2 && canvas2.Tag is TaskObjectiveWithLocation)
+				{
+					canvas = canvas2;
+					break;
+				}
+			}
+		}
+		foreach (object child2 in canvas.Children)
+		{
+			if (child2 is StackPanel stackPanel)
+			{
+				stackPanel.Visibility = visibility;
+			}
+			else if (child2 is Border border && border.Tag is TaskObjectiveWithLocation)
+			{
+				border.Visibility = visibility;
+			}
+		}
+	}
+
+	private void SelectFloorForObjective(TaskObjectiveWithLocation objective)
+	{
+		if (CmbFloorSelect.Visibility != 0)
+		{
+			return;
+		}
+		QuestObjectiveLocation questObjectiveLocation = objective.Locations.FirstOrDefault((QuestObjectiveLocation l) => !string.IsNullOrEmpty(_currentMapKey) && (l.MapName.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) || (l.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) ?? false)));
+		if (questObjectiveLocation == null)
+		{
+			questObjectiveLocation = objective.Locations.FirstOrDefault();
+		}
+		if (questObjectiveLocation == null || string.IsNullOrEmpty(questObjectiveLocation.FloorId) || string.Equals(_currentFloorId, questObjectiveLocation.FloorId, StringComparison.OrdinalIgnoreCase))
+		{
+			return;
+		}
+		for (int i = 0; i < CmbFloorSelect.Items.Count; i++)
+		{
+			if (CmbFloorSelect.Items[i] is ComboBoxItem comboBoxItem && string.Equals(comboBoxItem.Tag as string, questObjectiveLocation.FloorId, StringComparison.OrdinalIgnoreCase))
+			{
+				CmbFloorSelect.SelectedIndex = i;
+				break;
+			}
+		}
+	}
+
+	private void ShowQuestDrawer(TaskObjectiveWithLocation? selectedObjective = null)
+	{
+		if (selectedObjective != null)
+		{
+			TaskObjectiveWithLocation taskObjectiveWithLocation = _currentMapObjectives.FirstOrDefault((TaskObjectiveWithLocation o) => o.ObjectiveId == selectedObjective.ObjectiveId);
+			_selectedObjective = taskObjectiveWithLocation ?? selectedObjective;
+		}
+		else
+		{
+			_selectedObjective = null;
+		}
+		_questMarkerManager?.SetSelectedObjective(_selectedObjective);
+		if (_selectedObjective != null)
+		{
+			CenterOnObjective(_selectedObjective);
+		}
+	}
+
+	private void OpenQuestDrawer()
+	{
+	}
+
+	private void CloseQuestDrawer()
+	{
+		_selectedObjective = null;
+		_questMarkerManager?.SetSelectedObjective(null);
+	}
+
+	private void QuestObjectiveItem_Click(object sender, MouseButtonEventArgs e)
+	{
+		if (!(sender is FrameworkElement { DataContext: var dataContext }))
+		{
+			return;
+		}
+		QuestObjectiveViewModel vm = dataContext as QuestObjectiveViewModel;
+		if (vm != null)
+		{
+			_selectedObjective = _currentMapObjectives.FirstOrDefault((TaskObjectiveWithLocation o) => o.ObjectiveId == vm.Objective.ObjectiveId) ?? vm.Objective;
+			SelectFloorForObjective(_selectedObjective);
+			_questMarkerManager?.SetSelectedObjective(_selectedObjective);
+			RefreshQuestDrawer();
+			CenterOnObjective(_selectedObjective);
+		}
+	}
+
+	private QuestObjectiveViewModel? GetObjectiveVmFromSender(object sender)
+	{
+		if (sender is FrameworkElement frameworkElement)
+		{
+			if (frameworkElement.DataContext is QuestObjectiveViewModel result)
+			{
+				return result;
+			}
+			if (frameworkElement.Tag is QuestObjectiveViewModel result2)
+			{
+				return result2;
+			}
+			if (frameworkElement is MenuItem menuItem)
+			{
+				if (menuItem.DataContext is QuestObjectiveViewModel result3)
+				{
+					return result3;
+				}
+				if (menuItem.Tag is QuestObjectiveViewModel result4)
+				{
+					return result4;
+				}
+				if (menuItem.Parent is ContextMenu { PlacementTarget: FrameworkElement { DataContext: QuestObjectiveViewModel dataContext } })
+				{
+					return dataContext;
+				}
+			}
+		}
+		return null;
+	}
+
+	private void MenuCardRelocate_Click(object sender, RoutedEventArgs e)
+	{
+		e.Handled = true;
+		QuestObjectiveViewModel objectiveVmFromSender = GetObjectiveVmFromSender(sender);
+		if (objectiveVmFromSender != null && objectiveVmFromSender.CanRelocate)
+		{
+			QuestObjectiveRelocationService.Instance.StartPlacement(objectiveVmFromSender.ObjectiveId, objectiveVmFromSender.Description, objectiveVmFromSender.QuestName, _currentMapKey);
+		}
+	}
+
+	private async void MenuCardRevert_Click(object sender, RoutedEventArgs e)
+	{
+		e.Handled = true;
+		QuestObjectiveViewModel objectiveVmFromSender = GetObjectiveVmFromSender(sender);
+		if (objectiveVmFromSender != null)
+		{
+			QuestObjectiveRelocationService instance = QuestObjectiveRelocationService.Instance;
+			if (instance.IsPlacementActive && instance.TargetObjectiveId == objectiveVmFromSender.ObjectiveId)
+			{
+				instance.CancelPlacement();
+				PlacementModeBanner.Visibility = Visibility.Collapsed;
+				MapCanvas.Cursor = System.Windows.Input.Cursors.Arrow;
+				MapViewerGrid.Cursor = System.Windows.Input.Cursors.Arrow;
+			}
+			if (System.Windows.MessageBox.Show("¿Deseas restaurar la ubicación de fábrica de este objetivo (" + objectiveVmFromSender.Description + ")?", "Restaurar ubicación", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+			{
+				await instance.RestoreObjectiveToFactoryAsync(objectiveVmFromSender.ObjectiveId);
+			}
+		}
+	}
+
+	private void MenuCardCenter_Click(object sender, RoutedEventArgs e)
+	{
+		e.Handled = true;
+		QuestObjectiveViewModel vm = GetObjectiveVmFromSender(sender);
+		if (vm != null)
+		{
+			_selectedObjective = _currentMapObjectives.FirstOrDefault((TaskObjectiveWithLocation o) => o.ObjectiveId == vm.Objective.ObjectiveId) ?? vm.Objective;
+			SelectFloorForObjective(_selectedObjective);
+			_questMarkerManager?.SetSelectedObjective(_selectedObjective);
+			RefreshQuestDrawer();
+			CenterOnObjective(_selectedObjective);
+		}
+	}
+
+	private void MenuCardOpenManager_Click(object sender, RoutedEventArgs e)
+	{
+		e.Handled = true;
+		OpenObjectiveRelocationManager();
+	}
+
+	private void BtnOpenRelocationManager_Click(object sender, RoutedEventArgs e)
+	{
+		OpenObjectiveRelocationManager();
+	}
+
+	private void InitializeMapPills()
+	{
+		if (_mapPills.Count == 0)
+		{
+			_mapPills.Add(new MapPillItem
+			{
+				MapKey = "ground-zero",
+				DisplayName = "Ground Zero"
+			});
+			_mapPills.Add(new MapPillItem
+			{
+				MapKey = "customs",
+				DisplayName = "Customs"
+			});
+			_mapPills.Add(new MapPillItem
+			{
+				MapKey = "woods",
+				DisplayName = "Woods"
+			});
+			_mapPills.Add(new MapPillItem
+			{
+				MapKey = "factory",
+				DisplayName = "Factory"
+			});
+			_mapPills.Add(new MapPillItem
+			{
+				MapKey = "interchange",
+				DisplayName = "Interchange"
+			});
+			_mapPills.Add(new MapPillItem
+			{
+				MapKey = "shoreline",
+				DisplayName = "Shoreline"
+			});
+			_mapPills.Add(new MapPillItem
+			{
+				MapKey = "reserve",
+				DisplayName = "Reserve"
+			});
+			_mapPills.Add(new MapPillItem
+			{
+				MapKey = "lighthouse",
+				DisplayName = "Lighthouse"
+			});
+			_mapPills.Add(new MapPillItem
+			{
+				MapKey = "streets",
+				DisplayName = "Streets of Tarkov"
+			});
+			_mapPills.Add(new MapPillItem
+			{
+				MapKey = "the-lab",
+				DisplayName = "The Lab"
+			});
+		}
+		MapSelectorPillsList.ItemsSource = _mapPills;
+		RequiredItemsList.ItemsSource = _requiredItems;
+		RequiredKeysList.ItemsSource = _requiredKeys;
+		UpdateMapPillTaskCounts();
+		if (!string.IsNullOrEmpty(_currentMapKey))
+		{
+			UpdateMapPillSelection(_currentMapKey);
+			UpdateRequiredStripsForCurrentMap();
+		}
+	}
+
+	private void InitializeClockWidget()
+	{
+		_clockTimer?.Stop();
+		_clockTimer = null;
+	}
+
+	private void UpdateClockWidget()
+	{
+	}
+
+	private void MapPill_Click(object sender, RoutedEventArgs e)
+	{
+		string text = (sender as FrameworkElement)?.Tag as string;
+		if (text != null || ((sender as FrameworkElement)?.DataContext is MapPillItem mapPillItem && !string.IsNullOrEmpty(text = mapPillItem.MapKey)))
+		{
+			SelectMap(text);
+		}
+	}
+
+	private void UpdateMapPillSelection(string? mapKey)
+	{
+		if (string.IsNullOrEmpty(mapKey))
+		{
+			return;
+		}
+		string b = _trackerService?.ResolveMapKey(mapKey) ?? mapKey;
+		foreach (MapPillItem mapPill in _mapPills)
+		{
+			mapPill.IsSelected = string.Equals(mapPill.MapKey, mapKey, StringComparison.OrdinalIgnoreCase) || string.Equals(mapPill.MapKey, b, StringComparison.OrdinalIgnoreCase) || string.Equals(_trackerService?.ResolveMapKey(mapPill.MapKey), b, StringComparison.OrdinalIgnoreCase);
+		}
+		SyncPillFloorSelector();
+	}
+
+	private void SyncPillFloorSelector()
+	{
+		if (CmbFloorSelect.Visibility == Visibility.Visible && CmbFloorSelect.Items.Count > 0)
+		{
+			TxtPillFloorLabel.Visibility = Visibility.Visible;
+			CmbPillFloorSelect.Visibility = Visibility.Visible;
+			if (OverlayFloorSelectorPanel != null)
+			{
+				OverlayFloorSelectorPanel.Visibility = Visibility.Collapsed;
+			}
+			UpdateDiscreetFloorControl();
+			CmbPillFloorSelect.SelectionChanged -= CmbPillFloorSelect_SelectionChanged;
+			CmbPillFloorSelect.Items.Clear();
+			if (CmbOverlayFloorSelect != null)
+			{
+				CmbOverlayFloorSelect.SelectionChanged -= CmbOverlayFloorSelect_SelectionChanged;
+				CmbOverlayFloorSelect.Items.Clear();
+			}
+			foreach (object item in (IEnumerable)CmbFloorSelect.Items)
+			{
+				if (item is ComboBoxItem comboBoxItem)
+				{
+					CmbPillFloorSelect.Items.Add(new ComboBoxItem
+					{
+						Content = comboBoxItem.Content,
+						Tag = comboBoxItem.Tag
+					});
+					if (CmbOverlayFloorSelect != null)
+					{
+						CmbOverlayFloorSelect.Items.Add(new ComboBoxItem
+						{
+							Content = comboBoxItem.Content,
+							Tag = comboBoxItem.Tag
+						});
+					}
+				}
+			}
+			CmbPillFloorSelect.SelectedIndex = CmbFloorSelect.SelectedIndex;
+			CmbPillFloorSelect.SelectionChanged += CmbPillFloorSelect_SelectionChanged;
+			if (CmbOverlayFloorSelect != null)
+			{
+				CmbOverlayFloorSelect.SelectedIndex = CmbFloorSelect.SelectedIndex;
+				CmbOverlayFloorSelect.SelectionChanged += CmbOverlayFloorSelect_SelectionChanged;
+			}
+		}
+		else
+		{
+			TxtPillFloorLabel.Visibility = Visibility.Collapsed;
+			CmbPillFloorSelect.Visibility = Visibility.Collapsed;
+			if (OverlayFloorSelectorPanel != null)
+			{
+				OverlayFloorSelectorPanel.Visibility = Visibility.Collapsed;
+			}
+		}
+	}
+
+	private void CmbPillFloorSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		if (CmbPillFloorSelect.SelectedIndex >= 0 && CmbPillFloorSelect.SelectedIndex < CmbFloorSelect.Items.Count && CmbFloorSelect.SelectedIndex != CmbPillFloorSelect.SelectedIndex)
+		{
+			CmbFloorSelect.SelectedIndex = CmbPillFloorSelect.SelectedIndex;
+		}
+	}
+
+	private void CmbOverlayFloorSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		if (CmbOverlayFloorSelect != null && CmbOverlayFloorSelect.SelectedIndex >= 0 && CmbOverlayFloorSelect.SelectedIndex < CmbFloorSelect.Items.Count && CmbFloorSelect.SelectedIndex != CmbOverlayFloorSelect.SelectedIndex)
+		{
+			CmbFloorSelect.SelectedIndex = CmbOverlayFloorSelect.SelectedIndex;
+		}
+	}
+
+	private void UpdateDiscreetFloorControl()
+	{
+		if (DiscreetFloorControl == null || TxtFloorCode == null)
+		{
+			return;
+		}
+		if (CmbFloorSelect != null && CmbFloorSelect.Visibility == Visibility.Visible && CmbFloorSelect.Items.Count > 1)
+		{
+			DiscreetFloorControl.Visibility = Visibility.Visible;
+			int selectedIndex = CmbFloorSelect.SelectedIndex;
+			if (selectedIndex >= 0 && selectedIndex < CmbFloorSelect.Items.Count)
+			{
+				ComboBoxItem comboBoxItem = CmbFloorSelect.Items[selectedIndex] as ComboBoxItem;
+				string text = comboBoxItem?.Content?.ToString() ?? "";
+				string layerId = comboBoxItem?.Tag?.ToString() ?? "";
+				string floorShortCode = MapFloorHelper.GetFloorShortCode(_trackerService.GetMapConfig(_currentMapKey ?? "")?.Floors?.FirstOrDefault((MapFloorConfig f) => string.Equals(f.LayerId, layerId, StringComparison.OrdinalIgnoreCase)), text, layerId);
+				TxtFloorCode.Text = floorShortCode;
+				TxtFloorCode.Tag = $"Planta: {text} ({floorShortCode})";
+				if (BtnFloorDown != null)
+				{
+					BtnFloorDown.IsEnabled = selectedIndex > 0;
+					BtnFloorDown.Opacity = ((selectedIndex > 0) ? 1.0 : 0.4);
+				}
+				if (BtnFloorUp != null)
+				{
+					BtnFloorUp.IsEnabled = selectedIndex < CmbFloorSelect.Items.Count - 1;
+					BtnFloorUp.Opacity = ((selectedIndex < CmbFloorSelect.Items.Count - 1) ? 1.0 : 0.4);
+				}
+			}
+		}
+		else
+		{
+			DiscreetFloorControl.Visibility = Visibility.Collapsed;
+		}
+	}
+
+	private void BtnFloorUp_Click(object sender, RoutedEventArgs e)
+	{
+		if (CmbFloorSelect != null && CmbFloorSelect.SelectedIndex < CmbFloorSelect.Items.Count - 1)
+		{
+			CmbFloorSelect.SelectedIndex++;
+			UpdateDiscreetFloorControl();
+		}
+	}
+
+	private void BtnFloorDown_Click(object sender, RoutedEventArgs e)
+	{
+		if (CmbFloorSelect != null && CmbFloorSelect.SelectedIndex > 0)
+		{
+			CmbFloorSelect.SelectedIndex--;
+			UpdateDiscreetFloorControl();
+		}
+	}
+
+	private void UpdateMapPillTaskCounts()
+	{
+		IReadOnlyList<TarkovTask> allQuests = QuestDbService.Instance.AllQuests;
+		if (allQuests == null || allQuests.Count == 0)
+		{
+			return;
+		}
+		List<TarkovTask> source = allQuests.Where((TarkovTask q) => _progressService.GetStatus(q) == QuestStatus.Active).ToList();
+		foreach (MapPillItem pill in _mapPills)
+		{
+			int activeTaskCount = source.Count((TarkovTask q) => IsQuestOnMap(q, pill.MapKey, pill.DisplayName));
+			pill.ActiveTaskCount = activeTaskCount;
+		}
+	}
+
+	private bool IsQuestOnMap(TarkovTask quest, string mapKey, string displayName)
+	{
+		if (quest.Maps == null || quest.Maps.Count == 0)
+		{
+			return false;
+		}
+		string b = _trackerService?.ResolveMapKey(mapKey) ?? mapKey;
+		foreach (string map in quest.Maps)
+		{
+			if (string.Equals(map, mapKey, StringComparison.OrdinalIgnoreCase) || string.Equals(map, displayName, StringComparison.OrdinalIgnoreCase) || string.Equals(map, b, StringComparison.OrdinalIgnoreCase))
+			{
+				return true;
+			}
+			string text = _trackerService?.ResolveMapKey(map);
+			if (!string.IsNullOrEmpty(text) && (string.Equals(text, b, StringComparison.OrdinalIgnoreCase) || string.Equals(text, mapKey, StringComparison.OrdinalIgnoreCase)))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private void UpdateRequiredStripsForCurrentMap()
+	{
+		if (string.IsNullOrEmpty(_currentMapKey))
+		{
+			return;
+		}
+		IReadOnlyList<TarkovTask> allQuests = QuestDbService.Instance.AllQuests;
+		if (allQuests == null || allQuests.Count == 0)
+		{
+			return;
+		}
+		List<TarkovTask> source = allQuests.Where((TarkovTask q) => _progressService.GetStatus(q) == QuestStatus.Active).ToList();
+		string displayName = _mapPills.FirstOrDefault((MapPillItem p) => string.Equals(p.MapKey, _currentMapKey, StringComparison.OrdinalIgnoreCase) || string.Equals(_trackerService?.ResolveMapKey(p.MapKey), _currentMapKey, StringComparison.OrdinalIgnoreCase))?.DisplayName ?? _currentMapKey;
+		HashSet<string> hiddenQuests = MapSettings.Instance.HiddenQuests;
+		List<TarkovTask> list = source.Where((TarkovTask q) => IsQuestOnMap(q, _currentMapKey, displayName) && !IsQuestHidden(q)).ToList();
+		Dictionary<string, (string, bool, int, List<string>)> dictionary = new Dictionary<string, (string, bool, int, List<string>)>(StringComparer.OrdinalIgnoreCase);
+		foreach (TarkovTask item3 in list)
+		{
+			if (item3.RequiredItems == null)
+			{
+				continue;
+			}
+			foreach (QuestItem requiredItem in item3.RequiredItems)
+			{
+				string text = ((!string.IsNullOrEmpty(requiredItem.ItemNormalizedName)) ? requiredItem.ItemNormalizedName : (requiredItem.ItemDisplayName ?? ""));
+				if (string.IsNullOrWhiteSpace(text))
+				{
+					continue;
+				}
+				string norm = (requiredItem.ItemNormalizedName ?? requiredItem.ItemDisplayName ?? "").Trim();
+				bool flag = NeededItemsViewModel.SpecialEquipmentNames.Contains(norm) || NeededItemsViewModel.SpecialEquipmentNames.Any((string s) => norm.Contains(s, StringComparison.OrdinalIgnoreCase));
+				if (!flag)
+				{
+					Dictionary<string, TarkovItem> itemLookup = ItemDbService.Instance.GetItemLookup();
+					if (itemLookup != null && itemLookup.TryGetValue(norm, out var value) && string.Equals(value.Category, "Special equipment", StringComparison.OrdinalIgnoreCase))
+					{
+						flag = true;
+					}
+				}
+				if (!flag)
+				{
+					continue;
+				}
+				string item = requiredItem.ItemDisplayName ?? requiredItem.ItemNormalizedName ?? string.Empty;
+				if (dictionary.TryGetValue(text, out var value2))
+				{
+					List<string> item2 = value2.Item4;
+					if (!item2.Contains(item3.Name))
+					{
+						item2.Add(item3.Name);
+					}
+					dictionary[text] = (value2.Item1, value2.Item2 || requiredItem.FoundInRaid, value2.Item3 + requiredItem.Amount, item2);
+				}
+				else
+				{
+					dictionary[text] = (item, requiredItem.FoundInRaid, requiredItem.Amount, new List<string> { item3.Name });
+				}
+			}
+		}
+		_requiredItems.Clear();
+		foreach (KeyValuePair<string, (string, bool, int, List<string>)> item4 in dictionary)
+		{
+			string key = item4.Key;
+			(string, bool, int, List<string>) value3 = item4.Value;
+			int num = 0;
+			foreach (string qName in value3.Item4)
+			{
+				TarkovTask tarkovTask = list.FirstOrDefault((TarkovTask x) => x.Name == qName);
+				if (tarkovTask != null)
+				{
+					string questItemKey = NeededItemProgressService.GetQuestItemKey(tarkovTask.NormalizedName ?? tarkovTask.Id, key, null);
+					num += NeededItemProgressService.Instance.GetCount(questItemKey);
+				}
+			}
+			_requiredItems.Add(new MapActiveItemStripViewModel
+			{
+				ItemNormalizedName = key,
+				ItemName = value3.Item1,
+				FoundInRaid = value3.Item2,
+				CurrentCount = Math.Min(num, value3.Item3),
+				NeededCount = value3.Item3,
+				QuestName = string.Join(", ", value3.Item4),
+				NeedKey = key
+			});
+		}
+		TxtNoRequiredItems.Visibility = ((_requiredItems.Count != 0) ? Visibility.Collapsed : Visibility.Visible);
+		RequiredItemsList.Visibility = ((_requiredItems.Count <= 0) ? Visibility.Collapsed : Visibility.Visible);
+		List<MapActiveKeyStripViewModel> list2 = new List<MapActiveKeyStripViewModel>();
+		HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		foreach (TarkovTask item5 in list)
+		{
+			foreach (NeededKeyInfo item6 in NeededKeysService.Instance.GetNeededKeysForQuest(item5))
+			{
+				if (hashSet.Add(item6.Name))
+				{
+					list2.Add(new MapActiveKeyStripViewModel
+					{
+						KeyName = item6.Name,
+						ShortName = ((!string.IsNullOrEmpty(item6.ShortName)) ? item6.ShortName : item6.Name),
+						InStash = item6.InStash,
+						QuestName = item6.QuestName,
+						TargetRoom = (item6.ObjectiveDescription ?? string.Empty)
+					});
+				}
+			}
+		}
+		_requiredKeys.Clear();
+		foreach (MapActiveKeyStripViewModel item7 in list2)
+		{
+			_requiredKeys.Add(item7);
+		}
+		TxtNoRequiredKeys.Visibility = ((_requiredKeys.Count != 0) ? Visibility.Collapsed : Visibility.Visible);
+		RequiredKeysList.Visibility = ((_requiredKeys.Count <= 0) ? Visibility.Collapsed : Visibility.Visible);
+		bool IsQuestHidden(TarkovTask quest)
+		{
+			if (hiddenQuests == null || hiddenQuests.Count == 0)
+			{
+				return false;
+			}
+			if (!string.IsNullOrEmpty(quest.Id) && hiddenQuests.Contains(quest.Id))
+			{
+				return true;
+			}
+			if (quest.Ids != null && quest.Ids.Any((string id) => hiddenQuests.Contains(id)))
+			{
+				return true;
+			}
+			if (!string.IsNullOrEmpty(quest.NormalizedName) && hiddenQuests.Contains(quest.NormalizedName))
+			{
+				return true;
+			}
+			if (!string.IsNullOrEmpty(quest.Name) && hiddenQuests.Contains(quest.Name))
+			{
+				return true;
+			}
+			return false;
+		}
+	}
+
+	private void BtnStripItemMinus_Click(object sender, RoutedEventArgs e)
+	{
+		if ((sender as FrameworkElement)?.Tag is MapActiveItemStripViewModel { CurrentCount: >0 } mapActiveItemStripViewModel)
+		{
+			mapActiveItemStripViewModel.CurrentCount--;
+			UpdateNeededItemProgress(mapActiveItemStripViewModel);
+		}
+	}
+
+	private void BtnStripItemPlus_Click(object sender, RoutedEventArgs e)
+	{
+		if ((sender as FrameworkElement)?.Tag is MapActiveItemStripViewModel mapActiveItemStripViewModel && mapActiveItemStripViewModel.CurrentCount < mapActiveItemStripViewModel.NeededCount)
+		{
+			mapActiveItemStripViewModel.CurrentCount++;
+			UpdateNeededItemProgress(mapActiveItemStripViewModel);
+		}
+	}
+
+	private void BtnStripItemDone_Click(object sender, RoutedEventArgs e)
+	{
+		if ((sender as FrameworkElement)?.Tag is MapActiveItemStripViewModel mapActiveItemStripViewModel)
+		{
+			mapActiveItemStripViewModel.CurrentCount = mapActiveItemStripViewModel.NeededCount;
+			UpdateNeededItemProgress(mapActiveItemStripViewModel);
+		}
+	}
+
+	private void UpdateNeededItemProgress(MapActiveItemStripViewModel item)
+	{
+		List<TarkovTask> list = QuestDbService.Instance.AllQuests.Where((TarkovTask q) => _progressService.GetStatus(q) == QuestStatus.Active && q.RequiredItems != null && q.RequiredItems.Any((QuestItem r) => string.Equals(r.ItemNormalizedName, item.ItemNormalizedName, StringComparison.OrdinalIgnoreCase) || string.Equals(r.ItemDisplayName, item.ItemName, StringComparison.OrdinalIgnoreCase))).ToList();
+		int num = item.CurrentCount;
+		foreach (TarkovTask item2 in list)
+		{
+			QuestItem questItem = item2.RequiredItems.First((QuestItem r) => string.Equals(r.ItemNormalizedName, item.ItemNormalizedName, StringComparison.OrdinalIgnoreCase) || string.Equals(r.ItemDisplayName, item.ItemName, StringComparison.OrdinalIgnoreCase));
+			string questItemKey = NeededItemProgressService.GetQuestItemKey(item2.NormalizedName ?? item2.Id, questItem.ItemNormalizedName, null);
+			int num2 = Math.Min(num, questItem.Amount);
+			NeededItemProgressService.Instance.SetCount(questItemKey, num2, questItem.Amount);
+			num -= num2;
+		}
+	}
+
+	private void BtnLocateObjective_Click(object sender, RoutedEventArgs e)
+	{
+		e.Handled = true;
+		QuestObjectiveViewModel objectiveVmFromSender = GetObjectiveVmFromSender(sender);
+		if (objectiveVmFromSender != null && objectiveVmFromSender.HasLocation)
+		{
+			PinAndLocateObjective(objectiveVmFromSender.Objective);
+		}
+	}
+
+	public void PinAndLocateObjective(TaskObjectiveWithLocation obj)
+	{
+		_selectedObjective = _currentMapObjectives.FirstOrDefault((TaskObjectiveWithLocation o) => o.ObjectiveId == obj.ObjectiveId) ?? obj;
+		SelectFloorForObjective(_selectedObjective);
+		_questMarkerManager?.SetSelectedObjective(_selectedObjective);
+		_trackerService?.PinObjective(_selectedObjective);
+		RefreshQuestDrawer();
+		CenterOnObjective(_selectedObjective);
+		if (_zoomLevel < 1.0)
+		{
+			SetZoom(1.25);
+		}
+	}
+
+	public void OpenObjectiveRelocationManager()
+	{
+		try
+		{
+			Window window = Window.GetWindow(this);
+			QuestObjectiveRelocationManagerWindow questObjectiveRelocationManagerWindow = new QuestObjectiveRelocationManagerWindow();
+			if (window != null && window.IsLoaded)
+			{
+				questObjectiveRelocationManagerWindow.Owner = window;
+			}
+			questObjectiveRelocationManagerWindow.ShowDialog();
+		}
+		catch (Exception ex)
+		{
+			_log.Error("[MapPage] Error opening relocation manager: " + ex.Message, ex);
+			System.Windows.MessageBox.Show("No se pudo abrir el gestor de reubicaciones: " + ex.Message, "Gestor de Reubicación", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+		}
+	}
+
+	private void BtnDrawerRelocateObjective_Click(object sender, RoutedEventArgs e)
+	{
+		e.Handled = true;
+		if (sender is System.Windows.Controls.Button { Tag: QuestObjectiveViewModel tag })
+		{
+			QuestObjectiveRelocationService.Instance.StartPlacement(tag.ObjectiveId, tag.Description, tag.QuestName, _currentMapKey);
+		}
+	}
+
+	private async void BtnDrawerRevertObjective_Click(object sender, RoutedEventArgs e)
+	{
+		e.Handled = true;
+		if (sender is System.Windows.Controls.Button { Tag: QuestObjectiveViewModel tag })
+		{
+			QuestObjectiveRelocationService instance = QuestObjectiveRelocationService.Instance;
+			if (instance.IsPlacementActive && instance.TargetObjectiveId == tag.ObjectiveId)
+			{
+				instance.CancelPlacement();
+				PlacementModeBanner.Visibility = Visibility.Collapsed;
+				MapCanvas.Cursor = System.Windows.Input.Cursors.Arrow;
+				MapViewerGrid.Cursor = System.Windows.Input.Cursors.Arrow;
+			}
+			if (System.Windows.MessageBox.Show("¿Deseas eliminar la ubicación asignada a este objetivo (" + tag.Description + ") y restablecer su estado original?", "Restablecer ubicación", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+			{
+				await instance.ClearObjectiveLocationAsync(tag.ObjectiveId);
+			}
+		}
+	}
+
+	private void WikiLinkButton_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is System.Windows.Controls.Button { Tag: string tag } && !string.IsNullOrEmpty(tag))
+		{
+			try
+			{
+				Process.Start(new ProcessStartInfo
+				{
+					FileName = tag,
+					UseShellExecute = true
+				});
+			}
+			catch (Exception)
+			{
+			}
+		}
+	}
+
+	private void CenterOnObjective(TaskObjectiveWithLocation objective)
+	{
+		if (string.IsNullOrEmpty(_currentMapKey))
+		{
+			return;
+		}
+		MapConfig mapConfig = _trackerService?.GetMapConfig(_currentMapKey);
+		if (mapConfig == null)
+		{
+			return;
+		}
+		QuestObjectiveLocation questObjectiveLocation = objective.Locations.FirstOrDefault(delegate(QuestObjectiveLocation l)
+		{
+			if (!l.MapName.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase))
+			{
+				string? mapNormalizedName = l.MapNormalizedName;
+				if (mapNormalizedName == null || !mapNormalizedName.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase))
+				{
+					return false;
+				}
+			}
+			return string.IsNullOrEmpty(_currentFloorId) || string.IsNullOrEmpty(l.FloorId) || string.Equals(_currentFloorId, l.FloorId, StringComparison.OrdinalIgnoreCase);
+		});
+		if (questObjectiveLocation == null)
+		{
+			questObjectiveLocation = objective.Locations.FirstOrDefault((QuestObjectiveLocation l) => l.MapName.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) || (l.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) ?? false));
+		}
+		if (questObjectiveLocation != null)
+		{
+			(double screenX, double screenY) tuple = mapConfig.GameToScreenForPlayer(questObjectiveLocation.X, questObjectiveLocation.Y);
+			double item = tuple.screenX;
+			double item2 = tuple.screenY;
+			double actualWidth = MapViewerGrid.ActualWidth;
+			double actualHeight = MapViewerGrid.ActualHeight;
+			MapTranslate.X = actualWidth / 2.0 - item * _zoomLevel;
+			MapTranslate.Y = actualHeight / 2.0 - item2 * _zoomLevel;
+		}
+	}
+
+	private async Task LoadExtractsAsync(CancellationToken ct = default(CancellationToken))
+	{
+		_ = 1;
+		try
+		{
+			ct.ThrowIfCancellationRequested();
+			TxtStatus.Text = "Loading extract data...";
+			await _extractService.EnsureLoadedAsync(delegate(string msg)
+			{
+				base.Dispatcher.Invoke(() => TxtStatus.Text = msg);
+			}).WaitAsync(ct);
+			int count = _extractService.AllExtracts.Count;
+			TxtStatus.Text = $"Loaded {count} extracts";
+			if (!string.IsNullOrEmpty(_currentMapKey))
+			{
+				await RefreshExtractMarkers(ct);
+			}
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (Exception ex2)
+		{
+			TxtStatus.Text = "Error loading extracts: " + ex2.Message;
+		}
+	}
+
+	private async Task RefreshExtractMarkers(CancellationToken ct = default(CancellationToken))
+	{
+		if (_extractMarkerManager != null)
+		{
+			_extractMarkerManager.SetCurrentMap(_currentMapKey);
+			_extractMarkerManager.SetCurrentFloor(_currentFloorId);
+			_extractMarkerManager.SetZoomLevel(_zoomLevel);
+			_extractMarkerManager.SetShowExtractMarkers(_showExtractMarkers);
+			_extractMarkerManager.SetShowPmcExtracts(_showPmcExtracts);
+			_extractMarkerManager.SetShowScavExtracts(_showScavExtracts);
+			_extractMarkerManager.SetShowTransitExtracts(_showTransitExtracts);
+			_extractMarkerManager.SetExtractNameTextSize(_extractNameTextSize);
+			await _extractMarkerManager.RefreshMarkersAsync(ct);
+		}
+	}
+
+	private async Task LoadMapMarkersAsync(CancellationToken ct = default(CancellationToken))
+	{
+		_ = 1;
+		try
+		{
+			ct.ThrowIfCancellationRequested();
+			TxtStatus.Text = "Loading map markers...";
+			await MapMarkerDbService.Instance.LoadMarkersAsync().WaitAsync(ct);
+			int markerCount = MapMarkerDbService.Instance.MarkerCount;
+			TxtStatus.Text = $"Loaded {markerCount} map markers";
+			if (!string.IsNullOrEmpty(_currentMapKey))
+			{
+				await RefreshMapMarkers(ct);
+			}
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		catch (Exception ex2)
+		{
+			TxtStatus.Text = "Error loading map markers: " + ex2.Message;
+		}
+	}
+
+	private bool IsMarkerOnCurrentFloor(string? markerFloorId)
+	{
+		if (string.IsNullOrEmpty(_currentFloorId))
+		{
+			return true;
+		}
+		if (string.IsNullOrEmpty(markerFloorId))
+		{
+			return string.Equals(_currentFloorId, "main", StringComparison.OrdinalIgnoreCase);
+		}
+		return string.Equals(_currentFloorId, markerFloorId, StringComparison.OrdinalIgnoreCase);
+	}
+
+	private (string arrow, string floorText, System.Windows.Media.Color color)? GetFloorIndicator(string? markerFloorId)
+	{
+		if (string.IsNullOrEmpty(_currentMapKey) || string.IsNullOrEmpty(_currentFloorId))
+		{
+			return null;
+		}
+		MapConfig mapConfig = _trackerService?.GetMapConfig(_currentMapKey);
+		if (mapConfig?.Floors == null || mapConfig.Floors.Count == 0)
+		{
+			return null;
+		}
+		int num = mapConfig.Floors.FirstOrDefault((MapFloorConfig f) => string.Equals(f.LayerId, _currentFloorId, StringComparison.OrdinalIgnoreCase))?.Order ?? 0;
+		string effectiveFloorId = (string.IsNullOrEmpty(markerFloorId) ? "main" : markerFloorId);
+		int num2 = mapConfig.Floors.FirstOrDefault((MapFloorConfig f) => string.Equals(f.LayerId, effectiveFloorId, StringComparison.OrdinalIgnoreCase))?.Order ?? 0;
+		if (num == num2)
+		{
+			return null;
+		}
+		bool num3 = num2 > num;
+		string item = (num3 ? "↑" : "↓");
+		System.Windows.Media.Color item2 = (num3 ? System.Windows.Media.Color.FromRgb(100, 181, 246) : System.Windows.Media.Color.FromRgb(byte.MaxValue, 167, 38));
+		string item3 = ((num2 < 0) ? "B" : ((num2 != 0) ? (num2 + 1).ToString() : "G"));
+		return (item, item3, item2);
+	}
+
+	private List<List<MapExtract>> GroupExtractsByPosition(List<MapExtract> extracts)
+	{
+		List<List<MapExtract>> list = new List<List<MapExtract>>();
+		HashSet<string> hashSet = new HashSet<string>();
+		foreach (MapExtract extract in extracts)
+		{
+			if (hashSet.Contains(extract.Id))
+			{
+				continue;
+			}
+			List<MapExtract> list2 = new List<MapExtract> { extract };
+			hashSet.Add(extract.Id);
+			foreach (MapExtract extract2 in extracts)
+			{
+				if (!hashSet.Contains(extract2.Id))
+				{
+					double num = Math.Sqrt(Math.Pow(extract.X - extract2.X, 2.0) + Math.Pow(extract.Z - extract2.Z, 2.0));
+					bool flag = string.Equals(extract.Name, extract2.Name, StringComparison.OrdinalIgnoreCase);
+					bool flag2 = extract.Faction != extract2.Faction;
+					if (num < 10.0 && (flag || flag2))
+					{
+						list2.Add(extract2);
+						hashSet.Add(extract2.Id);
+					}
+				}
+			}
+			list.Add(list2);
+		}
+		return list;
+	}
+
+	private (MapExtract extract, ExtractFaction faction) DetermineExtractDisplay(List<MapExtract> group)
+	{
+		if (group.Count == 1)
+		{
+			ExtractFaction item = ((group[0].Faction != ExtractFaction.Shared) ? group[0].Faction : ExtractFaction.Pmc);
+			return (extract: group[0], faction: item);
+		}
+		bool num = group.Any((MapExtract e) => e.Faction == ExtractFaction.Pmc || e.Faction == ExtractFaction.Shared);
+		bool flag = group.Any((MapExtract e) => e.Faction == ExtractFaction.Scav);
+		if (num && flag)
+		{
+			return (extract: group.FirstOrDefault((MapExtract e) => e.Faction == ExtractFaction.Pmc) ?? group.FirstOrDefault((MapExtract e) => e.Faction == ExtractFaction.Shared) ?? group[0], faction: ExtractFaction.Pmc);
+		}
+		ExtractFaction item2 = ((group[0].Faction != ExtractFaction.Shared) ? group[0].Faction : ExtractFaction.Pmc);
+		return (extract: group[0], faction: item2);
+	}
+
+	private bool ShouldShowExtract(ExtractFaction faction)
+	{
+		return faction switch
+		{
+			ExtractFaction.Pmc => _showPmcExtracts, 
+			ExtractFaction.Scav => _showScavExtracts, 
+			ExtractFaction.Shared => _showPmcExtracts, 
+			ExtractFaction.Transit => _showPmcExtracts, 
+			_ => true, 
+		};
+	}
+
+	private async void SaveCalibrationAndRefresh()
+	{
+		if (_trackerService == null)
+		{
+			return;
+		}
+		MapConfig mapConfig = _trackerService.GetMapConfig(_currentMapKey ?? "");
+		if (mapConfig?.CalibrationPoints != null && mapConfig.CalibrationPoints.Count >= 3)
+		{
+			mapConfig.CalibratedTransform = _calibrationService.CalculateAffineTransform(mapConfig.CalibrationPoints);
+			if (mapConfig.CalibratedTransform != null)
+			{
+				TxtStatus.Text = $"Calibration saved! ({mapConfig.CalibrationPoints.Count} points)";
+				_trackerService.SaveSettings();
+				await RefreshExtractMarkers();
+				await RefreshQuestMarkers();
+			}
+			else
+			{
+				TxtStatus.Text = "Calibration calculation failed.";
+			}
+		}
+		else
+		{
+			_trackerService.SaveSettings();
+		}
+	}
+
+	private void SetupExtractMarkerForCalibration(FrameworkElement marker, MapExtract extract)
+	{
+		marker.Tag = extract;
+		marker.Cursor = System.Windows.Input.Cursors.SizeAll;
+		marker.MouseLeftButtonDown += ExtractMarker_CalibrationMouseDown;
+		marker.MouseMove += ExtractMarker_CalibrationMouseMove;
+		marker.MouseLeftButtonUp += ExtractMarker_CalibrationMouseUp;
+	}
+
+	private void ExtractMarker_CalibrationMouseDown(object sender, MouseButtonEventArgs e)
+	{
+		if (_isCalibrationMode && sender is FrameworkElement frameworkElement)
+		{
+			_draggingExtractMarker = frameworkElement;
+			_draggingExtract = frameworkElement.Tag as MapExtract;
+			_extractDragStartPoint = e.GetPosition(ExtractMarkersContainer);
+			_extractMarkerOriginalLeft = Canvas.GetLeft(frameworkElement);
+			_extractMarkerOriginalTop = Canvas.GetTop(frameworkElement);
+			frameworkElement.CaptureMouse();
+			e.Handled = true;
+		}
+	}
+
+	private void ExtractMarker_CalibrationMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+	{
+		if (_isCalibrationMode && _draggingExtractMarker != null)
+		{
+			System.Windows.Point position = e.GetPosition(ExtractMarkersContainer);
+			double num = position.X - _extractDragStartPoint.X;
+			double num2 = position.Y - _extractDragStartPoint.Y;
+			Canvas.SetLeft(_draggingExtractMarker, _extractMarkerOriginalLeft + num);
+			Canvas.SetTop(_draggingExtractMarker, _extractMarkerOriginalTop + num2);
+		}
+	}
+
+	private void ExtractMarker_CalibrationMouseUp(object sender, MouseButtonEventArgs e)
+	{
+		if (!_isCalibrationMode || _draggingExtractMarker == null || _draggingExtract == null)
+		{
+			return;
+		}
+		_draggingExtractMarker.ReleaseMouseCapture();
+		double left = Canvas.GetLeft(_draggingExtractMarker);
+		double top = Canvas.GetTop(_draggingExtractMarker);
+		double num = ((_draggingExtractMarker.ActualWidth > 0.0) ? _draggingExtractMarker.ActualWidth : 20.0);
+		double num2 = ((_draggingExtractMarker.ActualHeight > 0.0) ? _draggingExtractMarker.ActualHeight : 20.0);
+		double screenX = left + num / 2.0;
+		double screenY = top + num2 / 2.0;
+		MapConfig mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
+		if (mapConfig != null)
+		{
+			CalibrationPoint point = new CalibrationPoint
+			{
+				Id = _draggingExtract.Id,
+				Name = _draggingExtract.Name,
+				GameX = _draggingExtract.X,
+				GameZ = _draggingExtract.Z,
+				ScreenX = screenX,
+				ScreenY = screenY
+			};
+			_calibrationService.AddCalibrationPoint(mapConfig, point);
+			int num3 = mapConfig.CalibrationPoints?.Count ?? 0;
+			TxtStatus.Text = $"Calibration point set: {_draggingExtract.Name} ({num3} points)";
+			if (num3 >= 3)
+			{
+				TxtStatus.Text += " - Ready to apply!";
+			}
+			else
+			{
+				TxtStatus.Text += $" - Need {3 - num3} more points";
+			}
+		}
+		_draggingExtractMarker = null;
+		_draggingExtract = null;
+		e.Handled = true;
+	}
+
+	private async void ChkShowExtractMarkers_Changed(object sender, RoutedEventArgs e)
+	{
+		_showExtractMarkers = ChkShowExtractMarkers?.IsChecked ?? true;
+		if (ExtractMarkersContainer != null)
+		{
+			ExtractMarkersContainer.Visibility = ((!_showExtractMarkers) ? Visibility.Collapsed : Visibility.Visible);
+		}
+		SettingsService.Instance.MapShowExtracts = _showExtractMarkers;
+		OverlayMiniMapService.Instance.RefreshMap();
+	}
+
+	private async void ChkExtractFilter_Changed(object sender, RoutedEventArgs e)
+	{
+		if (!base.IsLoaded || _isSwitchingMap || _isApplyingMapConfig)
+		{
+			return;
+		}
+		try
+		{
+			CancellationToken newCancellationToken = GetNewCancellationToken();
+			_showPmcExtracts = ChkShowPmcExtracts?.IsChecked ?? true;
+			_showScavExtracts = ChkShowScavExtracts?.IsChecked ?? true;
+			_showTransitExtracts = ChkShowTransitExtracts?.IsChecked ?? true;
+			SettingsService instance = SettingsService.Instance;
+			instance.MapShowPmcExtracts = _showPmcExtracts;
+			instance.MapShowScavExtracts = _showScavExtracts;
+			instance.MapShowTransits = _showTransitExtracts;
+			await RefreshExtractMarkers(newCancellationToken);
+			OverlayMiniMapService.Instance.RefreshMap();
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private async void SliderExtractTextSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+	{
+		if (TxtExtractTextSize == null)
+		{
+			return;
+		}
+		_extractNameTextSize = e.NewValue;
+		TxtExtractTextSize.Text = e.NewValue.ToString("F0");
+		SettingsService.Instance.MapExtractNameSize = _extractNameTextSize;
+		if (_extractService.IsLoaded)
+		{
+			try
+			{
+				CancellationToken newCancellationToken = GetNewCancellationToken();
+				await RefreshExtractMarkers(newCancellationToken);
+			}
+			catch (OperationCanceledException)
+			{
+			}
+		}
+	}
+
+	private async void MarkerColor_Click(object sender, MouseButtonEventArgs e)
+	{
+		if (!(sender is Border { Tag: string tag } border))
+		{
+			return;
+		}
+		ColorDialog colorDialog = new ColorDialog();
+		if (border.Background is SolidColorBrush { Color: var color })
+		{
+			colorDialog.Color = System.Drawing.Color.FromArgb(color.R, color.G, color.B);
+		}
+		if (colorDialog.ShowDialog() != DialogResult.OK)
+		{
+			return;
+		}
+		System.Drawing.Color color2 = colorDialog.Color;
+		string hexColor = $"#{color2.R:X2}{color2.G:X2}{color2.B:X2}";
+		border.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(color2.R, color2.G, color2.B));
+		if (_trackerService != null)
+		{
+			_trackerService.Settings.SetMarkerColor(tag, hexColor);
+			_trackerService.SaveSettings();
+			try
+			{
+				CancellationToken newCancellationToken = GetNewCancellationToken();
+				await RefreshQuestMarkers(newCancellationToken);
+			}
+			catch (OperationCanceledException)
+			{
+			}
+		}
+	}
+
+	private async void BtnResetColors_Click(object sender, RoutedEventArgs e)
+	{
+		Dictionary<string, string> markerColors = new Dictionary<string, string>
+		{
+			{ "visit", "#00E5FF" },
+			{ "mark", "#FFA000" },
+			{ "plantItem", "#AB47BC" },
+			{ "extract", "#29B6F6" },
+			{ "findItem", "#FFEB3B" }
+		};
+		if (_trackerService != null)
+		{
+			_trackerService.Settings.MarkerColors = markerColors;
+			_trackerService.SaveSettings();
+		}
+		UpdateMarkerColorUI();
+		try
+		{
+			CancellationToken newCancellationToken = GetNewCancellationToken();
+			await RefreshQuestMarkers(newCancellationToken);
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private void UpdateMarkerColorUI()
+	{
+		if (_trackerService != null)
+		{
+			ColorVisit.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_trackerService.Settings.GetMarkerColor("visit")));
+			ColorMark.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_trackerService.Settings.GetMarkerColor("mark")));
+			ColorPlant.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_trackerService.Settings.GetMarkerColor("plantItem")));
+			ColorExtract.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_trackerService.Settings.GetMarkerColor("extract")));
+			ColorFind.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_trackerService.Settings.GetMarkerColor("findItem")));
+		}
+	}
+
+	private async void ObjectiveCheckBox_Checked(object sender, RoutedEventArgs e)
+	{
+		if (sender is System.Windows.Controls.CheckBox { Tag: TaskObjectiveWithLocation tag })
+		{
+			ObjectiveProgressService.Instance.SetObjectiveCompletedById(tag.ObjectiveId, completed: true, tag.TaskNormalizedName, tag.ObjectiveIndex);
+			try
+			{
+				CancellationToken newCancellationToken = GetNewCancellationToken();
+				await RefreshQuestMarkers(newCancellationToken);
+			}
+			catch (OperationCanceledException)
+			{
+			}
+			RefreshQuestDrawer();
+		}
+	}
+
+	private async void ObjectiveCheckBox_Unchecked(object sender, RoutedEventArgs e)
+	{
+		if (sender is System.Windows.Controls.CheckBox { Tag: TaskObjectiveWithLocation tag })
+		{
+			ObjectiveProgressService.Instance.SetObjectiveCompletedById(tag.ObjectiveId, completed: false, tag.TaskNormalizedName, tag.ObjectiveIndex);
+			try
+			{
+				CancellationToken newCancellationToken = GetNewCancellationToken();
+				await RefreshQuestMarkers(newCancellationToken);
+			}
+			catch (OperationCanceledException)
+			{
+			}
+			RefreshQuestDrawer();
+		}
+	}
+
+	private async void ChkHideCompletedObjectives_Changed(object sender, RoutedEventArgs e)
+	{
+		_hideCompletedObjectives = ChkHideCompletedObjectives?.IsChecked ?? true;
+		SettingsService.Instance.MapHideCompletedObjectives = _hideCompletedObjectives;
+		try
+		{
+			CancellationToken newCancellationToken = GetNewCancellationToken();
+			await RefreshQuestMarkers(newCancellationToken);
+		}
+		catch (OperationCanceledException)
+		{
+		}
+		OverlayMiniMapService.Instance.RefreshMap();
+	}
+
+	private void RefreshQuestDrawer()
+	{
+	}
+
+	private void BtnToggleMapMarkersPanel_Click(object sender, RoutedEventArgs e)
+	{
+		_isMapMarkersPanelCollapsed = !_isMapMarkersPanelCollapsed;
+		if (_isMapMarkersPanelCollapsed)
+		{
+			MapMarkersContent.Visibility = Visibility.Collapsed;
+			BtnToggleMapMarkersPanel.Content = "▲";
+		}
+		else
+		{
+			MapMarkersContent.Visibility = Visibility.Visible;
+			BtnToggleMapMarkersPanel.Content = "▼";
+		}
+	}
+
+	private async void ChkMapMarker_Changed(object sender, RoutedEventArgs e)
+	{
+		if (!base.IsLoaded || _isSwitchingMap || _isApplyingMapConfig)
+		{
+			return;
+		}
+		try
+		{
+			CancellationToken newCancellationToken = GetNewCancellationToken();
+			MapSettings instance = MapSettings.Instance;
+			_showPmcSpawnsMarker = ChkShowPmcSpawns?.IsChecked ?? true;
+			_showSniperScavsMarker = ChkShowSniperScavs?.IsChecked ?? true;
+			_showRoguesMarker = ChkShowRogues?.IsChecked ?? true;
+			_showCultistsMarker = ChkShowCultists?.IsChecked ?? true;
+			_showLeversMarkerOverlay = ChkShowLeversMarker?.IsChecked ?? true;
+			_showBossesMarker = ChkShowBosses?.IsChecked ?? true;
+			instance.ShowPmcSpawns = _showPmcSpawnsMarker;
+			instance.ShowSniperScavs = _showSniperScavsMarker;
+			instance.ShowRogues = _showRoguesMarker;
+			instance.ShowCultists = _showCultistsMarker;
+			instance.ShowLevers = _showLeversMarkerOverlay;
+			instance.ShowBosses = _showBossesMarker;
+			await RefreshMapMarkers(newCancellationToken);
+			OverlayMiniMapService.Instance.RefreshMarkers();
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private async Task RefreshMapMarkers(CancellationToken ct = default(CancellationToken))
+	{
+		if (_mapMarkersManager != null)
+		{
+			_mapMarkersManager.SetShowPmcSpawns(_showPmcSpawnsMarker);
+			_mapMarkersManager.SetShowSniperScavs(_showSniperScavsMarker);
+			_mapMarkersManager.SetShowRogues(_showRoguesMarker);
+			_mapMarkersManager.SetShowCultists(_showCultistsMarker);
+			_mapMarkersManager.SetShowLevers(_showLeversMarkerOverlay);
+			_mapMarkersManager.SetShowBosses(_showBossesMarker);
+			_mapMarkersManager.SetCurrentMap(_currentMapKey);
+			_mapMarkersManager.SetCurrentFloor(_currentFloorId);
+			_mapMarkersManager.SetZoomLevel(_zoomLevel);
+			await _mapMarkersManager.RefreshMarkersAsync(ct);
+		}
+	}
+
+	private void MapViewer_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+	{
+		if (QuestObjectiveRelocationService.Instance.IsPlacementActive)
+		{
+			BtnCancelPlacement_Click(BtnCancelPlacement, new RoutedEventArgs());
+			e.Handled = true;
+		}
+		else
+		{
+			_lastRightClickPosition = e.GetPosition(MapCanvas);
+		}
+	}
+
+	private async void MenuAddCustomMarker_Click(object sender, RoutedEventArgs e)
+	{
+		if (!string.IsNullOrEmpty(_currentMapKey) && _customMarkerManager != null)
+		{
+			TxtStatus.Text = "Adding custom marker...";
+			await _customMarkerManager.AddMarkerAsync(_lastRightClickPosition.X, _lastRightClickPosition.Y);
+		}
+	}
+
+	private void LstCustomMarkers_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		if (!(LstCustomMarkers.SelectedItem is CustomMapMarker customMapMarker))
+		{
+			return;
+		}
+		if (!string.IsNullOrEmpty(customMapMarker.FloorId) && customMapMarker.FloorId != _currentFloorId)
+		{
+			foreach (ComboBoxItem item in (IEnumerable)CmbFloorSelect.Items)
+			{
+				if (item.Tag?.ToString() == customMapMarker.FloorId)
+				{
+					CmbFloorSelect.SelectedItem = item;
+					break;
+				}
+			}
+		}
+		PanToMarker(customMapMarker);
+	}
+
+	private void PanToMarker(CustomMapMarker marker)
+	{
+		if (string.IsNullOrEmpty(_currentMapKey))
+		{
+			return;
+		}
+		MapTrackerService? trackerService = _trackerService;
+		if (trackerService != null && trackerService.Transformer.TryTransform(_currentMapKey, marker.X, marker.Z, null, out ScreenPosition screenPosition) && screenPosition != null)
+		{
+			double actualWidth = MapViewerGrid.ActualWidth;
+			double actualHeight = MapViewerGrid.ActualHeight;
+			if (!(actualWidth <= 0.0) && !(actualHeight <= 0.0))
+			{
+				double x = actualWidth / 2.0 - screenPosition.X * _zoomLevel;
+				double y = actualHeight / 2.0 - screenPosition.Y * _zoomLevel;
+				MapTranslate.X = x;
+				MapTranslate.Y = y;
+			}
+		}
+	}
+
+	private async void BtnDeleteMarker_Manual_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is System.Windows.Controls.Button { Tag: CustomMapMarker tag })
+		{
+			await (_customMarkerManager?.DeleteMarkerAsync(tag));
+		}
+	}
+
+	private async void BtnEditMarker_Manual_Click(object sender, RoutedEventArgs e)
+	{
+		if (sender is System.Windows.Controls.Button { Tag: CustomMapMarker tag })
+		{
+			await (_customMarkerManager?.EditMarkerAsync(tag));
+		}
+	}
+
+	private void BtnToggleCustomMarkersPanel_Click(object sender, RoutedEventArgs e)
+	{
+		_isCustomMarkersPanelCollapsed = !_isCustomMarkersPanelCollapsed;
+		UpdateCustomMarkersPanelUI(_isCustomMarkersPanelCollapsed);
+		SettingsService.Instance.IsCustomMarkersPanelCollapsed = _isCustomMarkersPanelCollapsed;
+	}
+
+	private void UpdateCustomMarkersPanelUI(bool isCollapsed)
+	{
+		if (TxtToggleIcon != null)
+		{
+			TxtToggleIcon.Text = (isCollapsed ? "◀" : "▶");
+		}
+		if (MarkerListContentColumn != null)
+		{
+			MarkerListContentColumn.Width = (isCollapsed ? new GridLength(0.0) : new GridLength(280.0));
+		}
+		if (MarkerListContentGrid != null)
+		{
+			MarkerListContentGrid.Visibility = (isCollapsed ? Visibility.Collapsed : Visibility.Visible);
+		}
+	}
+
+	private void BtnTogglePmcExtracts_Click(object sender, RoutedEventArgs e)
+	{
+		if (ChkShowPmcExtracts != null)
+		{
+			ChkShowPmcExtracts.IsChecked = BtnTogglePmcExtracts.IsChecked;
+		}
+		_showPmcExtracts = BtnTogglePmcExtracts.IsChecked ?? true;
+		_showTransitExtracts = _showPmcExtracts;
+		SaveCurrentPerMapMarkerConfig();
+		RefreshExtractMarkers();
+	}
+
+	private void BtnToggleScavExtracts_Click(object sender, RoutedEventArgs e)
+	{
+		if (ChkShowScavExtracts != null)
+		{
+			ChkShowScavExtracts.IsChecked = BtnToggleScavExtracts.IsChecked;
+		}
+		_showScavExtracts = BtnToggleScavExtracts.IsChecked ?? true;
+		SaveCurrentPerMapMarkerConfig();
+		RefreshExtractMarkers();
+	}
+
+	private void BtnToggleSpawns_Click(object sender, RoutedEventArgs e)
+	{
+		if (ChkShowPmcSpawns != null)
+		{
+			ChkShowPmcSpawns.IsChecked = BtnToggleSpawns.IsChecked;
+		}
+		_showPmcSpawnsMarker = BtnToggleSpawns.IsChecked ?? true;
+		SaveCurrentPerMapMarkerConfig();
+		RefreshMapMarkers();
+	}
+
+	private void BtnMapSettingsCog_Click(object sender, RoutedEventArgs e)
+	{
+		if (MapSettingsPopup != null)
+		{
+			MapSettingsPopup.IsOpen = !MapSettingsPopup.IsOpen;
+		}
+	}
+
+	private void MapSettingItem_Changed(object sender, RoutedEventArgs e)
+	{
+		if (!_isSwitchingMap && !_isApplyingMapConfig)
+		{
+			if (sender == ChkSettingSniperScavs && ChkShowSniperScavs != null)
+			{
+				ChkShowSniperScavs.IsChecked = ChkSettingSniperScavs.IsChecked;
+			}
+			if (sender == ChkSettingRogues && ChkShowRogues != null)
+			{
+				ChkShowRogues.IsChecked = ChkSettingRogues.IsChecked;
+			}
+			if (sender == ChkSettingCultists && ChkShowCultists != null)
+			{
+				ChkShowCultists.IsChecked = ChkSettingCultists.IsChecked;
+			}
+			if (sender == ChkSettingLevers && ChkShowLeversMarker != null)
+			{
+				ChkShowLeversMarker.IsChecked = ChkSettingLevers.IsChecked;
+			}
+			if (sender == ChkSettingBosses && ChkShowBosses != null)
+			{
+				ChkShowBosses.IsChecked = ChkSettingBosses.IsChecked;
+			}
+			_showSniperScavsMarker = ChkSettingSniperScavs?.IsChecked ?? true;
+			_showRoguesMarker = ChkSettingRogues?.IsChecked ?? true;
+			_showCultistsMarker = ChkSettingCultists?.IsChecked ?? true;
+			_showLeversMarkerOverlay = ChkSettingLevers?.IsChecked ?? true;
+			_showBossesMarker = ChkSettingBosses?.IsChecked ?? true;
+			SaveCurrentPerMapMarkerConfig();
+			RefreshMapMarkers();
+		}
+	}
+
+	private void BtnToggleFullScreen_Click(object sender, RoutedEventArgs e)
+	{
+		if (BtnExitFullScreen != null && BtnExitFullScreen.Visibility == Visibility.Visible)
+		{
+			ExitFullScreen();
+		}
+		else
+		{
+			EnterFullScreen();
+		}
+	}
+
+	public void SaveCurrentPerMapMarkerConfig()
+	{
+		if (!string.IsNullOrEmpty(_currentMapKey) && !_isSwitchingMap && !_isApplyingMapConfig)
+		{
+			PerMapConfig perMapConfig = MapSettings.Instance.GetPerMapConfig(_currentMapKey);
+			perMapConfig.ShowPmcExtracts = _showPmcExtracts;
+			perMapConfig.ShowScavExtracts = _showScavExtracts;
+			perMapConfig.ShowSpawns = _showPmcSpawnsMarker;
+			perMapConfig.ShowSnipers = _showSniperScavsMarker;
+			perMapConfig.ShowRogues = _showRoguesMarker;
+			perMapConfig.ShowCultists = _showCultistsMarker;
+			perMapConfig.ShowLevers = _showLeversMarkerOverlay;
+			perMapConfig.ShowBosses = _showBossesMarker;
+			perMapConfig.ZoomLevel = _zoomLevel;
+			perMapConfig.TranslateX = MapTranslate?.X ?? 0.0;
+			perMapConfig.TranslateY = MapTranslate?.Y ?? 0.0;
+			MapSettings.Instance.SavePerMapConfig(_currentMapKey, perMapConfig);
+		}
+	}
+
+	public void LoadAndApplyPerMapConfig(string mapKey)
+	{
+		if (string.IsNullOrEmpty(mapKey))
+		{
+			return;
+		}
+		_isApplyingMapConfig = true;
+		try
+		{
+			PerMapConfig perMapConfig = MapSettings.Instance.GetPerMapConfig(mapKey);
+			_showPmcExtracts = perMapConfig.ShowPmcExtracts;
+			_showScavExtracts = perMapConfig.ShowScavExtracts;
+			_showPmcSpawnsMarker = perMapConfig.ShowSpawns;
+			_showSniperScavsMarker = perMapConfig.ShowSnipers;
+			_showRoguesMarker = perMapConfig.ShowRogues;
+			_showCultistsMarker = perMapConfig.ShowCultists;
+			_showLeversMarkerOverlay = perMapConfig.ShowLevers;
+			_showBossesMarker = perMapConfig.ShowBosses;
+			if (BtnTogglePmcExtracts != null)
+			{
+				BtnTogglePmcExtracts.IsChecked = perMapConfig.ShowPmcExtracts;
+			}
+			if (BtnToggleScavExtracts != null)
+			{
+				BtnToggleScavExtracts.IsChecked = perMapConfig.ShowScavExtracts;
+			}
+			if (BtnToggleSpawns != null)
+			{
+				BtnToggleSpawns.IsChecked = perMapConfig.ShowSpawns;
+			}
+			if (ChkSettingSniperScavs != null)
+			{
+				ChkSettingSniperScavs.IsChecked = perMapConfig.ShowSnipers;
+			}
+			if (ChkSettingRogues != null)
+			{
+				ChkSettingRogues.IsChecked = perMapConfig.ShowRogues;
+			}
+			if (ChkSettingCultists != null)
+			{
+				ChkSettingCultists.IsChecked = perMapConfig.ShowCultists;
+			}
+			if (ChkSettingLevers != null)
+			{
+				ChkSettingLevers.IsChecked = perMapConfig.ShowLevers;
+			}
+			if (ChkSettingBosses != null)
+			{
+				ChkSettingBosses.IsChecked = perMapConfig.ShowBosses;
+			}
+			if (ChkShowPmcExtracts != null)
+			{
+				ChkShowPmcExtracts.IsChecked = perMapConfig.ShowPmcExtracts;
+			}
+			if (ChkShowScavExtracts != null)
+			{
+				ChkShowScavExtracts.IsChecked = perMapConfig.ShowScavExtracts;
+			}
+			if (ChkShowPmcSpawns != null)
+			{
+				ChkShowPmcSpawns.IsChecked = perMapConfig.ShowSpawns;
+			}
+			if (ChkShowSniperScavs != null)
+			{
+				ChkShowSniperScavs.IsChecked = perMapConfig.ShowSnipers;
+			}
+			if (ChkShowRogues != null)
+			{
+				ChkShowRogues.IsChecked = perMapConfig.ShowRogues;
+			}
+			if (ChkShowCultists != null)
+			{
+				ChkShowCultists.IsChecked = perMapConfig.ShowCultists;
+			}
+			if (ChkShowLeversMarker != null)
+			{
+				ChkShowLeversMarker.IsChecked = perMapConfig.ShowLevers;
+			}
+			if (ChkShowBosses != null)
+			{
+				ChkShowBosses.IsChecked = perMapConfig.ShowBosses;
+			}
+			if (perMapConfig.ZoomLevel >= 0.1)
+			{
+				SetZoom(perMapConfig.ZoomLevel);
+				if (MapTranslate != null)
+				{
+					MapTranslate.X = perMapConfig.TranslateX;
+					MapTranslate.Y = perMapConfig.TranslateY;
+				}
+			}
+			else
+			{
+				FitAndCenterMapInView(forceFit: true);
+			}
+		}
+		finally
+		{
+			_isApplyingMapConfig = false;
+		}
+	}
+
 }
 
-/// <summary>
-/// 퀘스트 목표 표시용 ViewModel
-/// </summary>
-public class QuestObjectiveViewModel
+
+#region Value Converters
+
+public class BoolToVisibilityConverter : System.Windows.Data.IValueConverter
 {
-    public TaskObjectiveWithLocation Objective { get; }
-
-    public string QuestName { get; }
-    public string Description { get; }
-    public string TypeDisplay { get; }
-    public Brush TypeBrush { get; }
-    public Visibility CompletedVisibility { get; }
-    public bool IsSelected { get; }
-    public Brush SelectionBorderBrush { get; }
-    public Thickness SelectionBorderThickness { get; }
-
-    // 체크박스용 프로퍼티
-    public string ObjectiveId { get; }
-    public bool IsChecked { get; set; }
-    public TextDecorationCollection? TextDecoration { get; }
-    public double ContentOpacity { get; }
-
-    // 다른 맵 목표 표시용 프로퍼티
-    public bool IsOnCurrentMap { get; }
-    public string? OtherMapName { get; }
-    public Visibility OtherMapBadgeVisibility { get; }
-    public bool IsEnabled { get; }
-
-    // 그룹화 표시용 프로퍼티
-    public bool IsGrouped { get; set; }
-    public Visibility QuestNameVisibility => IsGrouped ? Visibility.Collapsed : Visibility.Visible;
-    public Thickness ItemMargin => IsGrouped ? new Thickness(16, 0, 0, 8) : new Thickness(0, 0, 0, 8);
-
-    // 층 표시용 프로퍼티
-    public string? FloorDisplay { get; }
-    public Brush? FloorBrush { get; }
-    public Visibility FloorBadgeVisibility { get; }
-
-    public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, bool isSelected = false)
-        : this(objective, loc, null, isSelected, null, null, null)
-    {
-    }
-
-    public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, QuestProgressService? progressService, bool isSelected = false)
-        : this(objective, loc, progressService, isSelected, null, null, null)
-    {
-    }
-
-    public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, QuestProgressService? progressService, bool isSelected, string? currentMapKey)
-        : this(objective, loc, progressService, isSelected, currentMapKey, null, null)
-    {
-    }
-
-    public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, QuestProgressService? progressService, bool isSelected, string? currentMapKey, string? currentFloorId)
-        : this(objective, loc, progressService, isSelected, currentMapKey, currentFloorId, null)
-    {
-    }
-
-    public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, QuestProgressService? progressService, bool isSelected, string? currentMapKey, string? currentFloorId, (string arrow, string floorText, Color color)? floorIndicator)
-    {
-        Objective = objective;
-        IsSelected = isSelected;
-        ObjectiveId = objective.ObjectiveId;
-
-        QuestName = loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.TaskNameKo)
-            ? objective.TaskNameKo
-            : objective.TaskName;
-
-        Description = loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.DescriptionKo)
-            ? objective.DescriptionKo
-            : objective.Description;
-
-        TypeDisplay = GetTypeDisplay(objective.Type);
-        TypeBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(objective.MarkerColor));
-
-        // 체크박스 상태 설정 (ObjectiveId 기반 - 동일 설명 목표 개별 추적)
-        if (progressService != null)
-        {
-            IsChecked = ObjectiveProgressService.Instance.IsObjectiveCompletedById(objective.ObjectiveId);
-        }
-        else
-        {
-            IsChecked = objective.IsCompleted;
-        }
-        CompletedVisibility = IsChecked ? Visibility.Visible : Visibility.Collapsed;
-
-        // 완료 시 스타일 변경
-        TextDecoration = IsChecked ? TextDecorations.Strikethrough : null;
-        ContentOpacity = IsChecked ? 0.5 : 1.0;
-
-        // 선택 상태에 따른 테두리 스타일 (선택 시 1px 노란 테두리, 미선택 시 투명)
-        SelectionBorderBrush = isSelected ? new SolidColorBrush(Color.FromRgb(255, 215, 0)) : Brushes.Transparent;
-        SelectionBorderThickness = isSelected ? new Thickness(1.5) : new Thickness(0);
-
-        // 현재 맵에 있는 목표인지 확인 (공백/하이픈 차이 무시)
-        if (!string.IsNullOrEmpty(currentMapKey))
-        {
-            IsOnCurrentMap = objective.Locations.Any(loc =>
-                MatchesMapKey(loc.MapName, currentMapKey) ||
-                MatchesMapKey(loc.MapNormalizedName, currentMapKey));
-
-            if (!IsOnCurrentMap && objective.Locations.Count > 0)
-            {
-                // 다른 맵 이름 표시
-                var otherLocation = objective.Locations.FirstOrDefault();
-                OtherMapName = otherLocation?.MapName ?? "Other Map";
-                OtherMapBadgeVisibility = Visibility.Visible;
-                IsEnabled = false;
-            }
-            else
-            {
-                OtherMapBadgeVisibility = Visibility.Collapsed;
-                IsEnabled = true;
-            }
-        }
-        else
-        {
-            IsOnCurrentMap = true;
-            OtherMapBadgeVisibility = Visibility.Collapsed;
-            IsEnabled = true;
-        }
-
-        // 층 정보 초기화 - floorIndicator가 있으면 화살표 포함 표시
-        if (floorIndicator.HasValue)
-        {
-            var (arrow, floorText, indicatorColor) = floorIndicator.Value;
-            FloorDisplay = $"{arrow}{floorText}";
-            FloorBrush = new SolidColorBrush(indicatorColor);
-            FloorBadgeVisibility = Visibility.Visible;
-        }
-        else if (objective.Locations.Count > 0)
-        {
-            var floorId = objective.Locations[0].FloorId;
-            if (!string.IsNullOrEmpty(floorId) && !string.IsNullOrEmpty(currentFloorId) &&
-                !string.Equals(floorId, currentFloorId, StringComparison.OrdinalIgnoreCase))
-            {
-                // 다른 층이지만 floorIndicator가 없는 경우 (fallback)
-                FloorDisplay = GetFloorDisplayText(floorId);
-                FloorBrush = new SolidColorBrush(GetFloorColor(floorId, currentFloorId));
-                FloorBadgeVisibility = Visibility.Visible;
-            }
-            else
-            {
-                FloorBadgeVisibility = Visibility.Collapsed;
-            }
-        }
-        else
-        {
-            FloorBadgeVisibility = Visibility.Collapsed;
-        }
-    }
-
-    /// <summary>
-    /// FloorId를 표시용 텍스트로 변환합니다.
-    /// B = basement (main보다 아래), G = Ground (main), 2F, 3F 등
-    /// </summary>
-    public static string GetFloorDisplayText(string floorId)
-    {
-        // FloorId 패턴: "basement", "main", "first", "second", "third", "roof" 등
-        return floorId.ToLowerInvariant() switch
-        {
-            "basement" or "basement1" or "basement-1" or "b1" => "B",
-            "basement2" or "basement-2" or "b2" => "B2",
-            "basement3" or "basement-3" or "b3" => "B3",
-            "main" or "ground" or "1" or "first" => "G",
-            "second" or "2" => "2F",
-            "third" or "3" => "3F",
-            "roof" or "rooftop" => "RF",
-            _ => floorId.Length <= 3 ? floorId.ToUpperInvariant() : floorId.Substring(0, 2).ToUpperInvariant()
-        };
-    }
-
-    /// <summary>
-    /// 층에 따른 색상을 반환합니다.
-    /// </summary>
-    public static Color GetFloorColor(string floorId, string? currentFloorId)
-    {
-        // 현재 층과 같으면 회색, 다르면 강조색
-        if (!string.IsNullOrEmpty(currentFloorId) &&
-            string.Equals(floorId, currentFloorId, StringComparison.OrdinalIgnoreCase))
-        {
-            return Color.FromRgb(128, 128, 128); // 회색
-        }
-
-        // 지하층은 파란색, 기본층은 초록색, 상층은 주황색
-        var lowerFloorId = floorId.ToLowerInvariant();
-        if (lowerFloorId.Contains("basement") || lowerFloorId.StartsWith("b"))
-        {
-            return Color.FromRgb(33, 150, 243); // 파란색
-        }
-        if (lowerFloorId == "main" || lowerFloorId == "ground" || lowerFloorId == "1" || lowerFloorId == "first")
-        {
-            return Color.FromRgb(76, 175, 80); // 초록색
-        }
-        return Color.FromRgb(255, 152, 0); // 주황색
-    }
-
-    private static string GetTypeDisplay(string type) => type switch
-    {
-        "visit" => "Visit",
-        "mark" => "Mark",
-        "plantItem" => "Plant",
-        "extract" => "Extract",
-        "findItem" => "Find",
-        _ => type
-    };
-
-    /// <summary>
-    /// 맵 이름 비교 (공백, 하이픈, 대소문자 차이 무시)
-    /// </summary>
-    private static bool MatchesMapKey(string? mapName, string mapKey)
-    {
-        if (string.IsNullOrEmpty(mapName) || string.IsNullOrEmpty(mapKey))
-            return false;
-
-        // 공백, 하이픈 제거 후 소문자로 비교
-        var normalizedMapName = mapName.Replace(" ", "").Replace("-", "").ToLowerInvariant();
-        var normalizedMapKey = mapKey.Replace(" ", "").Replace("-", "").ToLowerInvariant();
-        return normalizedMapName == normalizedMapKey;
-    }
+    public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => (value is bool b && b) ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+    public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => throw new NotImplementedException();
 }
 
-/// <summary>
-/// 퀘스트 그룹 헤더 (그룹화 시 사용)
-/// </summary>
-public class QuestGroupHeader
+public class IntToVisibilityConverter : System.Windows.Data.IValueConverter
 {
-    public string QuestName { get; set; } = string.Empty;
-    public string QuestId { get; set; } = string.Empty;
-    public string Progress { get; set; } = string.Empty;
-    public bool IsFullyCompleted { get; set; }
-    public Brush HeaderBrush => IsFullyCompleted
-        ? new SolidColorBrush(Color.FromRgb(76, 175, 80))  // Green
-        : new SolidColorBrush(Color.FromRgb(197, 168, 74)); // Accent
-    public TextDecorationCollection? TextDecoration => IsFullyCompleted ? TextDecorations.Strikethrough : null;
-    public double Opacity => IsFullyCompleted ? 0.6 : 1.0;
-
-    /// <summary>
-    /// Wiki 링크 (DB의 WikiPageLink 사용)
-    /// </summary>
-    public string? WikiLink { get; set; }
-
-    public bool HasWikiLink => !string.IsNullOrEmpty(WikiLink);
+    public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => (value is int i && i > 0) ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+    public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => throw new NotImplementedException();
 }
 
-/// <summary>
-/// 퀘스트 드로어용 DataTemplateSelector
-/// </summary>
-public class QuestDrawerTemplateSelector : DataTemplateSelector
+public class NullToVisibilityConverter : System.Windows.Data.IValueConverter
 {
-    public DataTemplate? GroupHeaderTemplate { get; set; }
-    public DataTemplate? ObjectiveTemplate { get; set; }
-
-    public override DataTemplate? SelectTemplate(object item, DependencyObject container)
-    {
-        if (item is QuestGroupHeader)
-            return GroupHeaderTemplate;
-        if (item is QuestObjectiveViewModel)
-            return ObjectiveTemplate;
-        return base.SelectTemplate(item, container);
-    }
+    public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => value != null ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+    public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => throw new NotImplementedException();
 }
 
-/// <summary>
-/// Null 또는 빈 문자열인 경우 Hidden(또는 Collapsed)으로 변환하는 컨버터
-/// </summary>
-public class NullToVisibilityConverter : IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        if (value == null) return Visibility.Collapsed;
-        if (value is string s && string.IsNullOrEmpty(s)) return Visibility.Collapsed;
-        return Visibility.Visible;
-    }
-
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        throw new NotImplementedException();
-    }
-}
+#endregion

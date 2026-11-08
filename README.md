@@ -1,127 +1,122 @@
-# TarkovHelper
+# Tarkov Helper
 
-[![ko](https://img.shields.io/badge/lang-한국어-red.svg)](README_KR.md)
+[![Español](https://img.shields.io/badge/lang-Español-yellow.svg)](README.md)
+[![English](https://img.shields.io/badge/lang-English-blue.svg)](README_EN.md)
+[![한국어](https://img.shields.io/badge/lang-한국어-red.svg)](README_KR.md)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078d7.svg)](https://microsoft.com/windows)
+[![.NET](https://img.shields.io/badge/.NET-8.0%20WPF-512bd4.svg)](https://dotnet.microsoft.com/download/dotnet/8.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-success.svg)](LICENSE)
 
-Escape from Tarkov 퀘스트 및 은신처 진행 상황을 추적하는 Windows 데스크톱 애플리케이션입니다.
+**Tarkov Helper** es una aplicación de escritorio moderna y táctica para Windows diseñada para optimizar y acompañar tus incursiones en **Escape from Tarkov**. Permite gestionar el progreso de misiones, módulos del refugio (Hideout), requisitos de objetos (FIR), llaves necesarias y mapas interactivos con posicionamiento en tiempo real sin interferir con el juego.
 
-## 주요 기능
+---
 
-### 퀘스트 관리
-- 모든 퀘스트 목록 조회 및 검색
-- 퀘스트 완료/진행중 상태 추적
-- 선행 퀘스트 및 후속 퀘스트 표시
-- 퀘스트 시작 시 선행 퀘스트 자동 완료 처리
-- 퀘스트 위키 링크 연결
+## 📸 Capturas de Pantalla
 
-### 은신처 관리
-- 은신처 시설별 건설 레벨 추적
-- 각 레벨 업그레이드에 필요한 아이템 표시
-- 필요 트레이더, 스킬, 의존 시설 정보 제공
+| Gestión de Misiones | Mapas Interactivos y Niveles | Refugio y Módulos |
+| :---: | :---: | :---: |
+| ![Misiones](screenshots/quest.png) | ![Mapa](screenshots/map.png) | ![Refugio](screenshots/hideout.png) |
 
-### 필요 아이템 추적
-- 진행중인 퀘스트에 필요한 아이템 집계
-- 은신처 건설에 필요한 아이템 집계
-- 일반 아이템과 FIR(Found in Raid) 아이템 구분 추적
-- 보유 수량 및 남은 필요 수량 계산
-- 아이템 위키 링크 및 아이콘 표시
+---
 
-### PVE/PVP 모드 독립 관리
-- PVE와 PVP 프로필 데이터의 완전한 분리 추적
-- 메인 인터페이스에서 클릭 한 번으로 모드 전환
-- 각 모드별 독립적인 퀘스트 진행도, 창고, 은신처 상태 관리
+## ✨ Características Principales
 
-### 지도 및 위치 추적
-- 게임 내 스크린샷(PrintScreen)을 통한 실시간 위치 추적 및 표시
-- 레이드 시작 시 해당 맵으로 자동 전환 기능
-- 퀘스트 목표 지점 및 상세 정보 마커 표시
-- 탈출구(PMC, Scav, Transit) 위치 및 조건 표시
-- 주요 마커 오버레이 (PMC 스폰, 보스, 로그, 컬티스트, 레버 등)
-- 사용자 정의 커스텀 마커 추가 및 관리
-- 고도(Y축) 기반 자동 층(Floor) 전환 시스템
-- 게임 화면 위 오버레이 미니맵 지원
+### 🎯 Gestión Avanzada de Misiones
+- **Feed Táctico de Misiones:** Interfaz intuitiva y moderna inspirada en la paleta táctica de EFT y TarkovTracker.
+- **Badges Multi-Mapa Dinámicos:** Las misiones que abarcan múltiples escenarios (como *Power of Persuasion*, *Capturing Outposts* o *A Shooter Born in Heaven*) indican de forma dinámica todos los mapas válidos (`Multi-Map`).
+- **Árbol de Requisitos:** Visualización clara de misiones previas y misiones que desbloquea al completarse.
+- **Soporte Kappa y Estacionales:** Filtros y distintivos dedicados para misiones requeridas para el contenedor Kappa y eventos de wipe / temporadas.
+- **Acceso Rápido a la Wiki:** Enlace directo de cada misión a la wiki oficial de Escape from Tarkov.
 
-### 게임 로그 모니터링
-- 게임 로그에서 퀘스트 완료 자동 감지
-- BSG 런처 및 Steam 버전 모두 지원
-- 게임 설치 폴더 자동 탐지
+### 🗺️ Mapas Vectoriales Interactivos SVG y Posicionamiento
+- **Mapas de Alta Fidelidad:** Mapas vectoriales renderizados en tiempo real con marcadores de extracciones (PMC, Scav, Tránsito), misiones activas y llaves requeridas.
+- **Soporte Multicapa y Subterráneo:** Gestión de elevación y pisos independientes para mapas complejos (Reserva/Búnker, The Lab, plantas de Interchange, dormitorios de Customs, etc.).
+- **Detección Automática de Altura:** Cambio inteligente de piso según la coordenada de elevación (Y) del jugador.
+- **Seguimiento por Captura (`PrintScreen`):** Detecta las coordenadas del jugador pulsando `PrintScreen` dentro de EFT de forma 100% pasiva y segura (sin inyección en memoria, compatible con BattleEye).
+- **Modo Mini-Mapa (Overlay):** Ventana superpuesta y transparente para consultar el mapa en una segunda pantalla o encima del juego.
 
-### 한국어 인터페이스 최적화
-- 한국어 사용자 커뮤니티에 최적화된 인터페이스 제공
-- 모든 기능의 완벽한 한글화
+### 🔄 Perfiles Independientes PVE y PVP
+- **Separación Total de Datos:** Alterna entre tus partidas de **PVP** y **PVE** con un solo clic.
+- **Persistencia Segura:** Las misiones completadas, llaves marcadas, nivel del refugio y notas de cada modo se almacenan por separado en la base de datos local `user_data.db`.
 
-## 스크린샷
+### 📦 Refugio (Hideout) y Objetos Necesarios
+- **Constructor de Módulos:** Seguimiento de niveles actuales y futuros de cada estación del refugio.
+- **Objetos FIR vs Estándar:** Identifica qué objetos debes conservar con el estado *Found in Raid* (FIR) para misiones o entrega en el refugio.
+- **Seguimiento para *Collector*:** Monitoriza el estado de los objetos raros necesarios para la misión final de Fence.
 
-![퀘스트 목록](screenshots/quest.png)
-![지도 추적](screenshots/map.png)
-![은신처 관리](screenshots/hideout.png)
+### ⚡ Motor de Sincronización en Vivo (Live Diff Engine)
+- **Conexión con APIs Vivas:** Integración y reconciliación de datos en tiempo real con **TarkovTracker** y **Tarkov.dev**.
+- **Auditoría de Cambios (Diff Viewer):** Al actualizarse parches del juego, la app compara las misiones oficiales y muestra los cambios antes de aplicarlos, respetando siempre el progreso y notas del usuario.
 
-## 설치 방법
+---
 
-### 요구 사항
-- Windows OS
-- [.NET 8.0 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+## 🚀 Instalación y Uso
 
-### 릴리즈 다운로드
-[Releases](../../releases) 페이지에서 최신 버전을 다운로드하세요.
+### Requisitos del Sistema
+- **Sistema Operativo:** Windows 10 o Windows 11 (64-bit).
+- **Autónomo (Self-Contained):** No es necesario tener instalado .NET Runtime; la versión publicada incluye todas sus dependencias.
 
-## 사용 방법
+### Descarga Rápida
+1. Ve a la sección de [Releases](../../releases).
+2. Descarga el archivo comprimido `TarkovHelper-vX.X.X-win-x64.zip`.
+3. Descomprime la carpeta en la ubicación que prefieras y ejecuta `TarkovHelper.exe`.
 
-### 데이터 업데이트
-앱을 처음 실행하면 [tarkov.dev](https://tarkov.dev) API에서 최신 퀘스트, 아이템, 은신처 데이터를 자동으로 가져옵니다.
+---
 
-수동으로 데이터를 업데이트하려면:
-**설정** 탭에서 API 데이터 업데이트 **클릭**
+## 🛠️ Compilación y Desarrollo
 
-### 퀘스트 추적
-1. **퀘스트** 탭에서 퀘스트 목록 확인
-2. 체크박스로 완료 상태 표시
-3. 검색창으로 퀘스트 검색
-4. 퀘스트 클릭 시 상세 정보 및 선행/후속 퀘스트 확인
+Si deseas compilar o contribuir al proyecto desde el código fuente:
 
-### 은신처 추적
-1. **은신처** 탭에서 시설 목록 확인
-2. 각 시설의 현재 레벨 설정
-3. 다음 레벨 업그레이드에 필요한 아이템 확인
+### Requisitos Previos
+- [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- Visual Studio 2022 o Visual Studio Code con el SDK de C# / .NET.
 
-### 필요 아이템 확인
-1. **필요 아이템** 탭에서 전체 필요 아이템 확인
-2. 보유 수량 입력으로 진행 상황 추적
-3. FIR 아이템은 별도로 관리
+### Comandos de Compilación
 
-### 게임 로그 연동
-게임 설치 폴더를 자동 감지하여 퀘스트 완료 시 알림을 받을 수 있습니다.
+1. **Clonar el repositorio:**
+   ```powershell
+   git clone https://github.com/DenDiagonal/Tarkov-Helper.git
+   cd Tarkov-Helper
+   ```
 
-### 지도 기능 활용
-1. **지도** 탭에서 현재 플레이 중인 맵을 선택하거나, 로그 연동을 통해 자동으로 전환합니다.
-2. 게임 설정에서 `PrintScreen` 키를 누르면 플레이어의 실시간 위치가 지도 위에 표시됩니다.
-3. 퀘스트 목표와 탈출구 위치를 마커로 확인하세요.
-4. 마우스 우클릭으로 지점 정보를 확인하고 커스텀 마커를 추가할 수 있습니다.
-5. 건물의 다른 층을 보려면 `NumPad` 키나 인터페이스의 층 선택기를 사용하세요.
+2. **Restaurar dependencias y compilar:**
+   ```powershell
+   dotnet build TarkovHelper\TarkovHelper.csproj -c Release
+   ```
 
-## 기술 스택
+3. **Publicar versión autónoma para Windows (win-x64):**
+   ```powershell
+   dotnet publish TarkovHelper\TarkovHelper.csproj -c Release -r win-x64 --self-contained true -o publish
+   ```
+   > [!IMPORTANT]
+   > El flag `--self-contained true` es fundamental para que el ejecutable no dependa de librerías del sistema y arranque en cualquier instalación de Windows.
 
-- **프레임워크**: .NET 8.0, WPF
-- **언어**: C# 13
-- **API**: [tarkov.dev GraphQL API](https://tarkov.dev)
+---
 
-## 데이터 저장 위치
+## 🗄️ Estructura de Datos Local
 
-모든 데이터는 `Data/` 폴더에 저장됩니다:
-- `user_data.db` - **SQLite 데이터베이스**: PVE/PVP 통합 사용자 진행 상황(진행도, 아이템 등) 저장
-- `tasks.json` - API에서 받은 퀘스트 데이터 캐시
-- `items.json` - API에서 받은 아이템 데이터 캐시
-- `hideouts.json` - API에서 받은 은신처 데이터 캐시
-- `app_settings.json` - 앱 설정 및 사용자 환경 설정
+La aplicación almacena el estado local en archivos independientes para proteger tus datos de cualquier actualización:
+- `user_data.db` — Base de datos SQLite local que guarda tu progreso de misiones (PVE/PVP), objetos recolectados y notas.
+- `tarkov_data.db` — Base de datos con el catálogo oficial de misiones, requisitos, llaves, extracciones y estaciones del refugio.
+- `app_settings.json` — Configuraciones de visualización, idioma seleccionado, nivel del jugador y rutas de detección de logs.
 
-##
+---
 
-"본 프로그램의 사용으로 인해 발생하는 모든 책임은 사용자 본인에게 있으며, 개발자(또는 제작사)는 어떠한 법적 책임도 지지 않습니다."
+## 🤝 Contribuciones
 
-## 라이선스
+¡Las contribuciones, sugerencias y reportes de errores son bienvenidos!
+1. Haz un **Fork** del proyecto.
+2. Crea una rama para tu funcionalidad (`git checkout -b feature/NuevaMejora`).
+3. Realiza tus cambios y haz commit (`git commit -m "feat: añadir nueva mejora"`).
+4. Sube la rama a tu repositorio (`git push origin feature/NuevaMejora`).
+5. Abre una **Pull Request**.
 
-MIT License
+---
 
-## 크레딧
+## 📜 Licencia y Aviso Legal
 
-- 게임 데이터: [tarkov.dev](https://tarkov.dev)
-- Escape from Tarkov는 Battlestate Games의 상표입니다.
+Este proyecto está distribuido bajo la licencia [MIT](LICENSE).
+
+**Aviso Legal:**
+- Los datos del juego son cortesía de las comunidades de [tarkov.dev](https://tarkov.dev) y [TarkovTracker](https://tarkovtracker.io).
+- *Escape from Tarkov* y todos los activos relacionados son marcas comerciales y derechos reservados de **Battlestate Games**. Esta herramienta es una aplicación no oficial creada por y para la comunidad.

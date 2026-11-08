@@ -336,29 +336,66 @@ namespace TarkovHelper.Services
             return null;
         }
 
+        private static bool IsHandoverObjective(string? objText)
+        {
+            if (string.IsNullOrWhiteSpace(objText)) return false;
+            var lower = objText.Trim().ToLowerInvariant();
+            return lower.StartsWith("hand over")
+                || lower.StartsWith("handover")
+                || lower.StartsWith("turn in")
+                || lower.StartsWith("give ")
+                || lower.StartsWith("deliver ")
+                || lower.StartsWith("surrender ")
+                || lower.StartsWith("entregar");
+        }
+
         private bool IsQuestReadyToComplete(TarkovTask quest, ItemInventoryService inventoryService, out List<(QuestItem, int)> readyItems)
         {
             readyItems = new List<(QuestItem, int)>();
 
-            // If no items required, just check if it's an item-only quest
-            if (quest.RequiredItems == null || quest.RequiredItems.Count == 0)
+            // 1. If quest requires items, verify all required items are available
+            if (quest.RequiredItems != null && quest.RequiredItems.Count > 0)
             {
-                return IsItemHandInOnly(quest);
-            }
-
-            // Check if all required items are available
-            foreach (var item in quest.RequiredItems)
-            {
-                var inventory = inventoryService.GetInventory(item.ItemNormalizedName);
-                var available = item.FoundInRaid ? inventory.FirQuantity : inventory.TotalQuantity;
-
-                if (available >= item.Amount)
+                foreach (var item in quest.RequiredItems)
                 {
-                    readyItems.Add((item, available));
+                    var inventory = inventoryService.GetInventory(item.ItemNormalizedName);
+                    var available = item.FoundInRaid ? inventory.FirQuantity : inventory.TotalQuantity;
+
+                    if (available >= item.Amount)
+                    {
+                        readyItems.Add((item, available));
+                    }
+                    else
+                    {
+                        return false;
+                    }
                 }
-                else
+            }
+            else
+            {
+                // No required items - check if it's item-only
+                if (!IsItemHandInOnly(quest))
                 {
                     return false;
+                }
+            }
+
+            // 2. Non-item objectives (e.g. kills, visits, marks, survivals) must also be completed!
+            if (quest.Objectives != null && quest.Objectives.Count > 0)
+            {
+                for (int i = 0; i < quest.Objectives.Count; i++)
+                {
+                    string objText = quest.Objectives[i];
+                    if (IsHandoverObjective(objText))
+                    {
+                        continue;
+                    }
+
+                    bool isObjDone = ObjectiveProgressService.Instance.IsObjectiveCompleted(quest.NormalizedName ?? quest.Id ?? string.Empty, i);
+                    if (!isObjDone)
+                    {
+                        return false;
+                    }
                 }
             }
 

@@ -1,6 +1,11 @@
+using System;
 using System.IO;
 using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
+using TarkovHelper.Models.DataAudit;
+using TarkovHelper.Services.DataAudit;
 using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper.Services;
@@ -150,6 +155,57 @@ public sealed class DatabaseUpdateService : IDisposable
         _log.Info("Update check disabled by user request");
         return new UpdateCheckResult(true, false, "Update feature is disabled");
     }
+
+    /// <summary>
+    /// Checks for updates against TarkovTracker + BSG Server and returns the diff report.
+    /// </summary>
+    public async Task<UpdateCheckResult> CheckAndUpdateAsync(IProgress<string>? progress, CancellationToken ct = default)
+    {
+        try
+        {
+            var diffReport = await CheckTarkovTrackerUpdatesAsync(progress, ct);
+            return new UpdateCheckResult(true, false, "Comprobación completada", diffReport);
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"CheckAndUpdateAsync failed: {ex.Message}");
+            return new UpdateCheckResult(false, false, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Runs the dual-source extraction and reconciliation (TarkovTracker + BSG Server)
+    /// and calculates differences against the local database.
+    /// </summary>
+    public async Task<DataDiffReport> CheckTarkovTrackerUpdatesAsync(IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        _log.Info("Starting TarkovTracker update check with dual-source BSG reconciliation...");
+        using var extractor = new TarkovTrackerExtractorService();
+        var rawData = await extractor.ExtractAsync(progress, ct);
+
+        progress?.Report("Normalizing TarkovTracker dataset...");
+        var normalizer = new DataNormalizerService();
+        var normalized = normalizer.Normalize(rawData, (CommunityDataPayload?)null);
+
+        // BsgServerReconciliationService and its cascading inheritance loop have been
+        // permanently removed: they relied on an outdated SP-Tarkov template that corrupted
+        // modern quest levels (inflating ~315 quest levels to obsolete values).
+        // Official live TarkovTracker API is the single source of truth for quest levels and requirements.
+
+        progress?.Report("Computing differences against local database...");
+        var diffEngine = DatabaseDiffEngine.Instance;
+        var diffReport = await diffEngine.ComputeDiffAsync(
+            normalized, 
+            _databasePath, 
+            includeUnchanged: false, 
+            detectRemovedQuests: false, 
+            pruneBrokenPrerequisites: false, 
+            ct: ct);
+
+        _log.Info($"TarkovTracker update check complete: {diffReport.TotalChanges} total differences found.");
+        return diffReport;
+    }
+
 
     /// <summary>
     /// 실제 업데이트 확인 및 필요시 다운로드 수행
@@ -421,6 +477,16 @@ public sealed class DatabaseUpdateService : IDisposable
     /// <summary>
     /// 수동 업데이트 체크 (UI에서 호출용)
     /// </summary>
+/// <summary>
+    /// Forces notification of DatabaseUpdated event to all listeners.
+    /// Used after database transaction application or hot-reloads.
+    /// </summary>
+    public void NotifyDatabaseUpdated()
+    {
+        _log.Info("NotifyDatabaseUpdated called, dispatching DatabaseUpdated event...");
+        OnDatabaseUpdated();
+    }
+
     public async Task<UpdateCheckResult> ForceUpdateCheckAsync()
     {
         _log.Info("Manual update check requested");
@@ -445,11 +511,13 @@ public class UpdateCheckResult
     public bool Success { get; }
     public bool WasUpdated { get; }
     public string Message { get; }
+    public DataDiffReport? DiffReport { get; }
 
-    public UpdateCheckResult(bool success, bool wasUpdated, string message)
+    public UpdateCheckResult(bool success, bool wasUpdated, string message, DataDiffReport? diffReport = null)
     {
         Success = success;
         WasUpdated = wasUpdated;
         Message = message;
+        DiffReport = diffReport;
     }
 }

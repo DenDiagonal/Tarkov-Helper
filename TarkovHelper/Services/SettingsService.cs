@@ -49,6 +49,7 @@ public class SettingsService
     private const string KeyPrestigeLevel = "app.prestigeLevel";
     private const string KeyFontFamilyName = "app.fontFamilyName";
     private const string KeyLastProfileType = "app.lastProfileType";
+    private const string KeyIsBtrDriverContacted = "app.isBtrDriverContacted";
 
 
     // Map settings keys moved to MapSettings service
@@ -63,6 +64,7 @@ public class SettingsService
     private double? _scavRep;
     private bool? _showLevelLockedQuests;
     private bool? _hideWipeWarning;
+    private bool? _isBtrDriverContacted;
     private int? _syncDaysRange;
     private double? _baseFontSize;
     private int? _dspDecodeCount;
@@ -106,7 +108,7 @@ public class SettingsService
     /// </summary>
     public const double MinScavRep = -6.0;
     public const double MaxScavRep = 6.0;
-    public const double DefaultScavRep = 1.0;
+    public const double DefaultScavRep = 0.0;
     public const double ScavRepStep = 0.1;
 
     /// <summary>
@@ -114,12 +116,12 @@ public class SettingsService
     /// </summary>
     public const double MinFontSize = 10;
     public const double MaxFontSize = 28;
-    public const double DefaultBaseFontSize = 18;
+    public const double DefaultBaseFontSize = 13.5;
 
     /// <summary>
     /// Default font family name
     /// </summary>
-    public const string DefaultFontFamilyName = "Maplestory";
+    public const string DefaultFontFamilyName = "Segoe UI";
 
 
     /// <summary>
@@ -161,6 +163,29 @@ public class SettingsService
     /// <summary>
     /// Whether to show level-locked quests in the quest list
     /// </summary>
+    /// <summary>
+    /// Explicit override for BTR Driver contact/unlock in raid (null = not explicitly set by user).
+    /// </summary>
+    public bool? IsBtrDriverContacted
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _isBtrDriverContacted;
+        }
+        set
+        {
+            if (_isBtrDriverContacted != value)
+            {
+                _isBtrDriverContacted = value;
+                if (value.HasValue)
+                    SaveSetting(KeyIsBtrDriverContacted, value.Value.ToString());
+                else
+                    SaveSetting(KeyIsBtrDriverContacted, "");
+            }
+        }
+    }
+
     public bool ShowLevelLockedQuests
     {
         get
@@ -236,7 +261,7 @@ public class SettingsService
         get
         {
             if (!_settingsLoaded) LoadSettings();
-            return _logMonitoringEnabled ?? false;  // Default: disabled
+            return _logMonitoringEnabled ?? true;  // Default: enabled
         }
         set
         {
@@ -307,7 +332,12 @@ public class SettingsService
         get
         {
             if (!_settingsLoaded) LoadSettings();
-            return _baseFontSize ?? DefaultBaseFontSize;
+            var val = _baseFontSize ?? DefaultBaseFontSize;
+            if (Math.Abs(val - 18.0) < 0.01)
+            {
+                return DefaultBaseFontSize;
+            }
+            return val;
         }
         set
         {
@@ -371,11 +401,15 @@ public class SettingsService
     /// </summary>
     public bool ShouldIncludeTask(string? taskFaction)
     {
-        if (string.IsNullOrEmpty(taskFaction))
+        if (string.IsNullOrWhiteSpace(taskFaction))
+            return true;
+
+        if (string.Equals(taskFaction, "any", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(taskFaction, "all", StringComparison.OrdinalIgnoreCase))
             return true;
 
         var playerFaction = PlayerFaction;
-        if (string.IsNullOrEmpty(playerFaction))
+        if (string.IsNullOrWhiteSpace(playerFaction))
             return true;
 
         return string.Equals(taskFaction, playerFaction, StringComparison.OrdinalIgnoreCase);
@@ -844,50 +878,56 @@ public class SettingsService
             // First check if JSON migration is needed
             MigrateFromJsonIfNeeded();
 
-            // Load from DB
-            if (Enum.TryParse<ProfileType>(_userDataDb.GetSetting(KeyLastProfileType, ProfileType.Pvp), out var profileType))
+            // Batch load from DB in a single query
+            var allSettings = _userDataDb.GetAllSettings(ProfileType.Pvp);
+            string? GetBatch(string k) => allSettings.TryGetValue(k, out var v) ? v : null;
+
+            if (Enum.TryParse<ProfileType>(GetBatch(KeyLastProfileType), out var profileType))
                 _lastProfileType = profileType;
 
-            _logFolderPath = _userDataDb.GetSetting(KeyLogFolderPath);
+            _logFolderPath = GetBatch(KeyLogFolderPath);
             if (string.IsNullOrEmpty(_logFolderPath)) _logFolderPath = null;
 
-            if (bool.TryParse(_userDataDb.GetSetting(KeyLogMonitoringEnabled), out var logMonitoring))
+            if (bool.TryParse(GetBatch(KeyLogMonitoringEnabled), out var logMonitoring))
                 _logMonitoringEnabled = logMonitoring;
 
-            if (int.TryParse(_userDataDb.GetSetting(KeyPlayerLevel), out var level))
+            if (int.TryParse(GetBatch(KeyPlayerLevel), out var level))
                 _playerLevel = level;
 
-            if (double.TryParse(_userDataDb.GetSetting(KeyScavRep), out var scavRep))
+            if (double.TryParse(GetBatch(KeyScavRep), out var scavRep))
                 _scavRep = scavRep;
 
-            if (bool.TryParse(_userDataDb.GetSetting(KeyShowLevelLockedQuests), out var showLocked))
+            if (bool.TryParse(GetBatch(KeyShowLevelLockedQuests), out var showLocked))
                 _showLevelLockedQuests = showLocked;
 
-            if (bool.TryParse(_userDataDb.GetSetting(KeyHideWipeWarning), out var hideWarning))
+            if (bool.TryParse(GetBatch(KeyHideWipeWarning), out var hideWarning))
                 _hideWipeWarning = hideWarning;
 
-            if (int.TryParse(_userDataDb.GetSetting(KeySyncDaysRange), out var syncDays))
+            if (bool.TryParse(GetBatch(KeyIsBtrDriverContacted), out var btrContacted))
+                _isBtrDriverContacted = btrContacted;
+
+            if (int.TryParse(GetBatch(KeySyncDaysRange), out var syncDays))
                 _syncDaysRange = syncDays;
 
-            if (double.TryParse(_userDataDb.GetSetting(KeyBaseFontSize), out var fontSize))
+            if (double.TryParse(GetBatch(KeyBaseFontSize), out var fontSize))
                 _baseFontSize = fontSize;
 
-            if (int.TryParse(_userDataDb.GetSetting(KeyDspDecodeCount), out var dspCount))
+            if (int.TryParse(GetBatch(KeyDspDecodeCount), out var dspCount))
                 _dspDecodeCount = dspCount;
 
-            _playerFaction = _userDataDb.GetSetting(KeyPlayerFaction);
+            _playerFaction = GetBatch(KeyPlayerFaction);
             if (string.IsNullOrEmpty(_playerFaction)) _playerFaction = null;
 
-            if (bool.TryParse(_userDataDb.GetSetting(KeyHasEodEdition), out var hasEod))
+            if (bool.TryParse(GetBatch(KeyHasEodEdition), out var hasEod))
                 _hasEodEdition = hasEod;
 
-            if (bool.TryParse(_userDataDb.GetSetting(KeyHasUnheardEdition), out var hasUnheard))
+            if (bool.TryParse(GetBatch(KeyHasUnheardEdition), out var hasUnheard))
                 _hasUnheardEdition = hasUnheard;
 
-            if (int.TryParse(_userDataDb.GetSetting(KeyPrestigeLevel), out var prestige))
+            if (int.TryParse(GetBatch(KeyPrestigeLevel), out var prestige))
                 _prestigeLevel = prestige;
 
-            _fontFamilyName = _userDataDb.GetSetting(KeyFontFamilyName);
+            _fontFamilyName = GetBatch(KeyFontFamilyName);
             if (string.IsNullOrEmpty(_fontFamilyName)) _fontFamilyName = null;
 
 

@@ -153,7 +153,12 @@ namespace TarkovHelper.Services
         {
             if (sender is Hyperlink hyperlink && hyperlink.Tag is string linkTarget)
             {
-                var wikiUrl = $"https://escapefromtarkov.fandom.com/wiki/{Uri.EscapeDataString(linkTarget.Replace(" ", "_"))}";
+                var target = NormalizedNameGenerator.GetWikiPageName(linkTarget);
+                var encodedTarget = Uri.EscapeDataString(target.Replace(" ", "_"))
+                    .Replace("%28", "(")
+                    .Replace("%29", ")")
+                    .Replace("%27", "'");
+                var wikiUrl = $"https://escapefromtarkov.fandom.com/wiki/{encodedTarget}";
                 try
                 {
                     Process.Start(new ProcessStartInfo

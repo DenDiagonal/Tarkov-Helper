@@ -80,6 +80,24 @@ public sealed class QuestObjectiveDbService
     public IReadOnlyList<QuestObjective> AllObjectives => _allObjectives;
 
     /// <summary>
+    /// For testing purposes only: overrides loaded objectives in-memory.
+    /// </summary>
+    internal void SetObjectivesForTesting(IEnumerable<QuestObjective> objectives)
+    {
+        _allObjectives = objectives.ToList();
+        _isLoaded = true;
+    }
+
+    /// <summary>
+    /// For testing purposes only: clears in-memory objectives.
+    /// </summary>
+    internal void ClearObjectivesForTesting()
+    {
+        _allObjectives = new List<QuestObjective>();
+        _isLoaded = false;
+    }
+
+    /// <summary>
     /// Get objectives for a specific map
     /// </summary>
     public List<QuestObjective> GetObjectivesForMap(string mapKey, MapConfig mapConfig)
@@ -116,6 +134,8 @@ public sealed class QuestObjectiveDbService
             // Check if columns exist
             var hasOptionalPoints = await ColumnExistsAsync(connection, "QuestObjectives", "OptionalPoints");
             var hasObjectiveType = await ColumnExistsAsync(connection, "QuestObjectives", "ObjectiveType");
+            var hasOriginalPoints = await ColumnExistsAsync(connection, "QuestObjectives", "OriginalLocationPoints");
+            var hasIsCustomized = await ColumnExistsAsync(connection, "QuestObjectives", "IsCustomized");
 
             // 새 리스트 빌드 (기존 데이터 유지하면서)
             var newObjectives = new List<QuestObjective>();
@@ -134,6 +154,8 @@ public sealed class QuestObjectiveDbService
                        q.Trader as TraderName
                        {(hasOptionalPoints ? ", o.OptionalPoints" : "")}
                        {(hasObjectiveType ? ", o.ObjectiveType" : "")}
+                       {(hasOriginalPoints ? ", o.OriginalLocationPoints" : "")}
+                       {(hasIsCustomized ? ", o.IsCustomized" : "")}
                 FROM QuestObjectives o
                 LEFT JOIN Quests q ON o.QuestId = q.Id
                 WHERE (o.LocationPoints IS NOT NULL AND o.LocationPoints != '')
@@ -177,6 +199,19 @@ public sealed class QuestObjectiveDbService
                 {
                     var typeStr = reader.IsDBNull(nextIndex) ? "Custom" : reader.GetString(nextIndex);
                     objective.ObjectiveType = ParseObjectiveType(typeStr);
+                    nextIndex++;
+                }
+
+                if (hasOriginalPoints && reader.FieldCount > nextIndex)
+                {
+                    objective.OriginalLocationPoints = reader.IsDBNull(nextIndex) ? null : reader.GetString(nextIndex);
+                    nextIndex++;
+                }
+
+                if (hasIsCustomized && reader.FieldCount > nextIndex)
+                {
+                    objective.IsCustomized = !reader.IsDBNull(nextIndex) && reader.GetInt32(nextIndex) == 1;
+                    nextIndex++;
                 }
 
                 // Only add if has any coordinates

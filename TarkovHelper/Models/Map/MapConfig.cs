@@ -259,23 +259,27 @@ public sealed class MapConfig
     /// </summary>
     public bool MatchesMapName(string? mapName)
     {
-        if (string.IsNullOrEmpty(mapName))
+        if (string.IsNullOrWhiteSpace(mapName) || mapName.Equals("None", StringComparison.OrdinalIgnoreCase))
             return false;
 
-        var normalized = mapName.ToLowerInvariant().Replace(" ", "").Replace("-", "");
-
-        if (Key.ToLowerInvariant().Replace(" ", "").Replace("-", "") == normalized)
-            return true;
-
-        if (DisplayName.ToLowerInvariant().Replace(" ", "").Replace("-", "") == normalized)
-            return true;
-
-        if (Aliases != null)
+        var parts = mapName.Split(new[] { ',', '/', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var part in parts)
         {
-            foreach (var alias in Aliases)
+            var normalized = part.ToLowerInvariant().Replace(" ", "").Replace("-", "");
+
+            if (Key.ToLowerInvariant().Replace(" ", "").Replace("-", "") == normalized)
+                return true;
+
+            if (DisplayName.ToLowerInvariant().Replace(" ", "").Replace("-", "") == normalized)
+                return true;
+
+            if (Aliases != null)
             {
-                if (alias.ToLowerInvariant().Replace(" ", "").Replace("-", "") == normalized)
-                    return true;
+                foreach (var alias in Aliases)
+                {
+                    if (alias.ToLowerInvariant().Replace(" ", "").Replace("-", "") == normalized)
+                        return true;
+                }
             }
         }
 

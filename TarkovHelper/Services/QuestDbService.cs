@@ -19,7 +19,6 @@ public sealed class QuestDbService
     private readonly string _databasePath;
     private List<TarkovTask> _allQuests = new();
     private Dictionary<string, TarkovTask> _questsById = new(StringComparer.OrdinalIgnoreCase);
-    private Dictionary<string, TarkovTask> _questsByNormalizedName = new(StringComparer.OrdinalIgnoreCase);
     private bool _isLoaded;
 
     public bool IsLoaded => _isLoaded;
@@ -71,7 +70,7 @@ public sealed class QuestDbService
     /// </summary>
     public TarkovTask? GetQuestByNormalizedName(string normalizedName)
     {
-        return _questsByNormalizedName.TryGetValue(normalizedName, out var quest) ? quest : null;
+        return _questsById.TryGetValue(normalizedName, out var quest) ? quest : null;
     }
 
     /// <summary>
@@ -100,10 +99,34 @@ public sealed class QuestDbService
 
             // 1. 기본 퀘스트 정보 로드
             var quests = await LoadBaseQuestsAsync(connection);
-            var questLookup = quests.ToDictionary(q => q.Ids?.FirstOrDefault() ?? "", q => q, StringComparer.OrdinalIgnoreCase);
+            var questLookup = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
+            foreach (var q in quests)
+            {
+                if (!string.IsNullOrEmpty(q.Id))
+                {
+                    questLookup[q.Id] = q;
+                }
+                if (q.Ids != null)
+                {
+                    foreach (var id in q.Ids)
+                    {
+                        if (!string.IsNullOrEmpty(id) && !questLookup.ContainsKey(id))
+                        {
+                            questLookup[id] = q;
+                        }
+                    }
+                }
+                if (!string.IsNullOrEmpty(q.NormalizedName) && !questLookup.ContainsKey(q.NormalizedName))
+                {
+                    questLookup[q.NormalizedName] = q;
+                }
+            }
 
             // 2. 선행 퀘스트 요구사항 로드
             await LoadQuestRequirementsAsync(connection, questLookup);
+
+            // 2.1 Gated trader unlock requirements (TarkovTracker parity)
+            ConnectGatedTraderUnlockQuests(quests, questLookup);
 
             // 3. 퀘스트 목표 로드
             await LoadQuestObjectivesAsync(connection, questLookup);
@@ -114,30 +137,44 @@ public sealed class QuestDbService
             // 5. 대체 퀘스트 로드
             await LoadOptionalQuestsAsync(connection, questLookup);
 
-            // 6. LeadsTo 역참조 구축
+            // 6. 상인 요구사항 로드
+            await LoadQuestTraderRequirementsAsync(connection, questLookup);
+
+            // 7. 퀘스트 풀 요구사항 로드
+            await LoadQuestPoolRequirementsAsync(connection, questLookup);
+
+            // 8. LeadsTo 역참조 구축
             BuildLeadsToReferences(quests);
 
             // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
             var newQuestsById = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
-            var newQuestsByNormalizedName = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var quest in quests)
             {
-                var id = quest.Ids?.FirstOrDefault();
+                var id = quest.Id;
                 if (!string.IsNullOrEmpty(id))
                 {
                     newQuestsById[id] = quest;
                 }
-                if (!string.IsNullOrEmpty(quest.NormalizedName))
+                if (quest.Ids != null)
                 {
-                    newQuestsByNormalizedName[quest.NormalizedName] = quest;
+                    foreach (var alias in quest.Ids)
+                    {
+                        if (!string.IsNullOrEmpty(alias) && !newQuestsById.ContainsKey(alias))
+                        {
+                            newQuestsById[alias] = quest;
+                        }
+                    }
+                }
+                if (!string.IsNullOrEmpty(quest.NormalizedName) && !newQuestsById.ContainsKey(quest.NormalizedName))
+                {
+                    newQuestsById[quest.NormalizedName] = quest;
                 }
             }
 
-            // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
+            // Atomic swap
             _allQuests = quests;
             _questsById = newQuestsById;
-            _questsByNormalizedName = newQuestsByNormalizedName;
             _isLoaded = true;
             _log.Info($"Loaded {quests.Count} quests from DB");
             return true;
@@ -191,6 +228,7 @@ public sealed class QuestDbService
         var hasRequiredPrestigeLevel = await ColumnExistsAsync(connection, "Quests", "RequiredPrestigeLevel");
         var hasRequiredDecodeCount = await ColumnExistsAsync(connection, "Quests", "RequiredDecodeCount");
         var hasWikiPageLink = await ColumnExistsAsync(connection, "Quests", "WikiPageLink");
+        var hasIsSeasonal = await ColumnExistsAsync(connection, "Quests", "IsSeasonal");
         _log.Debug($"BsgId column exists: {hasBsgId}");
 
         // NormalizedName이 없으면 Name에서 생성
@@ -210,7 +248,8 @@ public sealed class QuestDbService
                 {(hasExcludedEdition ? "ExcludedEdition" : "NULL")} as ExcludedEdition,
                 {(hasRequiredPrestigeLevel ? "RequiredPrestigeLevel" : "NULL")} as RequiredPrestigeLevel,
                 {(hasRequiredDecodeCount ? "RequiredDecodeCount" : "NULL")} as RequiredDecodeCount,
-                {(hasWikiPageLink ? "WikiPageLink" : "NULL")} as WikiPageLink
+                {(hasWikiPageLink ? "WikiPageLink" : "NULL")} as WikiPageLink,
+                {(hasIsSeasonal ? "IsSeasonal" : "0")} as IsSeasonal
             FROM Quests
             ORDER BY Name";
 
@@ -239,7 +278,8 @@ public sealed class QuestDbService
                 ExcludedEdition = reader.IsDBNull(13) ? null : reader.GetString(13),
                 RequiredPrestigeLevel = reader.IsDBNull(14) ? null : reader.GetInt32(14),
                 RequiredDecodeCount = reader.IsDBNull(15) ? null : reader.GetInt32(15),
-                WikiPageLink = reader.IsDBNull(16) ? null : reader.GetString(16)
+                WikiPageLink = reader.IsDBNull(16) ? null : reader.GetString(16),
+                IsSeasonal = hasIsSeasonal && !reader.IsDBNull(17) && reader.GetInt32(17) == 1
             };
 
             // BsgId가 있으면 Ids에 추가
@@ -492,11 +532,58 @@ public sealed class QuestDbService
     /// <summary>
     /// LeadsTo 역참조 구축 (Previous의 역방향)
     /// </summary>
+    /// <summary>
+    /// Links starter quests of gated traders (Jaeger, Ref, Lightkeeper, BTR Driver) to their canonical unlock quests.
+    /// In TarkovTracker, a trader unlock quest is the gateway prerequisite for that trader.
+    /// </summary>
+    private void ConnectGatedTraderUnlockQuests(List<TarkovTask> quests, Dictionary<string, TarkovTask> questLookup)
+    {
+        var traderUnlocks = new (string Trader, string UnlockId, string UnlockNorm)[]
+        {
+            ("Jaeger", "5d2495a886f77425cd51e403", "introduction"),
+            ("Ref", "66058cb22cee99303f1ba067", "easy-money---part-1"),
+            ("Lightkeeper", "625d700cc48e6c62a440fab5", "getting-acquainted"),
+            ("BTR Driver", "6752f6d83038f7df520c83e8", "a-helping-hand")
+        };
+
+        foreach (var (trader, unlockId, unlockNorm) in traderUnlocks)
+        {
+            var unlockQuest = quests.FirstOrDefault(q =>
+                (q.Ids != null && q.Ids.Contains(unlockId, StringComparer.OrdinalIgnoreCase)) ||
+                string.Equals(q.NormalizedName, unlockNorm, StringComparison.OrdinalIgnoreCase));
+
+            if (unlockQuest == null) continue;
+            var canonicalNorm = unlockQuest.NormalizedName ?? unlockNorm;
+
+            foreach (var q in quests)
+            {
+                if (q == unlockQuest) continue;
+                if (!string.Equals(q.Trader, trader, StringComparison.OrdinalIgnoreCase)) continue;
+
+                if (q.Previous == null || q.Previous.Count == 0)
+                {
+                    q.Previous = new List<string> { canonicalNorm };
+                    q.TaskRequirements ??= new List<TaskRequirement>();
+                    if (!q.TaskRequirements.Any(r => r.TaskId.Equals(unlockId, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        q.TaskRequirements.Add(new TaskRequirement
+                        {
+                            TaskId = unlockId,
+                            TaskNormalizedName = canonicalNorm,
+                            Status = new List<string> { "complete" }
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     private void BuildLeadsToReferences(List<TarkovTask> quests)
     {
-        var questByName = quests
+        var questsByName = quests
             .Where(q => !string.IsNullOrEmpty(q.NormalizedName))
-            .ToDictionary(q => q.NormalizedName!, q => q, StringComparer.OrdinalIgnoreCase);
+            .GroupBy(q => q.NormalizedName!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
         foreach (var quest in quests)
         {
@@ -505,12 +592,15 @@ public sealed class QuestDbService
 
             foreach (var prevName in quest.Previous)
             {
-                if (questByName.TryGetValue(prevName, out var prevQuest))
+                if (questsByName.TryGetValue(prevName, out var prevQuests))
                 {
-                    prevQuest.LeadsTo ??= new List<string>();
-                    if (!prevQuest.LeadsTo.Contains(quest.NormalizedName, StringComparer.OrdinalIgnoreCase))
+                    foreach (var prevQuest in prevQuests)
                     {
-                        prevQuest.LeadsTo.Add(quest.NormalizedName);
+                        prevQuest.LeadsTo ??= new List<string>();
+                        if (!prevQuest.LeadsTo.Contains(quest.NormalizedName, StringComparer.OrdinalIgnoreCase))
+                        {
+                            prevQuest.LeadsTo.Add(quest.NormalizedName);
+                        }
                     }
                 }
             }
@@ -528,6 +618,123 @@ public sealed class QuestDbService
 
         // 데이터 새로고침 완료 이벤트 발생
         OnDataRefreshed();
+    }
+
+    /// <summary>
+    /// Trader loyalty level requirements loader
+    /// </summary>
+    private async Task<bool> LoadQuestTraderRequirementsAsync(SqliteConnection connection, Dictionary<string, TarkovTask> questLookup)
+    {
+        if (!await TableExistsAsync(connection, "QuestTraderRequirements"))
+            return false;
+
+        var sql = @"
+            SELECT Id, QuestId, TraderId, TraderName, RequirementType, CompareMethod, RequiredLevel, SortOrder
+            FROM QuestTraderRequirements
+            ORDER BY QuestId, SortOrder";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        await using var reader = await cmd.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            var id = reader.GetString(0);
+            var questId = reader.GetString(1);
+            var traderId = reader.IsDBNull(2) ? null : reader.GetString(2);
+            var traderName = reader.GetString(3);
+            var reqType = reader.IsDBNull(4) ? "Level" : reader.GetString(4);
+            var compMethod = reader.IsDBNull(5) ? ">=" : reader.GetString(5);
+            var reqLevel = reader.GetInt32(6);
+            var sortOrder = reader.IsDBNull(7) ? 0 : reader.GetInt32(7);
+
+            if (!questLookup.TryGetValue(questId, out var quest))
+                continue;
+
+            quest.TraderRequirements ??= new List<QuestTraderRequirement>();
+            quest.TraderRequirements.Add(new QuestTraderRequirement
+            {
+                Id = id,
+                QuestId = questId,
+                TraderId = traderId,
+                TraderName = traderName,
+                RequirementType = reqType,
+                CompareMethod = compMethod,
+                RequiredLevel = reqLevel,
+                SortOrder = sortOrder
+            });
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Quest pool requirements loader
+    /// </summary>
+    private async Task<bool> LoadQuestPoolRequirementsAsync(SqliteConnection connection, Dictionary<string, TarkovTask> questLookup)
+    {
+        if (!await TableExistsAsync(connection, "QuestPoolRequirements"))
+            return false;
+
+        var sql = @"
+            SELECT Id, QuestId, PoolTrader, PoolTraderLL, RequiredCompletedCount, Description, TaskIds
+            FROM QuestPoolRequirements
+            ORDER BY QuestId";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        await using var reader = await cmd.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            var id = reader.GetString(0);
+            var questId = reader.GetString(1);
+            var poolTrader = reader.GetString(2);
+            var poolTraderLL = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3);
+            var reqCount = reader.GetInt32(4);
+            var desc = reader.IsDBNull(5) ? null : reader.GetString(5);
+            var taskIdsRaw = reader.FieldCount > 6 && !reader.IsDBNull(6) ? reader.GetString(6) : null;
+            var taskIds = new List<string>();
+            if (!string.IsNullOrWhiteSpace(taskIdsRaw))
+            {
+                try
+                {
+                    taskIds = System.Text.Json.JsonSerializer.Deserialize<List<string>>(taskIdsRaw) ?? new();
+                }
+                catch
+                {
+                    taskIds = taskIdsRaw.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+                }
+            }
+
+            if (!questLookup.TryGetValue(questId, out var quest))
+                continue;
+
+            quest.PoolRequirements ??= new List<QuestPoolRequirement>();
+            var existing = quest.PoolRequirements.FirstOrDefault(r => r.Id == id || (string.Equals(r.PoolTrader, poolTrader, StringComparison.OrdinalIgnoreCase) && r.PoolTraderLL == poolTraderLL));
+            if (existing != null)
+            {
+                if ((existing.TaskIds == null || existing.TaskIds.Count == 0) && taskIds.Count > 0)
+                {
+                    existing.TaskIds = taskIds;
+                    existing.Id = id;
+                    if (!string.IsNullOrEmpty(desc)) existing.Description = desc;
+                }
+            }
+            else
+            {
+                quest.PoolRequirements.Add(new QuestPoolRequirement
+                {
+                    Id = id,
+                    QuestId = questId,
+                    PoolTrader = poolTrader,
+                    PoolTraderLL = poolTraderLL,
+                    RequiredCompletedCount = reqCount,
+                    Description = desc,
+                    TaskIds = taskIds
+                });
+            }
+        }
+
+        return true;
     }
 
     /// <summary>

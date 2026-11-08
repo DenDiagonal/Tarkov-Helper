@@ -14,6 +14,12 @@ namespace TarkovHelper.Models
         public string Id { get; set; } = string.Empty;
 
         /// <summary>
+        /// Official BSG 24-character item ID
+        /// </summary>
+        [JsonPropertyName("bsgId")]
+        public string? BsgId { get; set; }
+
+        /// <summary>
         /// English item name
         /// </summary>
         [JsonPropertyName("name")]

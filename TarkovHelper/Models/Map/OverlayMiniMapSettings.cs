@@ -19,6 +19,16 @@ public enum MiniMapViewMode
 /// <summary>
 /// 오버레이 미니맵 설정
 /// </summary>
+/// <summary>
+/// 미니맵 커스텀 마커 크기 프리셋
+/// </summary>
+public enum MarkerSizePreset
+{
+    Small = 0,
+    Normal = 1,
+    Large = 2
+}
+
 public sealed class OverlayMiniMapSettings
 {
     /// <summary>
@@ -64,7 +74,7 @@ public sealed class OverlayMiniMapSettings
     /// <summary>
     /// 뷰 모드 (고정/플레이어 추적)
     /// </summary>
-    public MiniMapViewMode ViewMode { get; set; } = MiniMapViewMode.PlayerTracking;
+    public MiniMapViewMode ViewMode { get; set; } = MiniMapViewMode.Fixed;
 
     /// <summary>
     /// Click-through 모드 (마우스 클릭 통과)
@@ -87,9 +97,63 @@ public sealed class OverlayMiniMapSettings
     public bool ShowQuestMarkers { get; set; } = true;
 
     /// <summary>
-    /// 탈출구 마커 표시 여부
+    /// 활성 퀘스트만 표시 여부 (기본값: true)
     /// </summary>
-    public bool ShowExtractMarkers { get; set; } = true;
+    public bool ActiveQuestsOnly { get; set; } = true;
+
+    /// <summary>
+    /// 완료된 목표 숨기기 (기본값: true)
+    /// </summary>
+    public bool HideCompletedObjectives { get; set; } = true;
+
+    /// <summary>
+    /// PMC 탈출구 (+ PMC/Scav Co-op) 마커 표시 여부
+    /// </summary>
+    public bool ShowPmcExtracts { get; set; } = true;
+
+    /// <summary>
+    /// Scav 탈출구 (+ Scav/PMC Co-op) 마커 표시 여부
+    /// </summary>
+    public bool ShowScavExtracts { get; set; } = true;
+
+    /// <summary>
+    /// PMC 스폰 마커 표시 여부
+    /// </summary>
+    public bool ShowPmcSpawns { get; set; } = true;
+
+    /// <summary>
+    /// 탈출구 마커 표시 여부 (호환성 유지)
+    /// </summary>
+    public bool ShowExtractMarkers
+    {
+        get => ShowPmcExtracts || ShowScavExtracts;
+        set
+        {
+            ShowPmcExtracts = value;
+            ShowScavExtracts = value;
+        }
+    }
+
+    /// <summary>
+    /// 커스텀 마커 표시 여부
+    /// </summary>
+    public bool ShowCustomMarkers { get; set; } = true;
+
+    /// <summary>
+    /// 커스텀 마커 크기 배율 (0.4 ~ 3.0, 기본값: 1.0)
+    /// </summary>
+    public double CustomMarkerScale { get; set; } = 1.0;
+
+    /// <summary>
+    /// 커스텀 마커 크기 프리셋 (Small: 작음, Normal: 보통, Large: 큼)
+    /// </summary>
+    public MarkerSizePreset MarkerPreset { get; set; } = MarkerSizePreset.Normal;
+
+
+    /// <summary>
+    /// 전술 POI 마커 (보스/스폰/레버 등) 표시 여부 (기본값: true)
+    /// </summary>
+    public bool ShowPoiMarkers { get; set; } = true;
 
     /// <summary>
     /// 맵 오프셋 X (고정 뷰 모드에서 팬 위치)
@@ -109,7 +173,7 @@ public sealed class OverlayMiniMapSettings
     /// <summary>
     /// 최대 너비
     /// </summary>
-    public const double MaxWidth = 800;
+    public const double MaxWidth = 1600;
 
     /// <summary>
     /// 최소 높이
@@ -119,7 +183,7 @@ public sealed class OverlayMiniMapSettings
     /// <summary>
     /// 최대 높이
     /// </summary>
-    public const double MaxHeight = 800;
+    public const double MaxHeight = 1600;
 
     /// <summary>
     /// 최소 투명도
@@ -132,19 +196,19 @@ public sealed class OverlayMiniMapSettings
     public const double MaxOpacity = 1.0;
 
     /// <summary>
-    /// 최소 줌 레벨 (큰 맵이 작은 창에 맞도록 0.01까지 허용)
+    /// 최소 줌 레벨 (상대적 배율: 0.5x = 50% 축소보기)
     /// </summary>
-    public const double MinZoom = 0.01;
+    public const double MinZoom = 0.50;
 
     /// <summary>
-    /// 최대 줌 레벨
+    /// 최대 줌 레벨 (상대적 배율: 4.0x = 400% 확대)
     /// </summary>
-    public const double MaxZoom = 4.0;
+    public const double MaxZoom = 4.00;
 
     /// <summary>
-    /// 줌 단계 (작은 줌 레벨에서도 적절하도록)
+    /// 줌 단계
     /// </summary>
-    public const double ZoomStep = 0.05;
+    public const double ZoomStep = 0.15;
 
     /// <summary>
     /// 기본 설정으로 초기화
@@ -159,30 +223,35 @@ public sealed class OverlayMiniMapSettings
         Opacity = 0.8;
         ZoomLevel = 1.0;
         PlayerMarkerSize = 1.0;
-        ViewMode = MiniMapViewMode.PlayerTracking;
+        ViewMode = MiniMapViewMode.Fixed;
         ClickThrough = false;
         ZoomInKey = 0x6B;
         ZoomOutKey = 0x6D;
         ShowQuestMarkers = true;
+        ActiveQuestsOnly = true;
+        HideCompletedObjectives = true;
         ShowExtractMarkers = true;
+        ShowCustomMarkers = true;
+        CustomMarkerScale = 1.0;
+        ShowPoiMarkers = true;
         MapOffsetX = 0;
         MapOffsetY = 0;
     }
 
     /// <summary>
-    /// 줌 레벨 증가
+    /// 줌 레벨 증가 (비례적 줌)
     /// </summary>
     public void ZoomIn()
     {
-        ZoomLevel = Math.Min(MaxZoom, ZoomLevel + ZoomStep);
+        ZoomLevel = Math.Min(MaxZoom, ZoomLevel * 1.15);
     }
 
     /// <summary>
-    /// 줌 레벨 감소
+    /// 줌 레벨 감소 (비례적 줌)
     /// </summary>
     public void ZoomOut()
     {
-        ZoomLevel = Math.Max(MinZoom, ZoomLevel - ZoomStep);
+        ZoomLevel = Math.Max(MinZoom, ZoomLevel / 1.15);
     }
 
     /// <summary>
@@ -216,7 +285,13 @@ public sealed class OverlayMiniMapSettings
         ZoomInKey = other.ZoomInKey;
         ZoomOutKey = other.ZoomOutKey;
         ShowQuestMarkers = other.ShowQuestMarkers;
+        ActiveQuestsOnly = other.ActiveQuestsOnly;
+        HideCompletedObjectives = other.HideCompletedObjectives;
         ShowExtractMarkers = other.ShowExtractMarkers;
+        ShowCustomMarkers = other.ShowCustomMarkers;
+        CustomMarkerScale = other.CustomMarkerScale;
+        MarkerPreset = other.MarkerPreset;
+        ShowPoiMarkers = other.ShowPoiMarkers;
     }
 
     /// <summary>
@@ -239,7 +314,13 @@ public sealed class OverlayMiniMapSettings
             ZoomInKey = ZoomInKey,
             ZoomOutKey = ZoomOutKey,
             ShowQuestMarkers = ShowQuestMarkers,
+            ActiveQuestsOnly = ActiveQuestsOnly,
+            HideCompletedObjectives = HideCompletedObjectives,
             ShowExtractMarkers = ShowExtractMarkers,
+            ShowCustomMarkers = ShowCustomMarkers,
+            CustomMarkerScale = CustomMarkerScale,
+            MarkerPreset = MarkerPreset,
+            ShowPoiMarkers = ShowPoiMarkers,
             MapOffsetX = MapOffsetX,
             MapOffsetY = MapOffsetY
         };

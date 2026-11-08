@@ -1,0 +1,470 @@
+<UserControl x:Class="TarkovHelper.Pages.StorylinePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="700" d:DesignWidth="1100"
+             TextOptions.TextFormattingMode="Display"
+             TextOptions.TextRenderingMode="ClearType"
+             RenderOptions.ClearTypeHint="Enabled"
+             SnapsToDevicePixels="True"
+             UseLayoutRounding="True"
+             Background="{DynamicResource TacticalSurface0Brush}">
+
+    <UserControl.Resources>
+        <!-- Chapter ListBox Item Style: clean tactical styling without default WPF blue highlight -->
+        <Style x:Key="ChapterListBoxItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border Background="Transparent" Padding="0">
+                            <ContentPresenter/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Objective Action Check Button Style -->
+        <Style x:Key="ObjectiveToggleButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TacticalGoldBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Tactical Header Action Button Style -->
+        <Style x:Key="TacticalActionButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="10,2"/>
+            <Setter Property="Background" Value="{DynamicResource TacticalSurface3Brush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource TacticalBorderMediumBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TacticalTextPrimaryBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TacticalGoldBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TacticalGoldBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Sleek Slim ProgressBar Style -->
+        <Style x:Key="SlimProgressBarStyle" TargetType="ProgressBar">
+            <Setter Property="Background" Value="#171920"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="MinHeight" Value="2.5"/>
+            <Setter Property="Height" Value="2.5"/>
+            <Setter Property="Foreground" Value="{DynamicResource TacticalGoldBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Border x:Name="PART_Track" Background="{TemplateBinding Background}" CornerRadius="1" ClipToBounds="True">
+                            <Border x:Name="PART_Indicator" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}" CornerRadius="1"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <!-- 0: Header Banner -->
+            <RowDefinition Height="Auto"/>
+            <!-- 1: Master-Detail Main Area -->
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 0: Header Banner -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource TacticalSurface1Brush}"
+                BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                BorderThickness="1" CornerRadius="6"
+                Padding="16,12" Margin="0,0,0,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left: Title & Subtitle -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Storyline Chapters"
+                                   FontFamily="{DynamicResource TacticalDisplayFont}"
+                                   FontSize="18" FontWeight="Bold"
+                                   Foreground="{DynamicResource TacticalGoldBrush}"/>
+                        <TextBlock Text="Progreso de capítulos narrativos de Escape from Tarkov"
+                                   FontSize="11" Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+                                   Margin="0,2,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Center: Filter Input -->
+                <Border Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="{DynamicResource TacticalSurface2Brush}"
+                        BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="8,2" Width="260">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="⌕" FontSize="13"
+                                   Foreground="{DynamicResource TacticalTextMutedBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                                 Background="Transparent" BorderThickness="0"
+                                 Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+                                 FontSize="11" VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+
+                <!-- Right: Global Progress Summary Pills -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Chapters Count Pill -->
+                    <Border Background="{DynamicResource TacticalSurface2Brush}"
+                            BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                            BorderThickness="1" CornerRadius="4"
+                            Padding="8,4" Margin="0,0,8,0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="❖ " FontSize="10" Foreground="{DynamicResource TacticalGoldBrush}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding GlobalChaptersSummary}" FontSize="11" FontWeight="SemiBold"
+                                       FontFamily="{DynamicResource TacticalDisplayFont}"
+                                       Foreground="{DynamicResource TacticalTextPrimaryBrush}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Objectives Count & Progress Pill -->
+                    <Border Background="{DynamicResource TacticalSurface2Brush}"
+                            BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                            BorderThickness="1" CornerRadius="4"
+                            Padding="8,4" VerticalAlignment="Center">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding GlobalObjectivesSummary}" FontSize="11" FontWeight="SemiBold"
+                                       FontFamily="{DynamicResource TacticalDisplayFont}"
+                                       Foreground="{DynamicResource TacticalSuccessBrush}" HorizontalAlignment="Center"/>
+                            <ProgressBar Value="{Binding GlobalProgressPercent, Mode=OneWay}" Maximum="100"
+                                         Height="4" Width="130" Margin="0,3,0,0"
+                                         Background="{DynamicResource TacticalSurface0Brush}"
+                                         Foreground="{DynamicResource TacticalSuccessBrush}"
+                                         BorderThickness="0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 1: Master-Detail Main Area -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <!-- Col 0: Chapters List Panel -->
+                <ColumnDefinition Width="310"/>
+                <!-- Col 1: Selected Chapter Detail Panel -->
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Panel: Chapters Master List -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource TacticalSurface1Brush}"
+                    BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                    BorderThickness="1" CornerRadius="6"
+                    Padding="10" Margin="0,0,12,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <TextBlock Grid.Row="0"
+                               Text="CAPÍTULOS DISPONIBLES"
+                               FontSize="10.5" FontWeight="Bold"
+                               Foreground="{DynamicResource TacticalTextMutedBrush}"
+                               Margin="4,2,0,8"/>
+
+                    <!-- Chapters ListBox -->
+                    <ListBox Grid.Row="1"
+                             x:Name="LstChapters"
+                             ItemsSource="{Binding Chapters}"
+                             SelectedItem="{Binding SelectedChapter, Mode=TwoWay}"
+                             SelectionChanged="LstChapters_SelectionChanged"
+                             ItemContainerStyle="{StaticResource ChapterListBoxItemStyle}"
+                             Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{Binding ItemBgBrush}"
+                                        BorderBrush="{Binding ItemBorderBrush}"
+                                        BorderThickness="1" CornerRadius="5"
+                                        Padding="10,8" Cursor="Hand">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Row 0: Chapter Title & Status Badge -->
+                                        <Grid Grid.Row="0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding Name}"
+                                                       FontSize="13" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center"/>
+                                            <Border Grid.Column="1"
+                                                    Background="{Binding StatusBackground}"
+                                                    BorderBrush="{Binding StatusBorder}"
+                                                    BorderThickness="1" CornerRadius="3"
+                                                    Padding="5,1" Margin="4,0,0,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding StatusText}"
+                                                           FontSize="9.5" FontWeight="Bold"
+                                                           Foreground="{Binding StatusForeground}"/>
+                                            </Border>
+                                        </Grid>
+
+                                        <!-- Row 1: Objective Counts -->
+                                        <TextBlock Grid.Row="1"
+                                                   Text="{Binding ProgressSummary}"
+                                                   FontSize="11.5" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+                                                   Margin="0,3,0,4"/>
+
+                                        <!-- Row 2: Chapter Progress Bar -->
+                                        <ProgressBar Grid.Row="2"
+                                                     Style="{StaticResource SlimProgressBarStyle}"
+                                                     Value="{Binding ProgressPercent, Mode=OneWay}" Maximum="100"
+                                                     Margin="0,2,0,0"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <!-- Right Panel: Selected Chapter Objectives Detail -->
+            <Border Grid.Column="1"
+                    Background="{DynamicResource TacticalSurface1Brush}"
+                    BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                    BorderThickness="1" CornerRadius="6"
+                    Padding="16,14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <!-- Chapter Header Card -->
+                        <RowDefinition Height="Auto"/>
+                        <!-- Objectives Scrollable List -->
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Chapter Header Card -->
+                    <Border Grid.Row="0"
+                            Background="{DynamicResource TacticalSurface2Brush}"
+                            BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                            BorderThickness="1" CornerRadius="5"
+                            Padding="14,12" Margin="0,0,0,12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Row 0: Chapter Name + Actions -->
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Title and Status -->
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding SelectedChapter.Name}"
+                                               FontFamily="{DynamicResource TacticalDisplayFont}"
+                                               FontSize="17" FontWeight="Bold"
+                                               Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+                                               VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <Border Background="{Binding SelectedChapter.StatusBackground}"
+                                            BorderBrush="{Binding SelectedChapter.StatusBorder}"
+                                            BorderThickness="1" CornerRadius="3"
+                                            Padding="6,2" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding SelectedChapter.StatusText}"
+                                                   FontSize="10" FontWeight="Bold"
+                                                   Foreground="{Binding SelectedChapter.StatusForeground}"/>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Actions: Wiki, Complete All, Reset All -->
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <!-- Wiki Button -->
+                                    <Button Style="{StaticResource TacticalActionButtonStyle}"
+                                            Click="BtnWiki_Click"
+                                            Content="Wiki" ToolTip="Abrir artículo en la wiki oficial"
+                                            Margin="0,0,6,0"/>
+
+                                    <!-- Complete All Button -->
+                                    <Button Style="{StaticResource TacticalActionButtonStyle}"
+                                            Click="BtnCompleteAll_Click"
+                                            Margin="0,0,6,0"
+                                            ToolTip="Marcar todos los objetivos del capítulo como completados">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="✓ " FontWeight="Bold" Foreground="{DynamicResource TacticalSuccessBrush}"/>
+                                            <TextBlock Text="Completar todo"/>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <!-- Reset Chapter Button -->
+                                    <Button Style="{StaticResource TacticalActionButtonStyle}"
+                                            Click="BtnResetChapter_Click"
+                                            ToolTip="Reiniciar el progreso de este capítulo">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="↺ " FontWeight="Bold" Foreground="{DynamicResource TacticalWarningBrush}"/>
+                                            <TextBlock Text="Reiniciar"/>
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Row 1: Progress Bar & Fraction Summary -->
+                            <Grid Grid.Row="1" Margin="0,10,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0"
+                                           Text="{Binding SelectedChapter.ProgressSummary}"
+                                           FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+                                           Margin="0,0,0,4"/>
+                                <ProgressBar Grid.Row="1"
+                                             Style="{StaticResource SlimProgressBarStyle}"
+                                             Value="{Binding SelectedChapter.ProgressPercent, Mode=OneWay}" Maximum="100"
+                                             Height="3" Margin="0,2,0,0"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Objectives Scrollable List -->
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding SelectedChapter.FilteredObjectives}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{DynamicResource TacticalSurface2Brush}"
+                                            BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                                            BorderThickness="1" CornerRadius="4"
+                                            Padding="12,9" Margin="0,0,0,5">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <!-- Col 0: Action Toggle Button -->
+                                                <ColumnDefinition Width="Auto"/>
+                                                <!-- Col 1: Step Index Badge -->
+                                                <ColumnDefinition Width="Auto"/>
+                                                <!-- Col 2: Objective Description -->
+                                                <ColumnDefinition Width="*"/>
+                                                <!-- Col 3: Optional Badge -->
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Toggle Checkbox Button -->
+                                            <Button Grid.Column="0"
+                                                    Style="{StaticResource ObjectiveToggleButtonStyle}"
+                                                    Background="{Binding ToggleBackground}"
+                                                    BorderBrush="{Binding ToggleBorder}"
+                                                    Foreground="{Binding ToggleForeground}"
+                                                    Content="{Binding ToggleGlyph}"
+                                                    Click="BtnToggleObjective_Click"
+                                                    Tag="{Binding}"
+                                                    Margin="0,0,10,0"
+                                                    VerticalAlignment="Center"/>
+
+                                            <!-- Step Index (#01, #02...) -->
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding DisplayIndex}"
+                                                       FontSize="11.5" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TacticalTextMutedBrush}"
+                                                       VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                                            <!-- Objective Description -->
+                                            <TextBlock Grid.Column="2"
+                                                       Text="{Binding Description}"
+                                                       FontSize="13.5"
+                                                       Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+                                                       TextWrapping="Wrap"
+                                                       TextDecorations="{Binding TextDecorations}"
+                                                       Opacity="{Binding TextOpacity}"
+                                                       VerticalAlignment="Center"/>
+
+                                            <!-- Optional Badge -->
+                                            <Border Grid.Column="3"
+                                                    Visibility="{Binding OptionalVisibility}"
+                                                    Background="{DynamicResource TacticalSurface4Brush}"
+                                                    BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+                                                    BorderThickness="1" CornerRadius="3"
+                                                    Padding="6,2" Margin="8,0,0,0"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="OPCIONAL"
+                                                           FontSize="9" FontWeight="Bold"
+                                                           Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

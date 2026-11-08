@@ -143,7 +143,15 @@ namespace TarkovHelper.Services
 
                 string? wikiLink = null;
                 string? category = null;
-                if (itemLookup != null && itemLookup.TryGetValue(hideoutItem.ItemNormalizedName, out var itemInfo))
+                TarkovItem? itemInfo = null;
+                if (itemLookup != null)
+                {
+                    if (!itemLookup.TryGetValue(hideoutItem.ItemNormalizedName, out itemInfo) && !string.IsNullOrEmpty(hideoutItem.ItemId))
+                    {
+                        itemLookup.TryGetValue(hideoutItem.ItemId, out itemInfo);
+                    }
+                }
+                if (itemInfo != null)
                 {
                     wikiLink = itemInfo.WikiLink;
                     category = itemInfo.Category;
@@ -285,10 +293,20 @@ namespace TarkovHelper.Services
 
         public List<QuestItemSourceViewModel> GetQuestSources(string itemNormalizedName)
         {
-            var sources = new List<QuestItemSourceViewModel>();
+            if (string.IsNullOrWhiteSpace(itemNormalizedName))
+                return new List<QuestItemSourceViewModel>();
+
+            var progressService = NeededItemProgressService.Instance;
+            var groupedSources = new Dictionary<string, QuestItemSourceViewModel>(StringComparer.OrdinalIgnoreCase);
+
+            if (_questProgressService.AllTasks == null)
+                return new List<QuestItemSourceViewModel>();
 
             foreach (var task in _questProgressService.AllTasks)
             {
+                if (task == null)
+                    continue;
+
                 var status = _questProgressService.GetStatus(task);
                 if (status == QuestStatus.Done || status == QuestStatus.Failed || status == QuestStatus.Unavailable)
                     continue;
@@ -298,59 +316,133 @@ namespace TarkovHelper.Services
 
                 foreach (var questItem in task.RequiredItems)
                 {
+                    if (questItem == null)
+                        continue;
+
                     if (string.Equals(questItem.ItemNormalizedName, itemNormalizedName, StringComparison.OrdinalIgnoreCase))
                     {
-                        var questName = (LocalizationService.Instance.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(task.NameKo))
-                            ? task.NameKo
-                            : task.Name;
-                        sources.Add(new QuestItemSourceViewModel
+                        var taskNormName = !string.IsNullOrWhiteSpace(task.NormalizedName)
+                            ? task.NormalizedName
+                            : (!string.IsNullOrWhiteSpace(task.Id) ? task.Id : (!string.IsNullOrWhiteSpace(task.Name) ? task.Name : "unknown_quest"));
+                        var hasMinLevel = questItem.DogtagMinLevel.HasValue && questItem.DogtagMinLevel.Value > 0;
+                        var groupKey = hasMinLevel
+                            ? $"{taskNormName}:dogtag:{questItem.DogtagMinLevel!.Value}"
+                            : taskNormName;
+
+                        if (groupedSources.TryGetValue(groupKey, out var existing))
                         {
-                            QuestName = questName,
-                            TraderName = task.Trader,
-                            Amount = questItem.Amount,
-                            FoundInRaid = questItem.FoundInRaid,
-                            Task = task,
-                            QuestNormalizedName = task.NormalizedName ?? string.Empty,
-                            DogtagMinLevel = questItem.DogtagMinLevel
-                        });
-                    }
-                }
-            }
-
-            return sources;
-        }
-
-        public List<HideoutItemSourceViewModel> GetHideoutSources(string itemNormalizedName)
-        {
-            var sources = new List<HideoutItemSourceViewModel>();
-
-            foreach (var module in _hideoutProgressService.AllModules)
-            {
-                var currentLevel = _hideoutProgressService.GetCurrentLevel(module);
-
-                foreach (var level in module.Levels.Where(l => l.Level > currentLevel))
-                {
-                    foreach (var itemReq in level.ItemRequirements)
-                    {
-                        if (string.Equals(itemReq.ItemNormalizedName, itemNormalizedName, StringComparison.OrdinalIgnoreCase))
+                            existing.Amount += Math.Max(0, questItem.Amount);
+                            if (questItem.FoundInRaid)
+                                existing.FoundInRaid = true;
+                        }
+                        else
                         {
-                            var moduleName = (LocalizationService.Instance.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(module.NameKo))
-                                ? module.NameKo
-                                : module.Name;
-                            sources.Add(new HideoutItemSourceViewModel
+                            var lang = LocalizationService.Instance.CurrentLanguage;
+                            var questName = (lang == AppLanguage.KO && !string.IsNullOrEmpty(task.NameKo))
+                                ? task.NameKo
+                                : (lang == AppLanguage.JA && !string.IsNullOrEmpty(task.NameJa)
+                                    ? task.NameJa
+                                    : (task.Name ?? ""));
+                            var needKey = NeededItemProgressService.GetQuestItemKey(taskNormName, itemNormalizedName, hasMinLevel ? questItem.DogtagMinLevel : null);
+
+                            groupedSources[groupKey] = new QuestItemSourceViewModel
                             {
-                                ModuleName = moduleName,
-                                Level = level.Level,
-                                Amount = itemReq.Count,
-                                FoundInRaid = itemReq.FoundInRaid,
-                                StationId = module.Id
-                            });
+                                QuestName = questName,
+                                TraderName = task.Trader ?? "",
+                                ItemNormalizedName = itemNormalizedName,
+                                NeedKey = needKey,
+                                Amount = Math.Max(0, questItem.Amount),
+                                FoundInRaid = questItem.FoundInRaid,
+                                Task = task,
+                                QuestNormalizedName = taskNormName,
+                                DogtagMinLevel = hasMinLevel ? questItem.DogtagMinLevel : null
+                            };
                         }
                     }
                 }
             }
 
-            return sources.OrderBy(s => s.ModuleName).ThenBy(s => s.Level).ToList();
+            foreach (var vm in groupedSources.Values)
+            {
+                vm.CurrentCount = Math.Clamp(progressService.GetCount(vm.NeedKey), 0, vm.Amount);
+            }
+
+            return groupedSources.Values.ToList();
+        }
+
+        public List<HideoutItemSourceViewModel> GetHideoutSources(string itemNormalizedName)
+        {
+            if (string.IsNullOrWhiteSpace(itemNormalizedName))
+                return new List<HideoutItemSourceViewModel>();
+
+            var progressService = NeededItemProgressService.Instance;
+            var groupedSources = new Dictionary<string, HideoutItemSourceViewModel>(StringComparer.OrdinalIgnoreCase);
+
+            if (_hideoutProgressService.AllModules == null)
+                return new List<HideoutItemSourceViewModel>();
+
+            foreach (var module in _hideoutProgressService.AllModules)
+            {
+                if (module?.Levels == null)
+                    continue;
+
+                var currentLevel = _hideoutProgressService.GetCurrentLevel(module);
+
+                foreach (var level in module.Levels.Where(l => l != null && l.Level > currentLevel))
+                {
+                    if (level.ItemRequirements == null)
+                        continue;
+
+                    foreach (var itemReq in level.ItemRequirements)
+                    {
+                        if (itemReq == null)
+                            continue;
+
+                        if (string.Equals(itemReq.ItemNormalizedName, itemNormalizedName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var stationId = !string.IsNullOrWhiteSpace(module.Id)
+                                ? module.Id
+                                : (!string.IsNullOrWhiteSpace(module.NormalizedName) ? module.NormalizedName : (!string.IsNullOrWhiteSpace(module.Name) ? module.Name : "unknown_station"));
+                            var groupKey = $"{stationId}:{level.Level}";
+
+                            if (groupedSources.TryGetValue(groupKey, out var existing))
+                            {
+                                existing.Amount += Math.Max(0, itemReq.Count);
+                                if (itemReq.FoundInRaid)
+                                    existing.FoundInRaid = true;
+                            }
+                            else
+                            {
+                                var lang = LocalizationService.Instance.CurrentLanguage;
+                                var moduleName = (lang == AppLanguage.KO && !string.IsNullOrEmpty(module.NameKo))
+                                    ? module.NameKo
+                                    : (lang == AppLanguage.JA && !string.IsNullOrEmpty(module.NameJa)
+                                        ? module.NameJa
+                                        : (module.Name ?? ""));
+                                var needKey = NeededItemProgressService.GetHideoutItemKey(stationId, level.Level, itemNormalizedName);
+
+                                groupedSources[groupKey] = new HideoutItemSourceViewModel
+                                {
+                                    ModuleName = moduleName,
+                                    ItemNormalizedName = itemNormalizedName,
+                                    NeedKey = needKey,
+                                    Level = level.Level,
+                                    Amount = Math.Max(0, itemReq.Count),
+                                    FoundInRaid = itemReq.FoundInRaid,
+                                    StationId = stationId
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+
+            foreach (var vm in groupedSources.Values)
+            {
+                vm.CurrentCount = Math.Clamp(progressService.GetCount(vm.NeedKey), 0, vm.Amount);
+            }
+
+            return groupedSources.Values.OrderBy(s => s.ModuleName).ThenBy(s => s.Level).ToList();
         }
 
     public async Task<List<CollectorItemViewModel>> GetCollectorAggregatedItemsAsync(bool includePreQuests, Dictionary<string, TarkovItem>? itemLookup)
@@ -508,23 +600,24 @@ namespace TarkovHelper.Services
             if (task.RequiredItems == null)
                 continue;
 
-            foreach (var questItem in task.RequiredItems)
+            var matchingItems = task.RequiredItems
+                .Where(qi => string.Equals(qi.ItemNormalizedName, itemNormalizedName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (matchingItems.Count > 0)
             {
-                if (string.Equals(questItem.ItemNormalizedName, itemNormalizedName, StringComparison.OrdinalIgnoreCase))
+                sources.Add(new CollectorQuestItemSourceViewModel
                 {
-                    sources.Add(new CollectorQuestItemSourceViewModel
-                    {
-                        QuestName = (LocalizationService.Instance.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(task.NameKo))
-                            ? task.NameKo
-                            : task.Name,
-                        TraderName = task.Trader,
-                        Amount = questItem.Amount,
-                        FoundInRaid = questItem.FoundInRaid,
-                        IsKappaRequired = task.ReqKappa,
-                        Task = task,
-                        QuestNormalizedName = task.NormalizedName ?? string.Empty
-                    });
-                }
+                    QuestName = (LocalizationService.Instance.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(task.NameKo))
+                        ? task.NameKo
+                        : task.Name,
+                    TraderName = task.Trader,
+                    Amount = matchingItems.Sum(qi => qi.Amount),
+                    FoundInRaid = matchingItems.Any(qi => qi.FoundInRaid),
+                    IsKappaRequired = task.ReqKappa,
+                    Task = task,
+                    QuestNormalizedName = task.NormalizedName ?? string.Empty
+                });
             }
         }
 

@@ -20,8 +20,7 @@ public partial class CustomMarkerEditorWindow : Window
 
         // 초기값 설정
         TxtName.Text = marker.Name;
-        SliderSize.Value = marker.Size > 0 ? marker.Size : 24;
-        TxtSizeValue.Text = SliderSize.Value.ToString();
+        SliderSize.Value = marker.Size > 0 ? Math.Clamp(marker.Size, 8, 16) : 12;
         TxtSizeValue.Text = SliderSize.Value.ToString();
 
         // 색상 선택

@@ -10,7 +10,7 @@
         SizeToContent="WidthAndHeight"
         ShowInTaskbar="False">
 
-    <Border Background="{DynamicResource BackgroundDarkBrush}"
+    <Border Background="{DynamicResource TacticalSurface1Brush}" BorderBrush="{DynamicResource TacticalBorderMediumBrush}" BorderThickness="1"
             CornerRadius="8" Padding="24"
             MinWidth="850" MaxWidth="950" MaxHeight="650">
         <Border.Effect>
@@ -27,8 +27,8 @@
             <!-- Header -->
             <Grid Grid.Row="0" Margin="0,0,0,16">
                 <TextBlock x:Name="TxtTitle" Text="Enter In-Progress Quests" FontSize="{DynamicResource FontSizeXLarge}" FontWeight="SemiBold"
-                           Foreground="{DynamicResource AccentBrush}"/>
-                <Button x:Name="BtnClose" Content="X"
+                           Foreground="{DynamicResource TacticalGoldBrush}"/>
+                <Button x:Name="BtnClose" Content="✕"
                         HorizontalAlignment="Right"
                         Padding="8,4" FontSize="{DynamicResource FontSizeSmall}"
                         Click="BtnClose_Click"/>
@@ -43,7 +43,7 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Left Panel: Quest Selection -->
-                <Border Grid.Column="0" Background="{DynamicResource BackgroundMediumBrush}"
+                <Border Grid.Column="0" Background="{DynamicResource TacticalSurface2Brush}" BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
                         CornerRadius="4">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -53,11 +53,11 @@
                         </Grid.RowDefinitions>
 
                         <!-- Header -->
-                        <Border Grid.Row="0" Background="{DynamicResource BackgroundLightBrush}"
+                        <Border Grid.Row="0" Background="{DynamicResource TacticalSurface3Brush}"
                                 CornerRadius="4,4,0,0" Padding="12,8">
                             <TextBlock x:Name="TxtQuestSelectionHeader" Text="Quest Selection"
                                        FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                       Foreground="{DynamicResource TacticalTextPrimaryBrush}"/>
                         </Border>
 
                         <!-- Search and Filter -->
@@ -65,16 +65,16 @@
                             <!-- Search Box -->
                             <TextBox x:Name="TxtQuestSearch"
                                      Padding="8,6" Margin="0,0,0,8"
-                                     Background="{DynamicResource BackgroundDarkBrush}"
-                                     Foreground="{DynamicResource TextPrimaryBrush}"
-                                     BorderBrush="{DynamicResource BorderBrush}"
+                                     Background="{DynamicResource TacticalSurface1Brush}"
+                                     Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+                                     BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
                                      TextChanged="TxtQuestSearch_TextChanged"/>
 
                             <!-- Trader Filter -->
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock x:Name="TxtTraderFilterLabel" Text="Trader:"
                                            FontSize="{DynamicResource FontSizeXSmall}"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TacticalTextSecondaryBrush}"
                                            VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <ComboBox x:Name="CmbQuestTraderFilter" Width="140"
                                           SelectionChanged="CmbQuestTraderFilter_SelectionChanged"/>
@@ -86,7 +86,7 @@
                             <ItemsControl x:Name="QuestSelectionList">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource BorderBrush}"
+                                        <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
                                                 Padding="12,6">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
@@ -105,11 +105,11 @@
                                                                Foreground="{Binding TextColor}"/>
                                                     <TextBlock Text="{Binding SubtitleName}"
                                                                FontSize="{DynamicResource FontSizeTiny}"
-                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               Foreground="{DynamicResource TacticalTextSecondaryBrush}"
                                                                Visibility="{Binding SubtitleVisibility}"/>
                                                     <TextBlock Text="{Binding TraderName}"
                                                                FontSize="{DynamicResource FontSizeTiny}"
-                                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                               Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
                                                 </StackPanel>
                                             </Grid>
                                         </Border>
@@ -121,7 +121,7 @@
                 </Border>
 
                 <!-- Right Panel: Prerequisites Preview -->
-                <Border Grid.Column="2" Background="{DynamicResource BackgroundMediumBrush}"
+                <Border Grid.Column="2" Background="{DynamicResource TacticalSurface2Brush}" BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
                         CornerRadius="4">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -131,18 +131,18 @@
                         </Grid.RowDefinitions>
 
                         <!-- Header -->
-                        <Border Grid.Row="0" Background="{DynamicResource BackgroundLightBrush}"
+                        <Border Grid.Row="0" Background="{DynamicResource TacticalSurface3Brush}"
                                 CornerRadius="4,4,0,0" Padding="12,8">
                             <TextBlock x:Name="TxtPrerequisitesHeader" Text="Prerequisites Preview"
                                        FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                       Foreground="{DynamicResource TacticalTextPrimaryBrush}"/>
                         </Border>
 
                         <!-- Description -->
                         <TextBlock x:Name="TxtPrerequisitesDesc" Grid.Row="1"
                                    Text="Prerequisites of selected quests will be shown here.&#x0a;These will be auto-completed on apply."
                                    FontSize="{DynamicResource FontSizeTiny}" Margin="12,8"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Foreground="{DynamicResource TacticalTextSecondaryBrush}"
                                    TextWrapping="Wrap"/>
 
                         <!-- Prerequisites List -->
@@ -150,27 +150,27 @@
                             <ItemsControl x:Name="PrerequisitesList">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource BorderBrush}"
+                                        <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
                                                 Padding="12,6">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="V" FontSize="{DynamicResource FontSizeXSmall}"
-                                                           Foreground="{DynamicResource AccentBrush}"
+                                                <TextBlock Grid.Column="0" Text="✓" FontSize="{DynamicResource FontSizeXSmall}"
+                                                           Foreground="{DynamicResource TacticalGoldBrush}"
                                                            VerticalAlignment="Center" Margin="0,0,8,0"/>
                                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding DisplayName}"
                                                                FontSize="{DynamicResource FontSizeXSmall}"
-                                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                               Foreground="{DynamicResource TacticalTextPrimaryBrush}"/>
                                                     <TextBlock Text="{Binding SubtitleName}"
                                                                FontSize="{DynamicResource FontSizeTiny}"
-                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               Foreground="{DynamicResource TacticalTextSecondaryBrush}"
                                                                Visibility="{Binding SubtitleVisibility}"/>
                                                     <TextBlock Text="{Binding TraderName}"
                                                                FontSize="{DynamicResource FontSizeTiny}"
-                                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                               Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
                                                 </StackPanel>
                                             </Grid>
                                         </Border>
@@ -183,18 +183,18 @@
             </Grid>
 
             <!-- Summary Stats -->
-            <Border Grid.Row="2" Background="{DynamicResource BackgroundMediumBrush}"
+            <Border Grid.Row="2" Background="{DynamicResource TacticalSurface2Brush}" BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
                     CornerRadius="4" Padding="12,8" Margin="0,0,0,16">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock x:Name="TxtSelectedQuestsCount"
                                Text="Selected quests: 0"
                                FontSize="{DynamicResource FontSizeXSmall}"
-                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Foreground="{DynamicResource TacticalTextPrimaryBrush}"
                                Margin="0,0,24,0"/>
                     <TextBlock x:Name="TxtPrerequisitesCount"
                                Text="Prerequisites to complete: 0"
                                FontSize="{DynamicResource FontSizeXSmall}"
-                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                               Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
                 </StackPanel>
             </Border>
 
@@ -206,8 +206,8 @@
                 <Button x:Name="BtnApply" Content="Apply"
                         Padding="16,8"
                         Click="BtnApply_Click"
-                        Background="{DynamicResource AccentBrush}"
-                        Foreground="{DynamicResource BackgroundDarkBrush}"/>
+                        Background="{DynamicResource TacticalGoldBrush}"
+                        Foreground="{DynamicResource TacticalTextInvertedBrush}"/>
             </StackPanel>
         </Grid>
     </Border>

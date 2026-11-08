@@ -215,18 +215,29 @@ public sealed class IntegratedItemService
                 if (reqItem.FoundInRaid)
                     integrated.QuestRequiredFir += reqItem.Amount;
 
-                integrated.QuestSources.Add(new QuestItemSource
+                var existingSource = integrated.QuestSources.FirstOrDefault(s =>
+                    string.Equals(s.QuestNormalizedName, quest.NormalizedName, StringComparison.OrdinalIgnoreCase));
+                if (existingSource != null)
                 {
-                    QuestId = quest.Ids?.FirstOrDefault() ?? "",
-                    QuestNormalizedName = quest.NormalizedName ?? "",
-                    QuestName = quest.Name,
-                    QuestNameKo = quest.NameKo,
-                    QuestNameJa = quest.NameJa,
-                    TraderName = quest.Trader ?? "",
-                    RequiredCount = reqItem.Amount,
-                    RequiresFir = reqItem.FoundInRaid,
-                    IsQuestCompleted = isCompleted
-                });
+                    existingSource.RequiredCount += reqItem.Amount;
+                    if (reqItem.FoundInRaid)
+                        existingSource.RequiresFir = true;
+                }
+                else
+                {
+                    integrated.QuestSources.Add(new QuestItemSource
+                    {
+                        QuestId = quest.Ids?.FirstOrDefault() ?? "",
+                        QuestNormalizedName = quest.NormalizedName ?? "",
+                        QuestName = quest.Name,
+                        QuestNameKo = quest.NameKo,
+                        QuestNameJa = quest.NameJa,
+                        TraderName = quest.Trader ?? "",
+                        RequiredCount = reqItem.Amount,
+                        RequiresFir = reqItem.FoundInRaid,
+                        IsQuestCompleted = isCompleted
+                    });
+                }
             }
         }
 
@@ -262,17 +273,28 @@ public sealed class IntegratedItemService
                     if (reqItem.FoundInRaid)
                         integrated.HideoutRequiredFir += reqItem.Count;
 
-                    integrated.HideoutSources.Add(new HideoutItemSource
+                    var existingHSource = integrated.HideoutSources.FirstOrDefault(h =>
+                        string.Equals(h.StationId, station.Id, StringComparison.OrdinalIgnoreCase) && h.Level == level.Level);
+                    if (existingHSource != null)
                     {
-                        StationId = station.Id,
-                        StationName = station.Name,
-                        StationNameKo = station.NameKo,
-                        StationNameJa = station.NameJa,
-                        Level = level.Level,
-                        RequiredCount = reqItem.Count,
-                        RequiresFir = reqItem.FoundInRaid,
-                        IsBuilt = level.Level <= currentLevel
-                    });
+                        existingHSource.RequiredCount += reqItem.Count;
+                        if (reqItem.FoundInRaid)
+                            existingHSource.RequiresFir = true;
+                    }
+                    else
+                    {
+                        integrated.HideoutSources.Add(new HideoutItemSource
+                        {
+                            StationId = station.Id,
+                            StationName = station.Name,
+                            StationNameKo = station.NameKo,
+                            StationNameJa = station.NameJa,
+                            Level = level.Level,
+                            RequiredCount = reqItem.Count,
+                            RequiresFir = reqItem.FoundInRaid,
+                            IsBuilt = level.Level <= currentLevel
+                        });
+                    }
                 }
             }
         }

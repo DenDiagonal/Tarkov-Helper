@@ -104,14 +104,23 @@ public sealed class QuestObjectiveService
 
     /// <summary>
     /// 특정 맵의 활성(미완료) 퀘스트 목표를 반환합니다.
+    /// QuestProgressService에서 QuestStatus.Active인 퀘스트의 목표만 필터링하여 반환하며,
+    /// Locked (Trader LL 또는 Task Pool 미충족), LevelLocked, Unavailable 등은 엄격히 제외됩니다.
     /// </summary>
     /// <param name="mapName">맵 이름</param>
     /// <param name="progressService">퀘스트 진행 서비스</param>
+    /// <param name="sourceObjectives">선택적 소스 목표 컬렉션 (null인 경우 GetAllObjectives() 사용)</param>
     /// <returns>활성 퀘스트 목표 목록</returns>
-    public List<TaskObjectiveWithLocation> GetActiveObjectivesForMap(string mapName, QuestProgressService progressService)
+    public List<TaskObjectiveWithLocation> GetActiveObjectivesForMap(
+        string mapName,
+        QuestProgressService progressService,
+        IEnumerable<TaskObjectiveWithLocation>? sourceObjectives = null)
     {
-        var allObjectives = GetAllObjectives();
         var activeObjectives = new List<TaskObjectiveWithLocation>();
+        if (progressService == null || string.IsNullOrWhiteSpace(mapName))
+            return activeObjectives;
+
+        var allObjectives = sourceObjectives ?? GetAllObjectives();
 
         foreach (var obj in allObjectives)
         {
@@ -120,7 +129,8 @@ public sealed class QuestObjectiveService
             foreach (var loc in obj.Locations)
             {
                 if (string.Equals(loc.MapName, mapName, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(loc.MapNormalizedName, mapName, StringComparison.OrdinalIgnoreCase))
+                    string.Equals(loc.MapNormalizedName, mapName, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrEmpty(loc.MapName) && loc.MapName.Split(new[] { ',', '/', ';' }, StringSplitOptions.TrimEntries).Any(p => string.Equals(p, mapName, StringComparison.OrdinalIgnoreCase))))
                 {
                     isOnMap = true;
                     break;
@@ -129,12 +139,22 @@ public sealed class QuestObjectiveService
 
             if (!isOnMap) continue;
 
-            // 퀘스트 활성 상태 확인 (ID 기반 조회 우선, NormalizedName은 fallback)
-            var task = progressService.GetTaskById(obj.QuestId)
-                ?? progressService.GetTask(obj.TaskNormalizedName);
+            // 퀘스트 활성 상태 확인 (ID 기반 조회 우선, NormalizedName, BsgId, TaskName은 fallback)
+            var task = (!string.IsNullOrEmpty(obj.QuestId) ? progressService.GetTaskById(obj.QuestId) : null)
+                ?? (!string.IsNullOrEmpty(obj.TaskNormalizedName) ? progressService.GetTask(obj.TaskNormalizedName) : null)
+                ?? (!string.IsNullOrEmpty(obj.QuestId) ? progressService.GetTaskByBsgId(obj.QuestId) : null);
+
+            if (task == null && !string.IsNullOrEmpty(obj.TaskName))
+            {
+                var norm = NormalizeQuestName(obj.TaskName);
+                task = progressService.GetTask(norm)
+                    ?? progressService.AllTasks.FirstOrDefault(t => string.Equals(t.Name, obj.TaskName, StringComparison.OrdinalIgnoreCase));
+            }
+
             if (task != null)
             {
                 var status = progressService.GetStatus(task);
+                // Trader Loyalty Level 또는 Task Pool 요구치 미충족으로 인한 Locked 상태는 자동으로 완전히 제외됨
                 if (status == QuestStatus.Active)
                 {
                     // 목표 완료 상태 확인
@@ -179,10 +199,12 @@ public sealed class QuestObjectiveService
         // QuestDbService에서 정확한 NormalizedName 조회
         var quest = QuestDbService.Instance.GetQuestById(obj.QuestId);
         var taskNormalizedName = quest?.NormalizedName ?? NormalizeQuestName(obj.QuestName);
+        var resolved = ObjectiveProgressService.Instance.ResolveQuestAndIndex(obj);
 
         var result = new TaskObjectiveWithLocation
         {
             ObjectiveId = obj.Id,
+            ObjectiveIndex = resolved.ObjectiveIndex,
             Description = obj.Description,
             DescriptionKo = null, // DB에 한국어 설명이 없으면 null
             Type = ConvertObjectiveType(obj.ObjectiveType),
@@ -196,48 +218,77 @@ public sealed class QuestObjectiveService
         // LocationPoints를 QuestObjectiveLocation으로 변환
         var mapName = obj.EffectiveMapName ?? "Unknown";
 
-        if (obj.LocationPoints.Count > 0)
+        // HandOver 및 Deliver 목표는 레이드 종료 후 상인에게 제출하는 목표이므로
+        // 인게임 맵 마커(Locations)를 생성하지 않습니다. (TarkovDev / Tarkov Tracker 표준)
+        bool isHandOver = obj.ObjectiveType == QuestObjectiveType.HandOver ||
+            (!string.IsNullOrEmpty(obj.Description) &&
+             (obj.Description.StartsWith("Hand over", StringComparison.OrdinalIgnoreCase) ||
+              obj.Description.StartsWith("Deliver", StringComparison.OrdinalIgnoreCase)));
+
+        if (!isHandOver && obj.LocationPoints.Count > 0)
         {
-            // 첫 번째 포인트를 중심점으로 사용
-            var firstPoint = obj.LocationPoints[0];
-            var location = new QuestObjectiveLocation
-            {
-                Id = $"{obj.Id}_loc",
-                MapId = mapName,
-                MapName = mapName,
-                MapNormalizedName = NormalizeMapName(mapName),
-                X = firstPoint.X,
-                Y = firstPoint.Z, // Game Z → Location Y (수평면)
-                Z = firstPoint.Y, // Game Y → Location Z (높이)
-                FloorId = firstPoint.FloorId // 층 정보 복사
-            };
+            var pointsByMap = obj.LocationPoints
+                .GroupBy(p => !string.IsNullOrEmpty(p.MapName) ? p.MapName : mapName);
 
-            // 여러 포인트가 있으면 Outline으로 변환
-            if (obj.LocationPoints.Count > 2)
+            foreach (var group in pointsByMap)
             {
-                location.Outline = obj.LocationPoints
-                    .Select(p => new OutlinePoint { X = p.X, Y = p.Z })
-                    .ToList();
+                var ptMap = group.Key;
+                var pts = group.ToList();
+                var firstPoint = pts[0];
+                var location = new QuestObjectiveLocation
+                {
+                    Id = $"{obj.Id}_{ptMap}_loc",
+                    MapId = ptMap,
+                    MapName = ptMap,
+                    MapNormalizedName = NormalizeMapName(ptMap),
+                    X = firstPoint.X,
+                    Y = firstPoint.Z, // Game Z → Location Y (수평면)
+                    Z = firstPoint.Y, // Game Y → Location Z (높이)
+                    FloorId = firstPoint.FloorId // 층 정보 복사
+                };
+
+                // 여러 포인트가 있으면 Outline으로 변환 (단, 대각선 길이가 2m 이상인 실제 구역만 Area로 처리)
+                if (pts.Count > 2)
+                {
+                    var minX = pts.Min(p => p.X);
+                    var maxX = pts.Max(p => p.X);
+                    var minZ = pts.Min(p => p.Z);
+                    var maxZ = pts.Max(p => p.Z);
+                    var dx = maxX - minX;
+                    var dz = maxZ - minZ;
+                    var span = Math.Sqrt(dx * dx + dz * dz);
+
+                    if (span >= 2.0)
+                    {
+                        location.Outline = pts
+                            .Select(p => new OutlinePoint { X = p.X, Y = p.Z })
+                            .ToList();
+                    }
+                }
+
+                result.Locations.Add(location);
             }
-
-            result.Locations.Add(location);
         }
 
-        // OptionalPoints도 별도 위치로 추가
-        foreach (var point in obj.OptionalPoints)
+        // OptionalPoints도 별도 위치로 추가 (HandOver가 아닐 때만)
+        if (!isHandOver)
         {
-            var optLoc = new QuestObjectiveLocation
+            foreach (var point in obj.OptionalPoints)
             {
-                Id = $"{obj.Id}_opt_{result.Locations.Count}",
-                MapId = mapName,
-                MapName = mapName,
-                MapNormalizedName = NormalizeMapName(mapName),
-                X = point.X,
-                Y = point.Z,
-                Z = point.Y,
-                FloorId = point.FloorId // 층 정보 복사
-            };
-            result.Locations.Add(optLoc);
+                var optMap = !string.IsNullOrEmpty(point.MapName) ? point.MapName : mapName;
+                var optLoc = new QuestObjectiveLocation
+                {
+                    Id = $"{obj.Id}_opt_{result.Locations.Count}",
+                    MapId = optMap,
+                    MapName = optMap,
+                    MapNormalizedName = NormalizeMapName(optMap),
+                    X = point.X,
+                    Y = point.Z,
+                    Z = point.Y,
+                    FloorId = point.FloorId // 층 정보 복사
+                };
+                result.Locations.Add(optLoc);
+            }
         }
 
         return result;

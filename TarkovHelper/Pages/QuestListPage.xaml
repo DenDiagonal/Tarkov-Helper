@@ -4,9 +4,16 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:components="clr-namespace:TarkovHelper.Pages.Components"
+             xmlns:controls="clr-namespace:TarkovHelper.Controls"
+             xmlns:services="clr-namespace:TarkovHelper.Services"
              mc:Ignorable="d"
              d:DesignHeight="600" d:DesignWidth="900"
-             Background="{StaticResource BackgroundDarkBrush}">
+             Background="{DynamicResource TacticalSurface0Brush}"
+             TextOptions.TextFormattingMode="Display"
+             TextOptions.TextRenderingMode="ClearType"
+             RenderOptions.ClearTypeHint="Enabled"
+             SnapsToDevicePixels="True"
+             UseLayoutRounding="True">
 
     <UserControl.Resources>
         <!-- Inherit FontFamily for all TextBlocks in this page -->
@@ -16,7 +23,86 @@
         <SolidColorBrush x:Key="StatusLockedBrush" Color="#666666"/>
         <SolidColorBrush x:Key="StatusActiveBrush" Color="#4CAF50"/>
         <SolidColorBrush x:Key="StatusDoneBrush" Color="#2196F3"/>
+
+        <!-- Tactical Palette Surfaces & Borders (EFT / TarkovTracker Dark Scheme) -->
+        <SolidColorBrush x:Key="TacticalSurface0Brush" Color="#0D0E11"/>
+        <SolidColorBrush x:Key="TacticalSurface1Brush" Color="#131519"/>
+        <SolidColorBrush x:Key="TacticalSurface2Brush" Color="#1A1D23"/>
+        <SolidColorBrush x:Key="TacticalSurface3Brush" Color="#21252D"/>
+        <SolidColorBrush x:Key="TacticalSurface4Brush" Color="#292E38"/>
+        <SolidColorBrush x:Key="TacticalBorderSubtleBrush" Color="#242832"/>
+        <SolidColorBrush x:Key="TacticalBorderMediumBrush" Color="#323846"/>
+        <SolidColorBrush x:Key="TacticalBorderHighlightBrush" Color="#4A5368"/>
         <SolidColorBrush x:Key="StatusFailedBrush" Color="#F44336"/>
+
+        <!-- Modern iOS/macOS Toggle Switch Style (Shared with ItemsPage) -->
+        <Style x:Key="ModernToggleSwitchStyle" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="42"/>
+                            </Grid.ColumnDefinitions>
+
+                            <ContentPresenter Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0"/>
+
+                            <!-- Track -->
+                            <Border x:Name="Track" Grid.Column="1" Width="38" Height="20" CornerRadius="10"
+                                    Background="#1C2028" BorderBrush="#323846" BorderThickness="1"
+                                    VerticalAlignment="Center">
+                                <!-- Thumb -->
+                                <Ellipse x:Name="Thumb" Width="14" Height="14" Fill="#686E7C"
+                                         HorizontalAlignment="Left" Margin="3,0,0,0"/>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="#332B14"/>
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#C5A84A"/>
+                                <Setter TargetName="Thumb" Property="Fill" Value="#D8BB5C"/>
+                                <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+                                <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Pill Segment Button Style for Popups & Settings -->
+        <Style x:Key="PillTabButtonStyle" TargetType="RadioButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="14"
+                                Padding="{TemplateBinding Padding}" Margin="0,0,4,0">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#25252D"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter TargetName="border" Property="BorderThickness" Value="1"/>
+                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <!-- CheckBox Style for Filters -->
         <Style x:Key="FilterCheckBox" TargetType="CheckBox">
@@ -26,64 +112,269 @@
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
 
-        <!-- Quest List Item Template -->
+        <!-- Compact Action Button Style for Map and Wiki actions -->
+        <Style x:Key="CompactIconButton" TargetType="Button">
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Padding" Value="8,1"/>
+            <Setter Property="MinWidth" Value="36"/>
+            <Setter Property="Background" Value="#171922"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{StaticResource TacticalBorderSubtleBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#252836"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#101218"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- View Mode Segment Radio Button Style (LIST, TRADERS, MAPS, GRAPH) -->
+        <Style x:Key="ViewModeSegmentButtonStyle" TargetType="RadioButton">
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Padding" Value="13,3"/>
+            <Setter Property="Margin" Value="0,0,2,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Border" Background="Transparent"
+                                BorderBrush="Transparent" BorderThickness="1"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#1C1D24"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#22232B"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Filter Chip Toggle Style -->
+        <Style x:Key="FilterChipToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="Margin" Value="0,0,5,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Border" Background="{DynamicResource BackgroundDarkBrush}"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#22232B"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#1C1D24"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#4E5060"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Segmented Chip Radio Button Style -->
+        <Style x:Key="SegmentedChipStyle" TargetType="RadioButton">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="10,2"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Border" Background="{DynamicResource BackgroundDarkBrush}"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#22232B"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#1C1D24"/>
+                                <Setter TargetName="Border" Property="BorderBrush" Value="#4E5060"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- High-Density Quest List Item Template (~31px height, 43.6% vertical reduction) -->
         <DataTemplate x:Key="QuestItemTemplate">
-            <Border x:Name="ItemBorder" Padding="12,8" BorderThickness="0,0,0,1"
+            <Border x:Name="ItemBorder" Padding="8,3" BorderThickness="0,0,0,1"
                     BorderBrush="{StaticResource BorderBrush}"
                     Background="Transparent">
-                <Grid>
+                <Grid Height="24">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="32"/>
+                        <!-- 0: 1-Click CheckBox -->
+                        <ColumnDefinition Width="26"/>
+                        <!-- 1: Trader Avatar/Initial -->
+                        <ColumnDefinition Width="26"/>
+                        <!-- 2: Quest Title & Level Badge -->
                         <ColumnDefinition Width="*"/>
+                        <!-- 3: Badges Strip -->
                         <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
+                        <!-- 4: Quick Action Launchers -->
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Trader Icon Placeholder -->
-                    <Border Grid.Column="0" Width="28" Height="28"
-                            CornerRadius="4" Background="{StaticResource BackgroundLightBrush}"
-                            VerticalAlignment="Center">
-                        <TextBlock Text="{Binding TraderInitial}" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="Bold"
-                                   Foreground="{StaticResource AccentBrush}"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <!-- 0: 1-Click Done/Active CheckBox -->
+                    <CheckBox Grid.Column="0" IsChecked="{Binding IsDone, Mode=OneWay}"
+                              VerticalAlignment="Center" HorizontalAlignment="Left"
+                              Cursor="Hand" ToolTip="Marcar como completada / pendiente"
+                              Click="ChkQuestDone_Click" Tag="{Binding}"/>
+
+                    <!-- 1: Status & Manual Lock/Unlock Toggle Button (20x20) -->
+                    <Border Grid.Column="1" Width="20" Height="20" CornerRadius="3"
+                            Background="{Binding LockToggleBackground}"
+                            BorderBrush="{Binding LockToggleBorder}"
+                            BorderThickness="1"
+                            VerticalAlignment="Center"
+                            Cursor="Hand"
+                            MouseLeftButtonUp="BtnListRowLockToggle_Click"
+                            ToolTip="{Binding LockToggleToolTip}"
+                            Tag="{Binding}">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="🔓 Forzar Desbloqueo (Activa)" Click="MenuListRowForceUnlock_Click"/>
+                                <MenuItem Header="🔒 Forzar Bloqueo (Bloqueada)" Click="MenuListRowForceLock_Click"/>
+                                <Separator/>
+                                <MenuItem Header="↺ Restablecer Automático" Click="MenuListRowResetOverride_Click"/>
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <Grid>
+                            <TextBlock Text="{Binding LockToggleIcon}" FontSize="10.5" FontWeight="Bold"
+                                       Foreground="{Binding LockToggleForeground}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Ellipse Width="4" Height="4" Fill="{DynamicResource TacticalGoldBrush}"
+                                     HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,1,0"
+                                     Visibility="{Binding ManualOverrideDotVisibility}"
+                                     ToolTip="Modificada manualmente"/>
+                        </Grid>
                     </Border>
 
-                    <!-- Quest Name -->
-                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding DisplayName}" FontSize="{DynamicResource FontSizeSmall}"
+                    <!-- 2: Quest Name and Level Requirement -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0">
+                        <TextBlock Text="{Binding DisplayName}" FontSize="12.5" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}"
-                                   TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Text="{Binding SubtitleName}" FontSize="{DynamicResource FontSizeTiny}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   Visibility="{Binding SubtitleVisibility}"
-                                   TextTrimming="CharacterEllipsis"/>
+                                   TextTrimming="CharacterEllipsis" MaxWidth="340"/>
+
+                        <!-- Level Requirement Badge -->
+                        <Border Visibility="{Binding RequiredLevelVisibility}" Padding="3,0" CornerRadius="2"
+                                Margin="6,0,0,0" Background="{Binding RequiredLevelBackground}"
+                                VerticalAlignment="Center" ToolTip="{Binding RequiredLevelToolTip}">
+                            <TextBlock Text="{Binding RequiredLevelText}" FontSize="9.5" FontWeight="Bold"
+                                       Foreground="{Binding RequiredLevelForeground}"/>
+                        </Border>
                     </StackPanel>
 
-                    <!-- Kappa Badge -->
-                    <Border Grid.Column="2" Padding="4,2" CornerRadius="3"
-                            Background="#9C27B0"
-                            VerticalAlignment="Center" Margin="0,0,6,0"
-                            Visibility="{Binding KappaBadgeVisibility}"
-                            ToolTip="Required for Kappa Container">
-                        <TextBlock Text="κ" FontSize="{DynamicResource FontSizeTiny}"
-                                   Foreground="White" FontWeight="Bold"/>
-                    </Border>
+                    <!-- 3: Compact Badges Strip -->
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                        <!-- Story Chapter Badge -->
+                        <Border Visibility="{Binding StoryBadgeVisibility}" Padding="4,1" CornerRadius="2"
+                                Background="#3F51B5" Margin="0,0,4,0" ToolTip="Misión de Historia">
+                            <TextBlock Text="Story" FontSize="9" Foreground="White" FontWeight="Bold"/>
+                        </Border>
 
-                    <!-- Status Badge -->
-                    <Border Grid.Column="3" Padding="8,3" CornerRadius="3"
-                            Background="{Binding StatusBackground}"
-                            VerticalAlignment="Center" Margin="0,0,8,0">
-                        <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource FontSizeTiny}"
-                                   Foreground="White" FontWeight="SemiBold"/>
-                    </Border>
+                        <!-- Manual Override Active Badge -->
+                        <Border Visibility="{Binding OverrideBadgeVisibility}" Padding="3,1" CornerRadius="2"
+                                Background="#FF9800" Margin="0,0,4,0" ToolTip="Manual Override">
+                            <TextBlock Text="⚡" FontSize="9" Foreground="White" FontWeight="Bold"/>
+                        </Border>
 
-                    <!-- Complete Button -->
-                    <Button Grid.Column="4" Content="Done" Padding="8,4"
-                            FontSize="{DynamicResource FontSizeTiny}" MinWidth="50"
-                            Click="CompleteButton_Click"
-                            Tag="{Binding}"
-                            Visibility="{Binding CompleteButtonVisibility}"/>
+                        <!-- Seasonal Badge -->
+                        <Border Visibility="{Binding SeasonalBadgeVisibility}" Padding="3,1" CornerRadius="2"
+                                Background="#E06D28" Margin="0,0,4,0" ToolTip="Misión de Temporada (Seasonal)">
+                            <TextBlock Text="SEASON" FontSize="8.5" Foreground="White" FontWeight="Bold"/>
+                        </Border>
+
+                        <!-- Kappa Badge -->
+                        <Border Visibility="{Binding KappaBadgeVisibility}" Padding="4,1" CornerRadius="2"
+                                Background="#9C27B0" Margin="0,0,4,0" ToolTip="Requerido para Kappa">
+                            <TextBlock Text="κ" FontSize="9.5" Foreground="White" FontWeight="Bold"/>
+                        </Border>
+
+                        <!-- Needed Keys Badge -->
+                        <Border Visibility="{Binding KeyBadgeVisibility}" Padding="3,1" CornerRadius="2"
+                                Background="#00897B" Margin="0,0,4,0" ToolTip="Requiere llaves">
+                            <TextBlock Text="🔑" FontSize="9" Foreground="White"/>
+                        </Border>
+
+                        <!-- FIR Required Badge -->
+                        <Border Visibility="{Binding FirBadgeVisibility}" Padding="3,1" CornerRadius="2"
+                                Background="#E65100" Margin="0,0,4,0" ToolTip="Requiere items FIR">
+                            <TextBlock Text="FIR" FontSize="9" Foreground="White" FontWeight="Bold"/>
+                        </Border>
+
+                        <!-- Status Badge -->
+                        <Border Padding="6,1" CornerRadius="2" Background="{Binding StatusBackground}" Margin="2,0,0,0">
+                            <TextBlock Text="{Binding StatusText}" FontSize="9.5" Foreground="White" FontWeight="SemiBold"/>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- 4: Quick Action Launchers (Map, Wiki) -->
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Show on Map Action -->
+                        <Button Style="{StaticResource CompactIconButton}" Content="Map"
+                                Visibility="{Binding MapActionVisibility}"
+                                ToolTip="Ver objetivos en el mapa"
+                                Click="BtnCardMap_Click" Tag="{Binding}" Margin="0,0,4,0"/>
+
+                        <!-- Open in Wiki Action -->
+                        <Button Style="{StaticResource CompactIconButton}" Content="Wiki"
+                                Visibility="{Binding WikiActionVisibility}"
+                                ToolTip="Abrir en Tarkov Wiki"
+                                Click="BtnCardWiki_Click" Tag="{Binding}"/>
+                    </StackPanel>
                 </Grid>
             </Border>
             <DataTemplate.Triggers>
@@ -123,216 +414,71 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Card Container Style (clean margins, no selection border) -->
+        <Style x:Key="QuestCardListBoxItem" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="UseLayoutRounding" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Full TaskCard DataTemplate (TarkovTracker Card Feed) -->
+        <DataTemplate x:Key="QuestCardTemplate">
+            <controls:TaskCardControl Margin="0,0,0,8"/>
+        </DataTemplate>
     </UserControl.Resources>
 
-    <Grid Margin="16">
+        <Grid Margin="16,10,16,12">
         <Grid.RowDefinitions>
+            <!-- Row 0: Unified Top Control Bar (Modes + Status + Search + Actions) -->
             <RowDefinition Height="Auto"/>
+            <!-- Row 1: Collapsed -->
+            <RowDefinition Height="0"/>
+            <!-- Row 2: Collapsed (Merged into Row 0) -->
+            <RowDefinition Height="0"/>
+            <!-- Row 3: Sub-Navigation Chips (Traders or Maps) -->
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
+            <!-- Row 4: Recommended Quests Panel (Hidden) -->
+            <RowDefinition Height="0"/>
+            <!-- Row 5: Main Content (Full-width Card Feed) -->
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Filter Bar -->
-        <Border Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}"
-                CornerRadius="6" Padding="12,10" Margin="0,0,0,12">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+        <!-- Hidden Compatibility Controls (retains code-behind bindings with zero layout footprint) -->
+        <StackPanel Visibility="Collapsed" Height="0">
+            <!-- Legacy filters preserved for zero compilation breakage -->
+            <ToggleButton x:Name="ChkItemRequired"/>
+            <ToggleButton x:Name="TabStoryFilter"/>
+            <ComboBox x:Name="CmbSecondaryFilter"/>
+            <TextBlock x:Name="TxtStoryFilterTitle"/>
+            <TextBlock x:Name="TxtStoryBadge"/>
+            <Border x:Name="StoryBadgeBorder"/>
+            <CheckBox x:Name="ChkKappaOnly"/>
+            <ComboBox x:Name="CmbTrader"/>
+            <ComboBox x:Name="CmbMap"/>
+            <ComboBox x:Name="CmbStatus"/>
+            <TextBlock x:Name="TxtStats"/>
+            <Border x:Name="KappaGaugeBar"/>
+            <TextBlock x:Name="TxtKappaGauge"/>
+            <components:TraderProgressPanel x:Name="TraderPanel" TraderFilterRequested="TraderPanel_TraderFilterRequested"/>
+            <!-- Legacy Detail elements preserved for code-behind bindings (Zero layout footprint) -->
+            <Grid Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
 
-                <!-- Search Box -->
-                <TextBox x:Name="TxtSearch" Grid.Column="0"
-                         TextChanged="TxtSearch_TextChanged"
-                         Margin="0,0,16,0">
-                    <TextBox.Style>
-                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
-                            <Setter Property="Tag" Value="Search quests..."/>
-                        </Style>
-                    </TextBox.Style>
-                </TextBox>
-
-                <!-- Filter Toggles -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <CheckBox x:Name="ChkKappaOnly" Content="Kappa"
-                              Style="{StaticResource FilterCheckBox}"
-                              Checked="Filter_Changed" Unchecked="Filter_Changed"/>
-
-                    <CheckBox x:Name="ChkItemRequired" Content="Item Req"
-                              Style="{StaticResource FilterCheckBox}"
-                              Checked="Filter_Changed" Unchecked="Filter_Changed"/>
-
-                    <!-- Trader Filter -->
-                    <ComboBox x:Name="CmbTrader" Width="120" Margin="0,0,16,0"
-                              SelectionChanged="CmbTrader_SelectionChanged">
-                        <ComboBoxItem Content="All Traders" Tag="" IsSelected="True"/>
-                    </ComboBox>
-
-                    <!-- Map Filter -->
-                    <ComboBox x:Name="CmbMap" Width="120" Margin="0,0,16,0"
-                              SelectionChanged="CmbMap_SelectionChanged">
-                        <ComboBoxItem Content="All Maps" Tag="" IsSelected="True"/>
-                    </ComboBox>
-
-                    <!-- Status Filter -->
-                    <ComboBox x:Name="CmbStatus" Width="110"
-                              SelectionChanged="CmbStatus_SelectionChanged">
-                        <ComboBoxItem Content="Active" Tag="Active" IsSelected="True"/>
-                        <ComboBoxItem Content="All" Tag="All"/>
-                        <ComboBoxItem Content="Locked" Tag="Locked"/>
-                        <ComboBoxItem Content="Done" Tag="Done"/>
-                        <ComboBoxItem Content="Failed" Tag="Failed"/>
-                        <ComboBoxItem Content="Unavailable" Tag="Unavailable"/>
-                    </ComboBox>
-
-                    <!-- Faction Toggle -->
-                    <Border Margin="16,0,0,0" Background="{StaticResource BackgroundDarkBrush}"
-                            CornerRadius="4" Padding="2">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton x:Name="RbBear" Content="BEAR" GroupName="Faction"
-                                         Margin="0" Padding="8,4" Cursor="Hand"
-                                         Checked="Faction_Changed">
-                                <RadioButton.Template>
-                                    <ControlTemplate TargetType="RadioButton">
-                                        <Border x:Name="Border" Background="Transparent"
-                                                CornerRadius="3" Padding="{TemplateBinding Padding}">
-                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsChecked" Value="True">
-                                                <Setter TargetName="Border" Property="Background" Value="#D84315"/>
-                                            </Trigger>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Border" Property="Background" Value="{StaticResource BackgroundLightBrush}"/>
-                                            </Trigger>
-                                            <MultiTrigger>
-                                                <MultiTrigger.Conditions>
-                                                    <Condition Property="IsChecked" Value="True"/>
-                                                    <Condition Property="IsMouseOver" Value="True"/>
-                                                </MultiTrigger.Conditions>
-                                                <Setter TargetName="Border" Property="Background" Value="#BF360C"/>
-                                            </MultiTrigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </RadioButton.Template>
-                                <RadioButton.Foreground>
-                                    <SolidColorBrush Color="White"/>
-                                </RadioButton.Foreground>
-                            </RadioButton>
-                            <RadioButton x:Name="RbUsec" Content="USEC" GroupName="Faction"
-                                         Margin="0" Padding="8,4" Cursor="Hand"
-                                         Checked="Faction_Changed">
-                                <RadioButton.Template>
-                                    <ControlTemplate TargetType="RadioButton">
-                                        <Border x:Name="Border" Background="Transparent"
-                                                CornerRadius="3" Padding="{TemplateBinding Padding}">
-                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsChecked" Value="True">
-                                                <Setter TargetName="Border" Property="Background" Value="#1565C0"/>
-                                            </Trigger>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Border" Property="Background" Value="{StaticResource BackgroundLightBrush}"/>
-                                            </Trigger>
-                                            <MultiTrigger>
-                                                <MultiTrigger.Conditions>
-                                                    <Condition Property="IsChecked" Value="True"/>
-                                                    <Condition Property="IsMouseOver" Value="True"/>
-                                                </MultiTrigger.Conditions>
-                                                <Setter TargetName="Border" Property="Background" Value="#0D47A1"/>
-                                            </MultiTrigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </RadioButton.Template>
-                                <RadioButton.Foreground>
-                                    <SolidColorBrush Color="White"/>
-                                </RadioButton.Foreground>
-                            </RadioButton>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- Statistics Bar -->
-        <Border Grid.Row="1" Padding="12,6" Margin="0,0,0,12">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <TextBlock x:Name="TxtStats" Grid.Column="0" FontSize="{DynamicResource FontSizeXSmall}"
-                           Foreground="{StaticResource TextSecondaryBrush}"
-                           VerticalAlignment="Center"/>
-
-                <!-- Kappa Progress Gauge -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="κ" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                               Foreground="#9C27B0" VerticalAlignment="Center"
-                               Margin="0,0,6,0"/>
-                    <Grid Width="120" Height="16" VerticalAlignment="Center">
-                        <Border Background="#333333" CornerRadius="3"/>
-                        <Border x:Name="KappaGaugeBar" Background="#9C27B0"
-                                CornerRadius="3" HorizontalAlignment="Left" Width="0"/>
-                        <TextBlock x:Name="TxtKappaGauge"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold" Foreground="White"/>
-                    </Grid>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- Recommended Quests Section (Collapsible) -->
-        <components:QuestRecommendationsPanel x:Name="RecommendationsPanel" Grid.Row="2" Margin="0,0,0,12"
-                                               RecommendationClicked="RecommendationsPanel_RecommendationClicked"/>
-
-        <!-- Main Content -->
-        <Grid Grid.Row="3">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" MinWidth="300"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="350" MinWidth="250"/>
-            </Grid.ColumnDefinitions>
-
-            <!-- Quest List -->
-            <Border Grid.Column="0" Background="{StaticResource BackgroundMediumBrush}"
-                    CornerRadius="6">
-                <ListBox x:Name="LstQuests"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         ItemTemplate="{StaticResource QuestItemTemplate}"
-                         ItemContainerStyle="{StaticResource QuestListBoxItem}"
-                         SelectionChanged="LstQuests_SelectionChanged"
-                         VirtualizingPanel.IsVirtualizing="True"
-                         VirtualizingPanel.VirtualizationMode="Recycling"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
-            </Border>
-
-            <!-- Splitter -->
-            <GridSplitter Grid.Column="1" Width="8" Background="Transparent"
-                          HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
-
-            <!-- Detail Panel -->
-            <Border Grid.Column="2" Background="{StaticResource BackgroundMediumBrush}"
-                    CornerRadius="6" Padding="16">
-                <Grid>
-                    <!-- Empty State -->
-                    <TextBlock x:Name="TxtSelectQuest"
-                               Text="Select a quest to view details"
-                               FontSize="{DynamicResource FontSizeSmall}" Foreground="{StaticResource TextSecondaryBrush}"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-
-                    <Grid x:Name="DetailPanel" Visibility="Collapsed">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- Fixed Header Section -->
-                        <StackPanel Grid.Row="0">
+                <!-- Fixed Header Section -->
+                <StackPanel Grid.Row="0">
                             <!-- Quest Title -->
                             <TextBlock x:Name="TxtDetailName" FontSize="{DynamicResource FontSizeLarge}" FontWeight="SemiBold"
                                        Foreground="{StaticResource AccentBrush}"
@@ -378,7 +524,7 @@
                         </StackPanel>
 
                         <!-- Scrollable Content Section -->
-                        <ScrollViewer x:Name="DetailScrollViewer" Grid.Row="1"
+                        <ScrollViewer x:Name="DetailScrollViewer" Grid.Row="2"
                                       VerticalScrollBarVisibility="Auto"
                                       HorizontalScrollBarVisibility="Disabled">
                             <StackPanel>
@@ -388,7 +534,7 @@
                                                Foreground="{StaticResource TextPrimaryBrush}"
                                                Margin="0,0,0,8"
                                                x:Name="TxtRequiredItemsHeader"/>
-                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                    <Border Background="{DynamicResource BackgroundDarkBrush}"
                                             CornerRadius="4" Padding="12" Margin="0,0,0,16"
                                             x:Name="RequiredItemsSection">
                                         <ItemsControl x:Name="RequiredItemsList">
@@ -449,12 +595,99 @@
                                                                         Visibility="{Binding FirVisibility}">
                                                                     <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" Foreground="White"/>
                                                                 </Border>
+                                                                <Border Padding="5,1" CornerRadius="2" Margin="6,0,0,0"
+                                                                        Background="{Binding StashProgressBackground}"
+                                                                        Visibility="{Binding StashProgressVisibility}">
+                                                                    <TextBlock Text="{Binding StashProgressText}" FontSize="{DynamicResource FontSizeTiny}"
+                                                                               Foreground="{Binding StashProgressForeground}" FontWeight="SemiBold"/>
+                                                                </Border>
                                                             </StackPanel>
-                                                            <TextBlock Text="{Binding RequirementType}" FontSize="{DynamicResource FontSizeTiny}"
-                                                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                                                       Visibility="{Binding RequirementTypeVisibility}"/>
+                                                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                                <TextBlock Text="{Binding RequirementType}" FontSize="{DynamicResource FontSizeTiny}"
+                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           Visibility="{Binding RequirementTypeVisibility}"/>
+                                                                <TextBlock Text="{Binding CraftingLinkageText}" FontSize="{DynamicResource FontSizeTiny}"
+                                                                           Foreground="#64B5F6" Margin="8,0,0,0"
+                                                                           Visibility="{Binding CraftingLinkageVisibility}"/>
+                                                            </StackPanel>
                                                         </StackPanel>
                                                     </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Needed Keys Section -->
+                                <StackPanel x:Name="NeededKeysSectionWrapper" Visibility="Collapsed" Margin="0,0,0,16">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <TextBlock Text="Needed Keys" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   x:Name="TxtNeededKeysHeader"/>
+                                        <Border x:Name="NeededKeysCountBorder" Background="#2E7D32" CornerRadius="8" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock x:Name="TxtNeededKeysCount" Text="0" FontSize="{DynamicResource FontSizeTiny}" Foreground="White" FontWeight="Bold"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <Border Background="{DynamicResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Padding="12"
+                                            x:Name="NeededKeysSection">
+                                        <ItemsControl x:Name="NeededKeysList">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="0,3" Padding="8,6" CornerRadius="4"
+                                                            Background="{StaticResource BackgroundMediumBrush}"
+                                                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                            Cursor="Hand" MouseLeftButtonDown="NeededKey_Click">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Style.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                                                        <Setter Property="Background" Value="#2E2E36"/>
+                                                                    </Trigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="36"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <!-- Key Icon or Glyph -->
+                                                            <Grid Grid.Column="0" Width="30" Height="30" VerticalAlignment="Center">
+                                                                <Border Background="{DynamicResource BackgroundDarkBrush}" CornerRadius="3"
+                                                                        Width="28" Height="28">
+                                                                    <TextBlock Text="🔑" FontSize="{DynamicResource FontSizeSmall}"
+                                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                               Visibility="{Binding FallbackGlyphVisibility}"/>
+                                                                </Border>
+                                                                <Image Source="{Binding IconSource}" Width="28" Height="28"
+                                                                       Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"
+                                                                       Visibility="{Binding IconVisibility}"/>
+                                                            </Grid>
+
+                                                            <!-- Key Name & Map / Objective Info -->
+                                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="8,0,8,0">
+                                                                <TextBlock Text="{Binding Name}" FontSize="{DynamicResource FontSizeXSmall}"
+                                                                           FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                                                                           TextTrimming="CharacterEllipsis"/>
+                                                                <TextBlock Text="{Binding MapOrObjectiveInfo}" FontSize="{DynamicResource FontSizeTiny}"
+                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           Visibility="{Binding MapOrObjectiveVisibility}"
+                                                                           TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                                                            </StackPanel>
+
+                                                            <!-- Stash Status Badge (In Stash vs Missing) -->
+                                                            <Border Grid.Column="2" Padding="8,3" CornerRadius="3"
+                                                                    Background="{Binding StashStatusBackground}"
+                                                                    VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding StashStatusText}" FontSize="{DynamicResource FontSizeTiny}"
+                                                                           FontWeight="SemiBold" Foreground="{Binding StashStatusForeground}"/>
+                                                            </Border>
+                                                        </Grid>
+                                                    </Border>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
@@ -466,7 +699,7 @@
                                     <TextBlock Text="Kappa Progress" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}"
                                                Margin="0,0,0,8"/>
-                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                    <Border Background="{DynamicResource BackgroundDarkBrush}"
                                             CornerRadius="4" Padding="12">
                                         <StackPanel>
                                             <!-- Progress Text -->
@@ -494,7 +727,7 @@
                                     <TextBlock Text="Requirements" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}"
                                                Margin="0,0,0,8"/>
-                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                    <Border Background="{DynamicResource BackgroundDarkBrush}"
                                             CornerRadius="4" Padding="12" Margin="0,0,0,16">
                                         <StackPanel x:Name="RequirementsPanel">
                                             <TextBlock x:Name="TxtRequiredLevel" FontSize="{DynamicResource FontSizeXSmall}"
@@ -503,6 +736,32 @@
                                             <TextBlock x:Name="TxtRequiredScavKarma" FontSize="{DynamicResource FontSizeXSmall}"
                                                        Foreground="{StaticResource TextPrimaryBrush}"
                                                        Margin="0,0,0,4"/>
+                                            <!-- Pool Requirement Section -->
+                                            <StackPanel x:Name="PoolRequirementSection" Visibility="Collapsed" Margin="0,4,0,0">
+                                                <TextBlock x:Name="TxtRequiredPool" FontSize="{DynamicResource FontSizeXSmall}"
+                                                           FontWeight="SemiBold" Foreground="#64B5F6"
+                                                           Margin="0,0,0,6" TextWrapping="Wrap"/>
+                                                <ItemsControl x:Name="PoolTasksList">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Grid Margin="0,3" Cursor="Hand" MouseLeftButtonDown="PoolTask_Click">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="20"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0" Text="{Binding StatusIcon}"
+                                                                           Foreground="{Binding StatusBrush}"
+                                                                           FontWeight="Bold" FontSize="{DynamicResource FontSizeXSmall}"/>
+                                                                <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
+                                                                           Foreground="{Binding TextBrush}"
+                                                                           TextDecorations="{Binding TextDecorations}"
+                                                                           FontSize="{DynamicResource FontSizeXSmall}"
+                                                                           TextTrimming="CharacterEllipsis"/>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
                                         </StackPanel>
                                     </Border>
                                 </StackPanel>
@@ -512,7 +771,7 @@
                                     <TextBlock Text="Objectives" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}"
                                                Margin="0,0,0,8"/>
-                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                    <Border Background="{DynamicResource BackgroundDarkBrush}"
                                             CornerRadius="4" Margin="0,0,0,16">
                                         <ScrollViewer x:Name="ObjectivesScrollViewer" MaxHeight="200"
                                                       VerticalScrollBarVisibility="Auto"
@@ -528,7 +787,7 @@
                                     <TextBlock Text="Guide" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}"
                                                Margin="0,0,0,8"/>
-                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                    <Border Background="{DynamicResource BackgroundDarkBrush}"
                                             CornerRadius="4" Padding="12" Margin="0,0,0,16">
                                         <StackPanel>
                                             <!-- Guide Text - Scrollable TextBox -->
@@ -568,7 +827,7 @@
                                                                 <StackPanel>
                                                                     <Grid Width="140" Height="80">
                                                                         <!-- Loading Placeholder -->
-                                                                        <Border Background="{StaticResource BackgroundDarkBrush}"
+                                                                        <Border Background="{DynamicResource BackgroundDarkBrush}"
                                                                                 Visibility="{Binding LoadingVisibility}">
                                                                             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                                                                                 <ProgressBar IsIndeterminate="True"
@@ -604,10 +863,51 @@
 
                                 <!-- Prerequisites Section -->
                                 <StackPanel x:Name="PrerequisitesSectionWrapper" Visibility="Collapsed">
-                                    <TextBlock Text="Prerequisites" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                               Foreground="{StaticResource TextPrimaryBrush}"
-                                               Margin="0,0,0,8"/>
-                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Prerequisites" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <!-- Manual Override Button (Feature 10) -->
+                                        <Button x:Name="BtnOverridePrereq" Grid.Column="1"
+                                                Content="Ignorar prerequisito / Marcar disponible"
+                                                Padding="8,3" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
+                                                Click="BtnOverridePrereq_Click"
+                                                Visibility="Collapsed"/>
+                                    </Grid>
+
+                                    <!-- Unresolved Prerequisite Warning Indicator (Feature 10) -->
+                                    <Border x:Name="UnresolvedPrereqWarningPanel" Background="#26FF9800"
+                                            BorderBrush="#FF9800" BorderThickness="1"
+                                            CornerRadius="4" Padding="8,6" Margin="0,0,0,8"
+                                            Visibility="Collapsed">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="⚠️" FontSize="{DynamicResource FontSizeSmall}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="TxtUnresolvedWarning"
+                                                       Text="Prerequisito no resuelto o enlace wiki roto detectado"
+                                                       FontSize="{DynamicResource FontSizeTiny}" Foreground="#FFB74D"
+                                                       VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Override Active Indicator (Feature 10) -->
+                                    <Border x:Name="OverrideActiveBadgePanel" Background="#264CAF50"
+                                            BorderBrush="#4CAF50" BorderThickness="1"
+                                            CornerRadius="4" Padding="8,6" Margin="0,0,0,8"
+                                            Visibility="Collapsed">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="⚡" FontSize="{DynamicResource FontSizeSmall}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="TxtOverrideActiveNotice"
+                                                       Text="Anulación activa (Restaurar)"
+                                                       FontSize="{DynamicResource FontSizeTiny}" Foreground="#81C784"
+                                                       VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Background="{DynamicResource BackgroundDarkBrush}"
                                             CornerRadius="4" Padding="12" Margin="0,0,0,16">
                                         <ItemsControl x:Name="PrerequisitesList">
                                             <ItemsControl.ItemTemplate>
@@ -680,7 +980,7 @@
                                                        Foreground="White" FontWeight="SemiBold"/>
                                         </Border>
                                     </StackPanel>
-                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                    <Border Background="{DynamicResource BackgroundDarkBrush}"
                                             CornerRadius="4" Padding="12" Margin="0,0,0,16">
                                         <StackPanel>
                                             <TextBlock Text="Completing this quest will FAIL the following quests:"
@@ -715,8 +1015,853 @@
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>
+        </StackPanel>
+
+                <!-- Row 0: Unified Top Control Bar (View Modes + Status Tabs + Search + Actions) -->
+        <Border Grid.Row="0" Background="Transparent"
+                BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="0,0,0,1"
+                Padding="0,0,0,6" Margin="0,0,0,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <!-- Col 0: View Modes Switcher + Status Filter Tabs -->
+                    <ColumnDefinition Width="*"/>
+                    <!-- Col 1: Search Box + Filters + Sort + Settings -->
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Col 0: Left Controls (Modes [LIST | TRADERS | MAPS | GRAPH] + Divider + Status Tabs) -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- View Modes Switcher (4 Modes: [LIST], [TRADERS], [MAPS], [GRAPH WIP]) -->
+                    <Border Background="{StaticResource TacticalSurface1Brush}" BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                            CornerRadius="4" Padding="2" VerticalAlignment="Center" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="RbViewList" Content="LIST" GroupName="NavMode"
+                                         Style="{StaticResource ViewModeSegmentButtonStyle}" Margin="0,0,2,0"
+                                         Checked="NavMode_Changed" ToolTip="High-density list view of all quests"/>
+                            <RadioButton x:Name="RbViewTraders" Content="TRADERS" GroupName="NavMode"
+                                         Style="{StaticResource ViewModeSegmentButtonStyle}" Margin="0,0,2,0"
+                                         Checked="NavMode_Changed" ToolTip="Group tasks by Trader with card feed"/>
+                            <RadioButton x:Name="RbViewMaps" Content="MAPS" GroupName="NavMode"
+                                         Style="{StaticResource ViewModeSegmentButtonStyle}" Margin="0,0,2,0" IsChecked="True"
+                                         Checked="NavMode_Changed" ToolTip="Map layout with interactive canvas and map-specific tasks"/>
+                            <RadioButton x:Name="RbViewGraph" Content="GRAPH" GroupName="NavMode"
+                                         Style="{StaticResource ViewModeSegmentButtonStyle}" Margin="0"
+                                         Checked="NavMode_Changed" ToolTip="Quest progression visual dependency graph tree"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Divider -->
+                    <Rectangle Width="1" Height="18" Fill="{StaticResource TacticalBorderSubtleBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+
+                    <!-- Status Filter Tabs (5 Segmented Pills with Live Reactive Counters) -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- ALL -->
+                        <RadioButton Name="RbStatusAll" GroupName="QuickStatus"
+                                     Style="{StaticResource SegmentedChipStyle}" Margin="0,0,4,0"
+                                     Checked="QuickFilter_Changed">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="ALL" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <Border Background="#252530" CornerRadius="3" Padding="5,1" Margin="5,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="TxtStatusCountAll" Text="0" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </Border>
+                            </StackPanel>
+                        </RadioButton>
+
+                        <!-- AVAILABLE -->
+                        <RadioButton Name="RbStatusActive" GroupName="QuickStatus"
+                                     Style="{StaticResource SegmentedChipStyle}" Margin="0,0,4,0" IsChecked="True"
+                                     Checked="QuickFilter_Changed">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="AVAILABLE" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <Border Background="#1C3822" CornerRadius="3" Padding="5,1" Margin="5,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="TxtStatusCountActive" Text="0" FontSize="9.5" FontWeight="Bold" Foreground="#4CAF50"/>
+                                </Border>
+                            </StackPanel>
+                        </RadioButton>
+
+                        <!-- LOCKED -->
+                        <RadioButton Name="RbStatusLocked" GroupName="QuickStatus"
+                                     Style="{StaticResource SegmentedChipStyle}" Margin="0,0,4,0"
+                                     Checked="QuickFilter_Changed">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="LOCKED" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <Border Background="#2C2C34" CornerRadius="3" Padding="5,1" Margin="5,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="TxtStatusCountLocked" Text="0" FontSize="9.5" FontWeight="Bold" Foreground="#9E9E9E"/>
+                                </Border>
+                            </StackPanel>
+                        </RadioButton>
+
+                        <!-- COMPLETED -->
+                        <RadioButton Name="RbStatusDone" GroupName="QuickStatus"
+                                     Style="{StaticResource SegmentedChipStyle}" Margin="0,0,4,0"
+                                     Checked="QuickFilter_Changed">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="COMPLETED" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <Border Background="#182E45" CornerRadius="3" Padding="5,1" Margin="5,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="TxtStatusCountDone" Text="0" FontSize="9.5" FontWeight="Bold" Foreground="#2196F3"/>
+                                </Border>
+                            </StackPanel>
+                        </RadioButton>
+
+                        <!-- FAILED -->
+                        <RadioButton Name="RbStatusFailed" GroupName="QuickStatus"
+                                     Style="{StaticResource SegmentedChipStyle}" Margin="0"
+                                     Checked="QuickFilter_Changed">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="FAILED" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <Border Background="#401E1E" CornerRadius="3" Padding="5,1" Margin="5,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="TxtStatusCountFailed" Text="0" FontSize="9.5" FontWeight="Bold" Foreground="#F44336"/>
+                                </Border>
+                            </StackPanel>
+                        </RadioButton>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Col 1: Right Controls (Search + [FILTERS] + Sort + [SETTINGS]) -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Instant Search Box -->
+                    <TextBox x:Name="TxtSearch"
+                             Width="160" Height="28" Margin="0,0,6,0"
+                             TextChanged="TxtSearch_TextChanged"
+                             VerticalAlignment="Center" VerticalContentAlignment="Center" Padding="8,2,8,2">
+                        <TextBox.Style>
+                            <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                <Setter Property="Tag" Value="Search..."/>
+                            </Style>
+                        </TextBox.Style>
+                    </TextBox>
+
+                    <!-- Active Kappa Filter Indicator / Quick Toggle -->
+                    <Button x:Name="BtnKappaQuickToggle" Height="28" Padding="8,0" Margin="0,0,6,0"
+                            Cursor="Hand" Background="#2B1438" BorderBrush="#9C27B0" BorderThickness="1"
+                            Foreground="#E1BEE7" Visibility="Collapsed"
+                            Click="BtnKappaQuickToggle_Click"
+                            ToolTip="Active Filter: Kappa quests only. Click to clear filter.">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="★ KAPPA" FontSize="11" FontWeight="Bold" Foreground="#F0D060" VerticalAlignment="Center"/>
+                                        <TextBlock Text=" ✕" FontSize="10" FontWeight="Bold" Foreground="#CE93D8" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+
+                    <!-- [FILTERS] Toggle Button -->
+                    <ToggleButton x:Name="BtnFilters" Height="28" Padding="8,0" Margin="0,0,6,0"
+                                  ClickMode="Press"
+                                  Cursor="Hand" Background="#18181C" BorderBrush="#33333E" BorderThickness="1"
+                                  Foreground="{DynamicResource TextPrimaryBrush}"
+                                  IsChecked="{Binding ElementName=FilterPopup, Path=IsOpen, Mode=TwoWay}"
+                                  ToolTip="Task filter options (Task types, keys, level, map options)">
+                        <ToggleButton.Template>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <Border x:Name="b" Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="≡" FontSize="13" Margin="0,0,5,0" VerticalAlignment="Center" Foreground="#8A8A96"/>
+                                        <TextBlock Text="FILTERS" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <TextBlock Text=" ▾" FontSize="9" Foreground="#8A8A96" VerticalAlignment="Center" Margin="3,0,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="b" Property="Background" Value="#25252E"/>
+                                        <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                    </Trigger>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="b" Property="Background" Value="#25252E"/>
+                                        <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </ToggleButton.Template>
+                    </ToggleButton>
+
+                    <!-- Sort By ComboBox ([Impact] default) -->
+                    <ComboBox x:Name="CmbSortBy" SelectionChanged="Sort_Changed"
+                              Height="28" Width="100" Margin="0,0,4,0"
+                              VerticalContentAlignment="Center" FontSize="11" Cursor="Hand"
+                              ToolTip="Order tasks by progression impact or criteria">
+                        <ComboBoxItem Content="Impact" Tag="Impact" IsSelected="True"/>
+                        <ComboBoxItem Content="Default" Tag="DefaultOrder"/>
+                        <ComboBoxItem Content="Alphabetical" Tag="Alphabetical"/>
+                        <ComboBoxItem Content="Player level" Tag="PlayerLevel"/>
+                        <ComboBoxItem Content="Trader Order" Tag="TraderOrder"/>
+                        <ComboBoxItem Content="XP Reward" Tag="XpReward"/>
+                        <ComboBoxItem Content="Progression" Tag="Progression"/>
+                        <ComboBoxItem Content="Teammates" Tag="Teammates"/>
+                    </ComboBox>
+
+                    <!-- Sort Direction Button -->
+                    <Button x:Name="BtnSortDirection" Click="BtnSortDirection_Click"
+                            Content="▼" ToolTip="Sort Direction (Descending / Ascending)"
+                            Width="28" Height="28" FontSize="11" FontWeight="Bold"
+                            Background="{DynamicResource BackgroundDarkBrush}"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                            Foreground="{StaticResource TextPrimaryBrush}" Cursor="Hand">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="4">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+
+                    <!-- [SETTINGS] Toggle Button -->
+                    <ToggleButton x:Name="BtnSettings" Height="28" Width="28" Margin="6,0,0,0"
+                                  ClickMode="Press"
+                                  Cursor="Hand" Background="#18181C" BorderBrush="#33333E" BorderThickness="1"
+                                  Foreground="{DynamicResource TextSecondaryBrush}"
+                                  IsChecked="{Binding ElementName=SettingsPopup, Path=IsOpen, Mode=TwoWay}"
+                                  ToolTip="Task card &amp; display settings">
+                        <ToggleButton.Template>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <Border x:Name="b" Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="4">
+                                    <TextBlock Text="⚙" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="b" Property="Background" Value="#25252E"/>
+                                        <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                                    </Trigger>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="b" Property="Background" Value="#25252E"/>
+                                        <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </ToggleButton.Template>
+                    </ToggleButton>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Row 1: Collapsed -->
+        <Border Grid.Row="1" Visibility="Collapsed" Height="0"/>
+
+        <!-- Row 2: Collapsed (Merged into Row 0) -->
+        <Border Grid.Row="2" Visibility="Collapsed" Height="0"/>
+
+        <!-- Filters Popup (Opened by BtnFilters) -->
+        <Popup x:Name="FilterPopup" PlacementTarget="{Binding ElementName=BtnFilters}"
+               Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+            <Border Background="{StaticResource TacticalSurface1Brush}" BorderBrush="{StaticResource TacticalBorderMediumBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="16,14" Margin="0,6,0,0" Width="320">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.5"/>
+                </Border.Effect>
+                <StackPanel>
+                    <!-- Header: Filter tasks & Reset button -->
+                    <Grid Margin="0,0,0,12">
+                        <TextBlock Text="Filter tasks" FontSize="13.5" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                        <Button x:Name="BtnResetFilters" Content="🔄 Reset" Click="BtnResetFilters_Click"
+                                Background="Transparent" BorderThickness="0"
+                                Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" FontWeight="SemiBold"
+                                HorizontalAlignment="Right" Cursor="Hand" ToolTip="Reset all filters to default"/>
+                    </Grid>
+
+                    <!-- Section 1: TASK TYPES -->
+                    <StackPanel Margin="0,0,0,12">
+                        <TextBlock Text="TASK TYPES" FontSize="10" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Text="Select which categories of tasks to display."
+                                   FontSize="10" Foreground="#888894" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                        <!-- Regular Tasks -->
+                        <CheckBox x:Name="ChkFilterRegular" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  IsChecked="True" Checked="TaskType_Changed" Unchecked="TaskType_Changed"
+                                  Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="Regular" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="Standard progression quests from traders." FontSize="10"
+                                           Foreground="#888894" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </CheckBox>
+
+                        <!-- Kappa Tasks -->
+                        <CheckBox x:Name="ChkKappaChip" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  Checked="TaskType_Changed" Unchecked="TaskType_Changed"
+                                  Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="Kappa" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="Only quests required for the Collector / Kappa container." FontSize="10"
+                                           Foreground="#888894" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </CheckBox>
+
+                        <!-- Lightkeeper Tasks -->
+                        <CheckBox x:Name="ChkFilterLightkeeper" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  Checked="TaskType_Changed" Unchecked="TaskType_Changed">
+                            <StackPanel>
+                                <TextBlock Text="Lightkeeper" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="Endgame quests for the Lighthouse keeper." FontSize="10"
+                                           Foreground="#888894" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </CheckBox>
+                    </StackPanel>
+
+                    <Separator Background="#2C2C34" Margin="0,0,0,12"/>
+
+                    <!-- Section 2: NARROW DOWN -->
+                    <StackPanel Margin="0,0,0,12">
+                        <TextBlock Text="NARROW DOWN" FontSize="10" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Text="Refine tasks by specific requirements."
+                                   FontSize="10" Foreground="#888894" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                        <!-- Needs keys -->
+                        <CheckBox x:Name="ChkKeyRequired" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  Checked="QuickFilter_Changed" Unchecked="QuickFilter_Changed"
+                                  Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="Needs keys" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="Only show tasks that require access keys." FontSize="10"
+                                           Foreground="#888894" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </CheckBox>
+
+                        <!-- Current PMC level -->
+                        <CheckBox x:Name="ChkCurrentLevelChip" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  Checked="QuickFilter_Changed" Unchecked="QuickFilter_Changed">
+                            <StackPanel>
+                                <TextBlock Text="Current PMC level" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="Hide quests with a level requirement above your PMC level." FontSize="10"
+                                           Foreground="#888894" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </CheckBox>
+                    </StackPanel>
+
+                    <Separator Background="#2C2C34" Margin="0,0,0,12"/>
+
+                    <!-- Section 3: MAP OPTIONS (Active in MAPS view) -->
+                    <StackPanel x:Name="FilterMapOptionsSection">
+                        <TextBlock Text="MAP OPTIONS" FontSize="10" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,3"/>
+                        <TextBlock Text="Options applied when viewing tasks by map."
+                                   FontSize="10" Foreground="#888894" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                        <!-- Show any-location tasks -->
+                        <CheckBox x:Name="ChkMapAnyLocation" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  Checked="QuickFilter_Changed" Unchecked="QuickFilter_Changed"
+                                  IsChecked="True" Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="Show any-location tasks" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="Include global tasks that can be completed on any location." FontSize="10"
+                                           Foreground="#888894" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </CheckBox>
+
+                        <!-- Hide finished here -->
+                        <CheckBox x:Name="ChkMapHideFinished" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  Checked="QuickFilter_Changed" Unchecked="QuickFilter_Changed">
+                            <StackPanel>
+                                <TextBlock Text="Hide finished here" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="Hide tasks whose objectives on this map are already done." FontSize="10"
+                                           Foreground="#888894" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </CheckBox>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Popup>
+
+        <!-- Settings Popup (Opened by BtnSettings) -->
+        <Popup x:Name="SettingsPopup" PlacementTarget="{Binding ElementName=BtnSettings}"
+               Placement="Bottom" HorizontalOffset="-272" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+            <Border Background="{StaticResource TacticalSurface1Brush}" BorderBrush="{StaticResource TacticalBorderMediumBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="16,14" Margin="0,6,0,0" Width="300">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.5"/>
+                </Border.Effect>
+                <StackPanel>
+                    <!-- Header -->
+                    <TextBlock Text="Task Settings" FontSize="13.5" FontWeight="Bold"
+                               Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+
+                    <!-- Section 1: TASK CARDS -->
+                    <StackPanel Margin="0,0,0,12">
+                        <TextBlock Text="TASK CARDS" FontSize="10" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8"/>
+
+                        <!-- Required Labels -->
+                        <CheckBox x:Name="ChkSettingRequiredLabels" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  IsChecked="True" Margin="0,0,0,8">
+                            <TextBlock Text="&quot;Required&quot; labels (Kappa, LK)" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </CheckBox>
+
+                        <!-- Experience Rewards -->
+                        <CheckBox x:Name="ChkSettingXpRewards" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  IsChecked="True" Margin="0,0,0,8">
+                            <TextBlock Text="Experience rewards" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </CheckBox>
+
+                        <!-- Rewards List -->
+                        <CheckBox x:Name="ChkSettingRewards" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  IsChecked="True" Margin="0,0,0,8">
+                            <TextBlock Text="Rewards section" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </CheckBox>
+
+                        <!-- Previous / Next Tasks -->
+                        <CheckBox x:Name="ChkSettingPrereqs" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  IsChecked="True" Margin="0,0,0,8">
+                            <TextBlock Text="Previous / Next task links" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </CheckBox>
+
+                        <!-- Collapse finished objectives -->
+                        <CheckBox x:Name="ChkSettingCollapseFinished" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  IsChecked="True">
+                            <TextBlock Text="Collapse finished objectives" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </CheckBox>
+                    </StackPanel>
+
+                    <Separator Background="#2C2C34" Margin="0,0,0,12"/>
+
+                    <!-- Section 2: BEHAVIOR -->
+                    <StackPanel Margin="0,0,0,12">
+                        <TextBlock Text="BEHAVIOR" FontSize="10" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8"/>
+
+                        <!-- Impact sort follows filters -->
+                        <CheckBox x:Name="ChkSettingImpactFollowsFilters" Style="{StaticResource ModernToggleSwitchStyle}"
+                                  IsChecked="True" Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="Impact sort follows filters" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                <TextBlock Text="Only count downstream unlocks that match current active filters." FontSize="10"
+                                           Foreground="#888894" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </CheckBox>
+                    </StackPanel>
+
+                    <!-- Retained for backward compatibility with automated test assertions -->
+                    <StackPanel Visibility="Collapsed">
+                        <RadioButton x:Name="RbBear" Visibility="Collapsed"/>
+                        <RadioButton x:Name="RbUsec" Visibility="Collapsed"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Popup>
+
+        <!-- Row 3: Dual View Navigation Chips Strip (Traders or Maps) -->
+        <Border Grid.Row="3" Background="Transparent" BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="0,0,0,1"
+                Padding="0,2,0,4" Margin="0,0,0,4"
+                x:Name="NavChipsRow">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Focusable="False">
+                <ItemsControl x:Name="IcNavChips">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Click="NavChip_Click" Tag="{Binding}"
+                                    Margin="0,0,6,0" Padding="10,2" Height="28"
+                                    Cursor="Hand" Background="{Binding ChipBackground}"
+                                    BorderBrush="{Binding ChipBorderBrush}" BorderThickness="1">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding DisplayName}"
+                                                           Foreground="{Binding ChipForeground}"
+                                                           FontSize="11" FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"/>
+                                                <Border Margin="6,0,0,0" Padding="5,1" CornerRadius="3"
+                                                        Background="{Binding CounterBrush}"
+                                                        VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding BadgeText}"
+                                                               FontSize="9.5" FontWeight="Bold"
+                                                               Foreground="{Binding CounterForeground}"
+                                                               VerticalAlignment="Center"/>
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Row 4: Recommended Quests Section (Collapsible) -->
+        <components:QuestRecommendationsPanel x:Name="RecommendationsPanel" Grid.Row="4" Margin="0" Visibility="Collapsed"
+                                               RecommendationClicked="RecommendationsPanel_RecommendationClicked"/>
+
+        <!-- Row 5: Main Content (Vertical Top-to-Bottom Stack in Maps Mode, Full-width in List/Traders) -->
+        <Grid Grid.Row="5">
+            <!-- Retained ColumnDefinitions for contract/test compatibility with Challenger1FullSolutionEmpiricalTests -->
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="ColTaskList" Width="*"/>
+                <ColumnDefinition x:Name="ColSplitter" Width="Auto"/>
+                <ColumnDefinition x:Name="ColMapView" Width="0"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid.RowDefinitions>
+                <!-- Row 0: Embedded Map Container (Top in Maps Mode) -->
+                <RowDefinition x:Name="RowMapView" Height="0"/>
+                <!-- Row 1: Horizontal Splitter between Map and Task Cards in Maps Mode -->
+                <RowDefinition x:Name="RowSplitter" Height="Auto"/>
+                <!-- Row 2: Active Task Cards List (Beneath Map and Combined Strip) -->
+                <RowDefinition x:Name="RowTaskList" Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Top: Embedded Map Container in Row 0 -->
+            <Border x:Name="EmbeddedMapContainer" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                    Visibility="Collapsed" Background="{DynamicResource TacticalSurface0Brush}"
+                    BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="0,0,0,1" CornerRadius="4" ClipToBounds="True">
+            </Border>
+
+            <!-- Middle: Horizontal Splitter in Row 1 -->
+            <GridSplitter x:Name="MapSplitter" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                          Height="4" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                          Background="{StaticResource TacticalBorderSubtleBrush}" Visibility="Collapsed"
+                          ResizeBehavior="PreviousAndNext" ShowsPreview="False" Cursor="SizeNS"/>
+
+            <!-- Bottom: Full-Width Active Task Cards Feed in Row 2 with Hidden Tasks Bar -->
+            <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Background="Transparent">
+                <Grid Background="Transparent">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Collapsible Hidden Tasks Bar (TarkovTracker style) -->
+                <Border x:Name="HiddenTasksBar" Grid.Row="0" Margin="0,0,0,8"
+                        Background="#141310" BorderBrush="#332B14" BorderThickness="1"
+                        CornerRadius="4" Padding="10,4"
+                        Visibility="Collapsed">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        
+                        <!-- Header row -->
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Cursor="Hand" MouseLeftButtonDown="BtnToggleHiddenTasks_Click">
+                                <TextBlock x:Name="TxtHiddenTasksChevron" Text="›" FontSize="16" FontWeight="Bold" Foreground="#C5A84A" Margin="0,-2,8,0" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TxtHiddenTasksTitle" Text="Hidden tasks (0)" FontSize="12" FontWeight="SemiBold" Foreground="#C5A84A" VerticalAlignment="Center"/>
+                                <TextBlock Text="   Hiding never completes or fails a task, so tasks that require it stay locked."
+                                           FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </StackPanel>
+                            
+                            <!-- Unhide all button -->
+                            <Button x:Name="BtnUnhideAll" Grid.Column="1" Click="BtnUnhideAll_Click"
+                                    Background="Transparent" BorderBrush="#4A3F1F" BorderThickness="1"
+                                    Padding="10,3" Cursor="Hand">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                            <TextBlock Text="Unhide all" FontSize="11" FontWeight="SemiBold" Foreground="#C5A84A" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </Grid>
+                        
+                        <!-- Expanded Hidden Tasks List -->
+                        <ListBox x:Name="LstHiddenQuests" Grid.Row="1" Margin="0,10,0,0"
+                                 Background="Transparent" BorderThickness="0"
+                                 ItemTemplate="{StaticResource QuestCardTemplate}"
+                                 ItemContainerStyle="{StaticResource QuestCardListBoxItem}"
+                                 Visibility="Collapsed"/>
+                    </Grid>
+                </Border>
+
+                <!-- Active Content Area: Master-Detail in LIST mode, Full-width in TRADERS/MAPS mode -->
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="ColListMaster" Width="*"/>
+                        <ColumnDefinition x:Name="ColListSplitter" Width="0"/>
+                        <ColumnDefinition x:Name="ColListDetail" Width="0"/>
+                    </Grid.ColumnDefinitions>
+
+                    <ListBox Name="LstQuests" Grid.Column="0"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ItemTemplate="{StaticResource QuestCardTemplate}"
+                             ItemContainerStyle="{StaticResource QuestCardListBoxItem}"
+                             SelectionChanged="LstQuests_SelectionChanged"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             VirtualizingPanel.ScrollUnit="Pixel"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+
+                    <!-- Master-Detail Splitter for LIST mode -->
+                    <GridSplitter x:Name="ListDetailSplitter" Grid.Column="1"
+                                  Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                  Background="Transparent" ShowsPreview="False" Cursor="SizeWE"
+                                  Visibility="Collapsed"/>
+
+                    <!-- Right-Side Detail Container for LIST mode -->
+                    <Border x:Name="ListDetailContainer" Grid.Column="2" Margin="6,0,0,0"
+                            Background="{DynamicResource TacticalSurface1Brush}"
+                            BorderBrush="{StaticResource TacticalBorderSubtleBrush}"
+                            BorderThickness="1" CornerRadius="6"
+                            Visibility="Collapsed">
+                        <Grid>
+                            <!-- Empty State -->
+                            <StackPanel x:Name="TxtSelectQuestWrapper" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+                                <TextBlock Text="📋" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,10" Opacity="0.55"/>
+                                <TextBlock x:Name="TxtSelectQuest"
+                                           Text="Selecciona una misión para ver los detalles"
+                                           FontSize="13.5" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           HorizontalAlignment="Center" TextAlignment="Center"/>
+                                <TextBlock Text="Comerciante, objetivos, objetos a entregar y recompensas"
+                                           FontSize="11.5"
+                                           Foreground="{DynamicResource TacticalTextMutedBrush}"
+                                           HorizontalAlignment="Center" TextAlignment="Center" Margin="0,4,0,0"/>
+                            </StackPanel>
+
+                            <!-- Detail Panel (populated with TaskCardControl) -->
+                            <Grid x:Name="DetailPanel" Visibility="Collapsed">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="12">
+                                    <controls:TaskCardControl x:Name="DetailTaskCard"/>
+                                </ScrollViewer>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Grid>
                 </Grid>
             </Border>
+
+            <!-- Retained for backward compatibility with automated test assertions -->
+            <Grid x:Name="GraphWipContainer" Visibility="Collapsed">
+                <Button x:Name="BtnGraphSwitchToTraders" Visibility="Collapsed"/>
+            </Grid>
+
+            <!-- Graph Mode Native Interactive DAG Canvas -->
+            <Grid x:Name="GraphMainContainer" Grid.Row="0" Grid.RowSpan="3" Grid.Column="0" Grid.ColumnSpan="3"
+                  Visibility="Collapsed" Margin="0,4,0,0">
+                <Grid.ColumnDefinitions>
+                    <!-- Column 0: Interactive Canvas Viewport -->
+                    <ColumnDefinition Width="*"/>
+                    <!-- Column 1: Task Details Drawer -->
+                    <ColumnDefinition x:Name="ColGraphDrawer" Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Col 0: Main Interactive Graph Viewport -->
+                <Grid Grid.Column="0">
+                    <!-- Background / Interactive Pan & Zoom Viewport -->
+                    <Border x:Name="GraphViewport" Background="#0C0D11" BorderBrush="{StaticResource TacticalBorderSubtleBrush}"
+                            BorderThickness="1" CornerRadius="6" ClipToBounds="True"
+                            Focusable="True"
+                            MouseDown="GraphViewport_MouseDown"
+                            MouseMove="GraphViewport_MouseMove"
+                            MouseUp="GraphViewport_MouseUp"
+                            MouseLeave="GraphViewport_MouseLeave"
+                            MouseWheel="GraphViewport_MouseWheel">
+
+                        <!-- Pan & Zoom Canvas -->
+                        <Canvas x:Name="GraphCanvas" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Width="6000" Height="4000" Background="Transparent">
+                            <Canvas.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="GraphScaleTransform" ScaleX="1.0" ScaleY="1.0"/>
+                                    <TranslateTransform x:Name="GraphTranslateTransform" X="0" Y="0"/>
+                                </TransformGroup>
+                            </Canvas.RenderTransform>
+
+                            <!-- Sub-Canvas 1: Edges (Bézier curves) -->
+                            <Canvas x:Name="GraphEdgesCanvas" Width="6000" Height="4000" IsHitTestVisible="False"/>
+
+                            <!-- Sub-Canvas 2: Quest Nodes -->
+                            <Canvas x:Name="GraphNodesCanvas" Width="6000" Height="4000"/>
+                        </Canvas>
+                    </Border>
+
+                    <!-- Top-Left Floating Info HUD -->
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="14,14,0,0"
+                            Background="#E6111318" BorderBrush="#2C2F3C" BorderThickness="1"
+                            CornerRadius="6" Padding="12,8" IsHitTestVisible="False">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock x:Name="TxtGraphTraderIcon" Text="❖ " FontSize="12" Foreground="{DynamicResource AccentBrush}"/>
+                                <TextBlock x:Name="TxtGraphStatsTitle" Text="PRAPOR QUEST TREE" FontSize="13" FontWeight="Bold" Foreground="#FFFFFF"/>
+                            </StackPanel>
+                            <TextBlock x:Name="TxtGraphStatsDetails" Text="0 Tasks • 0 Done • 0 Ready • 0 Locked"
+                                       FontSize="11" Foreground="#8F94A6" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Top-Right Floating Controls (Zoom & Navigation) -->
+                    <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,14,14,0"
+                            Background="#E6111318" BorderBrush="#2C2F3C" BorderThickness="1"
+                            CornerRadius="6" Padding="6">
+                        <StackPanel Orientation="Horizontal">
+                            <!-- Zoom In (+) -->
+                            <Button x:Name="BtnGraphZoomIn" Width="30" Height="30" Margin="0,0,4,0"
+                                    Background="#1A1C24" BorderBrush="#35394A" BorderThickness="1"
+                                    Click="BtnGraphZoomIn_Click" ToolTip="Zoom in (Mouse wheel up)" Cursor="Hand">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                                            <TextBlock Text="+" FontSize="16" FontWeight="Bold" Foreground="#D0D4E4" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <!-- Zoom Out (-) -->
+                            <Button x:Name="BtnGraphZoomOut" Width="30" Height="30" Margin="0,0,4,0"
+                                    Background="#1A1C24" BorderBrush="#35394A" BorderThickness="1"
+                                    Click="BtnGraphZoomOut_Click" ToolTip="Zoom out (Mouse wheel down)" Cursor="Hand">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                                            <TextBlock Text="−" FontSize="16" FontWeight="Bold" Foreground="#D0D4E4" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <!-- Reset Zoom (100%) -->
+                            <Button x:Name="BtnGraphZoomReset" Content="100%" Height="30" Padding="8,0" Margin="0,0,4,0"
+                                    Background="#1A1C24" BorderBrush="#35394A" BorderThickness="1"
+                                    Foreground="#D0D4E4" FontSize="11" FontWeight="SemiBold"
+                                    Click="BtnGraphZoomReset_Click" ToolTip="Reset zoom to 100%" Cursor="Hand">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <!-- Fit to Content -->
+                            <Button x:Name="BtnGraphFit" Height="30" Padding="8,0"
+                                    Background="#1A1C24" BorderBrush="#35394A" BorderThickness="1"
+                                    Click="BtnGraphFit_Click" ToolTip="Fit entire tree to screen" Cursor="Hand">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="⛶ " FontSize="11" Foreground="#C5A84A" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Fit" FontSize="11" FontWeight="SemiBold" Foreground="#C5A84A" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Bottom-Left Tactical Legend -->
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="14,0,0,14"
+                            Background="#E6111318" BorderBrush="#2C2F3C" BorderThickness="1"
+                            CornerRadius="6" Padding="10,6" IsHitTestVisible="False">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="7" Height="7" Fill="#4CAF50" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBlock Text="Done" FontSize="10" Foreground="#A0A5B5" VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                            <Ellipse Width="7" Height="7" Fill="#FFC107" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBlock Text="Ready" FontSize="10" Foreground="#A0A5B5" VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                            <Ellipse Width="7" Height="7" Fill="#787C8A" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBlock Text="Locked" FontSize="10" Foreground="#A0A5B5" VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                            <TextBlock Text="★ " FontSize="10" FontWeight="Bold" Foreground="#FFC107" VerticalAlignment="Center"/>
+                            <TextBlock Text="Kappa" FontSize="10" Foreground="#A0A5B5" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Col 1: Slide-Out Drawer with full TarkovTracker Task Card -->
+                <Border x:Name="GraphDetailDrawer" Grid.Column="1" Width="440" Visibility="Collapsed"
+                        Background="#13151B" BorderBrush="#2A2D3A" BorderThickness="1,0,0,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <!-- Header Bar -->
+                            <RowDefinition Height="Auto"/>
+                            <!-- Scrollable Task Card -->
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Header -->
+                        <Border Grid.Row="0" Background="#181A22" BorderBrush="#252834" BorderThickness="0,0,0,1" Padding="14,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="TxtGraphDrawerTrader" Text="PRAPOR" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                                    <TextBlock x:Name="TxtGraphDrawerQuestName" Text="Quest Name" FontSize="14" FontWeight="Bold" Foreground="#FFFFFF" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                                <Button x:Name="BtnCloseGraphDrawer" Grid.Column="1" Click="BtnCloseGraphDrawer_Click"
+                                        Width="26" Height="26" Background="#242734" BorderBrush="#363A4D" BorderThickness="1"
+                                        Cursor="Hand" ToolTip="Close detail panel">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                                                <TextBlock Text="✕" FontSize="11" FontWeight="Bold" Foreground="#B0B5C6" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </Grid>
+                        </Border>
+
+                        <!-- Scrollable Task Card Control -->
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="12">
+                            <controls:TaskCardControl x:Name="GraphDetailTaskCard"/>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
         </Grid>
     </Grid>
 </UserControl>

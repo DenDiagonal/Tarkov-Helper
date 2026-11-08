@@ -8,7 +8,7 @@
         Width="320" Height="400"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
-        Background="#1E1E1E">
+        Background="{DynamicResource TacticalSurface1Brush}">
 
     <Window.Resources>
         <Style x:Key="SectionHeader" TargetType="TextBlock">
@@ -116,7 +116,7 @@
                     <TextBlock Grid.Column="0" Text="Zoom Level" Style="{StaticResource SettingLabel}"/>
                     <TextBlock x:Name="TxtZoom" Grid.Column="1" Style="{StaticResource SettingValue}"/>
                 </Grid>
-                <Slider x:Name="SliderZoom" Minimum="25" Maximum="400" Value="100"
+                <Slider x:Name="SliderZoom" Minimum="50" Maximum="400" Value="100" SmallChange="5" LargeChange="25"
                         ValueChanged="SliderZoom_ValueChanged"/>
 
                 <!-- Player Marker Size -->
@@ -131,12 +131,40 @@
                 <Slider x:Name="SliderMarkerSize" Minimum="50" Maximum="300" Value="100"
                         ValueChanged="SliderMarkerSize_ValueChanged"/>
 
+                <!-- Custom Marker Size -->
+                <TextBlock Text="Custom Marker Size" Style="{StaticResource SettingLabel}" Margin="0,8,0,4"/>
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,8">
+                    <RadioButton x:Name="RbMarkerSmall" Content="Small" Foreground="{DynamicResource TacticalTextPrimaryBrush}" Margin="0,0,16,0" Checked="MarkerPreset_Changed"/>
+                    <RadioButton x:Name="RbMarkerNormal" Content="Normal" IsChecked="True" Foreground="{DynamicResource TacticalTextPrimaryBrush}" Margin="0,0,16,0" Checked="MarkerPreset_Changed"/>
+                    <RadioButton x:Name="RbMarkerLarge" Content="Large" Foreground="{DynamicResource TacticalTextPrimaryBrush}" Checked="MarkerPreset_Changed"/>
+                </StackPanel>
+
+                <!-- Markers -->
+                <TextBlock Text="Markers" Style="{StaticResource SectionHeader}"/>
+
+                <CheckBox x:Name="ChkShowExtracts" Content="Show Extractions"
+                          Checked="ShowExtracts_Changed" Unchecked="ShowExtracts_Changed"/>
+                <CheckBox x:Name="ChkShowQuests" Content="Show Quests"
+                          Checked="ShowQuests_Changed" Unchecked="ShowQuests_Changed"/>
+                <StackPanel x:Name="QuestSubOptionsPanel" Margin="22,2,0,6">
+                    <CheckBox x:Name="ChkActiveQuestsOnly" Content="Only Active Quests" Margin="0,2"
+                              Checked="QuestSubOptions_Changed" Unchecked="QuestSubOptions_Changed"/>
+                    <CheckBox x:Name="ChkHideCompletedObjectives" Content="Hide Completed Objectives" Margin="0,2"
+                              Checked="QuestSubOptions_Changed" Unchecked="QuestSubOptions_Changed"/>
+                </StackPanel>
+                <CheckBox x:Name="ChkShowCustomMarkers" Content="Show Custom Markers"
+                          Checked="ShowCustomMarkers_Changed" Unchecked="ShowCustomMarkers_Changed"/>
+                <CheckBox x:Name="ChkShowPmcSpawns" Content="Show Spawns (PMC / Scav)"
+                          Checked="ShowPmcSpawns_Changed" Unchecked="ShowPmcSpawns_Changed"/>
+                <CheckBox x:Name="ChkShowPoiMarkers" Content="Show Bosses &amp; POIs"
+                          Checked="ShowPoiMarkers_Changed" Unchecked="ShowPoiMarkers_Changed"/>
+
                 <!-- View Mode -->
                 <TextBlock Text="View Mode" Style="{StaticResource SectionHeader}"/>
 
-                <RadioButton x:Name="RbFixed" Content="Fixed View" Foreground="#E0E0E0" Margin="0,4"
+                <RadioButton x:Name="RbFixed" Content="Fixed View" Foreground="{DynamicResource TacticalTextPrimaryBrush}" Margin="0,4"
                              Checked="ViewMode_Changed"/>
-                <RadioButton x:Name="RbTracking" Content="Player Tracking" Foreground="#E0E0E0" Margin="0,4"
+                <RadioButton x:Name="RbTracking" Content="Player Tracking" Foreground="{DynamicResource TacticalTextPrimaryBrush}" Margin="0,4"
                              Checked="ViewMode_Changed"/>
 
 
@@ -151,6 +179,33 @@
 
                 <!-- Hotkeys -->
                 <TextBlock Text="Hotkeys" Style="{StaticResource SectionHeader}"/>
+
+                <Grid Margin="0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Toggle Minimap" Style="{StaticResource SettingLabel}"/>
+                    <TextBlock Grid.Column="1" Text="Ctrl + 1" Foreground="{DynamicResource TacticalGoldBrush}" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
+                </Grid>
+
+                <Grid Margin="0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Overlay Settings" Style="{StaticResource SettingLabel}"/>
+                    <TextBlock Grid.Column="1" Text="Ctrl + 7" Foreground="{DynamicResource TacticalGoldBrush}" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
+                </Grid>
+
+                <Grid Margin="0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Click-Through" Style="{StaticResource SettingLabel}"/>
+                    <TextBlock Grid.Column="1" Text="Ctrl + 9" Foreground="{DynamicResource TacticalGoldBrush}" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
+                </Grid>
 
                 <Grid Margin="0,4">
                     <Grid.ColumnDefinitions>

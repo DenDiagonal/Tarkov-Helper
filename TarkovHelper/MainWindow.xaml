@@ -8,141 +8,281 @@
         Title="Tarkov Helper" Height="800" Width="1400"
         MinHeight="400" MinWidth="600"
         WindowStartupLocation="CenterScreen"
-        Loaded="Window_Loaded">
+        Background="{StaticResource BackgroundDarkBrush}"
+        Loaded="Window_Loaded"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        RenderOptions.ClearTypeHint="Enabled"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True">
+
+
 
     <Window.Resources>
-        <!-- Profile Toggle Style -->
-        <Style x:Key="ProfileToggleStyle" TargetType="RadioButton">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-            <Setter Property="Padding" Value="16,6"/>
+
+        <!-- Profile Faction Segment Style (BEAR / USEC) -->
+        <Style x:Key="ProfileFactionSegmentStyle" TargetType="RadioButton">
+            <Setter Property="Height" Value="22"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontSize" Value="{DynamicResource FontSizeXSmall}"/>
-            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource TacticalTextSecondaryBrush}"/>
+            <Setter Property="Background" Value="#17181F"/>
+            <Setter Property="BorderBrush" Value="{StaticResource TacticalBorderSubtleBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,0"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="14" Padding="{TemplateBinding Padding}">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#22232D"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4C4D5E"/>
+                                <Setter Property="Foreground" Value="{StaticResource TacticalTextPrimaryBrush}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#252530"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource TacticalGoldBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TacticalGoldBrush}"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Profile Toggle Style -->
+        <Style x:Key="ProfileToggleStyle" TargetType="RadioButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TacticalTextSecondaryBrush}"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource TacticalTextPrimaryBrush}"/>
                             </Trigger>
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
                                     <Condition Property="IsChecked" Value="True"/>
                                     <Condition Property="Content" Value="PVP"/>
                                 </MultiTrigger.Conditions>
-                                <Setter TargetName="border" Property="Background" Value="#D35400"/>
+                                <Setter TargetName="border" Property="Background" Value="#C5A84A"/>
+                                <Setter Property="Foreground" Value="#101114"/>
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsChecked" Value="True"/>
+                                    <Condition Property="Content" Value="SEASON"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="border" Property="Background" Value="#E06D28"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
                             </MultiTrigger>
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
                                     <Condition Property="IsChecked" Value="True"/>
                                     <Condition Property="Content" Value="PVE"/>
                                 </MultiTrigger.Conditions>
-                                <Setter TargetName="border" Property="Background" Value="#3498DB"/>
+                                <Setter TargetName="border" Property="Background" Value="#3B7EA1"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
                             </MultiTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
+
+
+
+        <!-- Header Action Button Style -->
+        <Style x:Key="HeaderActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource TacticalSurface2Brush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TacticalTextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource TacticalBorderSubtleBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{StaticResource TacticalSurface3Brush}"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource TacticalGoldBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TacticalGoldHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{StaticResource TacticalGoldBrush}"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource TacticalGoldBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TacticalTextInvertedBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
     </Window.Resources>
 
+
+
     <Grid>
+
         <Grid.RowDefinitions>
+
             <RowDefinition Height="Auto"/>
+
             <RowDefinition Height="*"/>
+
         </Grid.RowDefinitions>
+
         <!-- Main Content with Blur Effect -->
+
         <Grid x:Name="MainContent" Grid.RowSpan="2">
+
             <Grid.Effect>
+
                 <BlurEffect x:Name="BlurEffect" Radius="0"/>
+
             </Grid.Effect>
 
+
+
             <Grid.RowDefinitions>
+
                 <RowDefinition Height="Auto"/>
+
                 <RowDefinition Height="*"/>
+
             </Grid.RowDefinitions>
 
-            <!-- Title Bar -->
-            <Border x:Name="TitleBar" Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}" Padding="16,12">
+
+
+            <!-- Persistent Interactive Header (Unified Single Row, 44px height) -->
+            <Border x:Name="TitleBar" Grid.Row="0" Height="44" Background="{StaticResource TacticalSurface1Brush}" BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="0,0,0,1" Padding="14,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
+                        <!-- Left: Brand + Tab Navigation -->
                         <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
+                        <!-- Center Spacer -->
                         <ColumnDefinition Width="*"/>
+                        <!-- Right: Player Level Stepper + Action Buttons -->
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
+                    <!-- Left: Brand + Navigation Tabs -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="TARKOV HELPER" FontSize="{DynamicResource FontSizeXLarge}" FontWeight="Bold"
-                                   Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                        <!-- Brand -->
+                        <TextBlock Text="TARKOV HELPER" FontSize="13.5" FontWeight="Bold" FontFamily="{DynamicResource TacticalDisplayFont}" Foreground="{StaticResource TacticalGoldBrush}" VerticalAlignment="Center" Margin="0,0,14,0"/>
+
+                        <!-- Vertical Divider -->
+                        <Rectangle Width="1" Height="18" Fill="{StaticResource TacticalBorderSubtleBrush}" Margin="0,0,12,0" VerticalAlignment="Center"/>
+
+                        <!-- Tab Navigation (Compact height, exactly 5 tabs) -->
+                        <Border Name="TabNavigation" Height="32" Background="Transparent" BorderThickness="0" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <!-- 1. Dashboard -->
+                                <RadioButton Name="TabDashboard" Content="Dashboard"
+                                             Style="{StaticResource CompactTabButtonStyle}"
+                                             IsChecked="True"
+                                             Checked="Tab_Checked"/>
+                                <!-- 2. Storyline -->
+                                <RadioButton Name="TabStoryline" Content="Storyline"
+                                             Style="{StaticResource CompactTabButtonStyle}"
+                                             Checked="Tab_Checked"/>
+                                <!-- 3. Tasks -->
+                                <RadioButton Name="TabTasks" Content="Tasks"
+                                             Style="{StaticResource CompactTabButtonStyle}"
+                                             Checked="Tab_Checked"/>
+                                <!-- 4. Needed Items -->
+                                <RadioButton Name="TabNeededItems" Content="Needed Items"
+                                             Style="{StaticResource CompactTabButtonStyle}"
+                                             Checked="Tab_Checked"/>
+                                <!-- 5. Hideout -->
+                                <RadioButton Name="TabHideout" Content="Hideout"
+                                             Style="{StaticResource CompactTabButtonStyle}"
+                                             Checked="Tab_Checked"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
 
-                    <!-- Profile Toggle -->
-                    <Border Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="24,0,0,0"
-                            Background="{StaticResource BackgroundLightBrush}" CornerRadius="18" Padding="2">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton x:Name="RadioPvp" Content="PVP" Style="{StaticResource ProfileToggleStyle}" 
-                                         Tag="Pvp" GroupName="ProfileGroup"
-                                         ToolTip="Display PVP mode data"/>
-                            <RadioButton x:Name="RadioPve" Content="PVE" Style="{StaticResource ProfileToggleStyle}" 
-                                         Tag="Pve" GroupName="ProfileGroup"
-                                         ToolTip="Display PVE mode data"/>
-                        </StackPanel>
-                    </Border>
+                    <!-- Center Spacer -->
+                    <Grid Grid.Column="1"/>
 
-                    <!-- Right Side Controls -->
-                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-                        <!-- Player Level Control -->
-                        <Border Background="{StaticResource BackgroundLightBrush}"
-                                CornerRadius="4" Padding="4,2" Margin="0,0,12,0"
-                                VerticalAlignment="Center">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Lv." FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                           VerticalAlignment="Center" Margin="4,0,4,0"/>
-                                <Button x:Name="BtnLevelDown" Content="-" Width="24" Height="24"
-                                        Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                    <!-- Right Side: Level Stepper + Action Buttons -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Player Level Stepper (Sleek, No Clipping) -->
+                        <Border Background="{StaticResource TacticalSurface0Brush}" BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="1" CornerRadius="4" Padding="2" Margin="0,0,10,0" VerticalAlignment="Center" Height="28">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="LVL" FontSize="10.5" FontWeight="Bold"
+                                           Foreground="{StaticResource TacticalTextSecondaryBrush}" VerticalAlignment="Center" Margin="6,0,4,0"/>
+                                <Button x:Name="BtnLevelDown" Content="−" Width="22" Height="22"
+                                        Padding="0" FontSize="13" FontWeight="Bold"
+                                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                        Background="{StaticResource TacticalSurface2Brush}" Foreground="{StaticResource TacticalTextPrimaryBrush}" BorderBrush="{StaticResource TacticalBorderMediumBrush}" BorderThickness="1"
                                         Click="BtnLevelDown_Click"
-                                        ToolTip="Decrease level"/>
-                                <TextBox x:Name="TxtPlayerLevel" Text="15" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                         Foreground="{StaticResource AccentBrush}"
-                                         Background="Transparent"
-                                         BorderThickness="0"
-                                         VerticalAlignment="Center" Margin="8,0"
-                                         MinWidth="28" MaxWidth="40"
-                                         TextAlignment="Center"
-                                         VerticalContentAlignment="Center"
-                                         PreviewTextInput="TxtPlayerLevel_PreviewTextInput"
+                                        ToolTip="Decrease level" Cursor="Hand"/>
+                                <TextBox x:Name="TxtPlayerLevel" Text="15" FontSize="12.5" FontWeight="Bold"
+                                         Foreground="{StaticResource TacticalGoldBrush}" Background="Transparent" BorderThickness="0" Padding="0" VerticalAlignment="Center" Margin="3,0" MinWidth="26" MaxWidth="34" TextAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" PreviewTextInput="TxtPlayerLevel_PreviewTextInput"
                                          LostFocus="TxtPlayerLevel_LostFocus"
                                          KeyDown="TxtPlayerLevel_KeyDown"/>
-                                <Button x:Name="BtnLevelUp" Content="+" Width="24" Height="24"
-                                        Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                <Button x:Name="BtnLevelUp" Content="+" Width="22" Height="22"
+                                        Padding="0" FontSize="13" FontWeight="Bold"
+                                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                        Background="{StaticResource TacticalSurface2Brush}" Foreground="{StaticResource TacticalTextPrimaryBrush}" BorderBrush="{StaticResource TacticalBorderMediumBrush}" BorderThickness="1"
                                         Click="BtnLevelUp_Click"
-                                        ToolTip="Increase level"/>
+                                        ToolTip="Increase level" Cursor="Hand"/>
                             </StackPanel>
                         </Border>
 
-                        <!-- Profile Button -->
-                        <Button x:Name="BtnProfile" Content="▼ Profile" Padding="10,6"
-                                Margin="0,0,12,0" Click="BtnProfile_Click"
-                                ToolTip="Profile settings (Edition, Prestige, Scav karma, etc.)"/>
+                        <!-- Vertical Divider -->
+                        <Rectangle Width="1" Height="18" Fill="{StaticResource TacticalBorderSubtleBrush}" Margin="0,0,10,0" VerticalAlignment="Center"/>
 
-                        <!-- Reset Progress -->
-                        <Button x:Name="BtnResetProgress" Content="↩ Reset" Padding="10,6"
-                                Margin="0,0,8,0" Click="BtnResetProgress_Click"
-                                ToolTip="Reset all progress"/>
+                        <!-- Sync Button (Direct 1-Click Sync) -->
+                        <Button x:Name="BtnQuickSync" Content="Sync" Height="28" Padding="10,0"
+                                Margin="0,0,6,0" Click="BtnQuickSync_Click"
+                                Style="{StaticResource HeaderActionButtonStyle}"
+                                ToolTip="Sync quests from EFT logs"/>
+
+                        <!-- Profile Button (anchored popup) -->
+                        <Button x:Name="BtnProfile" Content="Profile" Height="28" Padding="10,0"
+                                Margin="0,0,6,0" Click="BtnProfile_Click"
+                                Style="{StaticResource HeaderActionButtonStyle}"
+                                ToolTip="Profile settings (Mode, Faction, Edition, Prestige, etc.)"/>
 
                         <!-- Settings -->
-                        <Button x:Name="BtnSettings" Content="⚙" Padding="10,6"
-                                Margin="0,0,12,0" Click="BtnSettings_Click"
-                                FontSize="{DynamicResource FontSizeMedium}"
+                        <Button x:Name="BtnSettings" Content="⚙" Width="30" Height="28" Padding="0"
+                                Margin="0,0,2,0" Click="BtnSettings_Click"
+                                Style="{StaticResource HeaderActionButtonStyle}"
+                                FontSize="13"
                                 ToolTip="Settings"/>
                     </StackPanel>
                 </Grid>
@@ -158,189 +298,193 @@
                            Visibility="Collapsed"/>
 
                 <!-- Tab Content Area -->
-                <Grid x:Name="TabContentArea" Visibility="Collapsed">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
+                <Grid x:Name="TabContentArea" Visibility="Visible">
+                    <!-- Tab Content -->
+                    <ContentControl x:Name="PageContent"/>
+                </Grid>
+            </Grid>
 
-                    <!-- Tab Navigation -->
-                    <Border x:Name="TabNavigation" Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}" Padding="16,0">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton x:Name="TabQuests" Content="Quests"
-                                         Style="{StaticResource TabButtonStyle}"
-                                         IsChecked="True"
-                                         Checked="Tab_Checked"/>
-                            <RadioButton x:Name="TabHideout" Content="Hideout"
-                                         Style="{StaticResource TabButtonStyle}"
-                                         Checked="Tab_Checked"/>
-                            <RadioButton x:Name="TabItems" Content="Items"
-                                         Style="{StaticResource TabButtonStyle}"
-                                         Checked="Tab_Checked"/>
-                            <RadioButton x:Name="TabCollector" Content="Collector - Kappa"
-                                         Style="{StaticResource TabButtonStyle}"
-                                         Checked="Tab_Checked"/>
-                            <RadioButton x:Name="TabMap" Content="Map"
-                                         Style="{StaticResource TabButtonStyle}"
-                                         Checked="Tab_Checked"/>
+        </Grid>
+
+
+
+                
+
+
+
+        <!-- Non-invasive Profile Popup (Anchored below BtnProfile, unfolds inwards) -->
+        <Popup x:Name="ProfilePopup" PlacementTarget="{Binding ElementName=BtnProfile}"
+               Placement="Custom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+            <Border Background="{StaticResource TacticalSurface1Brush}" BorderBrush="{StaticResource TacticalBorderMediumBrush}"
+                    BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,4,0,0">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="12" ShadowDepth="3" Direction="270" Opacity="0.5"/>
+                </Border.Effect>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <!-- Game Mode (PVP / PVE) -->
+                    <Border Background="{StaticResource TacticalSurface2Brush}" BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                            CornerRadius="4" Padding="8,6" Margin="0,0,12,0"
+                            VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Mode" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TacticalTextSecondaryBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Border Background="{StaticResource TacticalSurface0Brush}" BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="1" CornerRadius="4" Padding="2" Height="26" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <RadioButton x:Name="RadioPvp" Content="PVP" Style="{StaticResource ProfileToggleStyle}" 
+                                                 Tag="Pvp" GroupName="ProfileGroup" Height="22" Padding="8,0"
+                                                 ToolTip="Display permanent PVP mode data"/>
+                                    <RadioButton x:Name="RadioSeasonal" Content="SEASON" Style="{StaticResource ProfileToggleStyle}" 
+                                                 Tag="Seasonal" GroupName="ProfileGroup" Height="22" Padding="8,0"
+                                                 ToolTip="Display Seasonal wipe PVP mode data (includes seasonal quests)"/>
+                                    <RadioButton x:Name="RadioPve" Content="PVE" Style="{StaticResource ProfileToggleStyle}" 
+                                                 Tag="Pve" GroupName="ProfileGroup" Height="22" Padding="8,0"
+                                                 ToolTip="Display PVE mode data"/>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </Border>
 
-                    <!-- Tab Content -->
-                    <ContentControl x:Name="PageContent" Grid.Row="1"/>
-                </Grid>
-            </Grid>
-        </Grid>
+                    <!-- Player Faction (BEAR / USEC) -->
+                    <Border Background="{StaticResource TacticalSurface2Brush}" BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                            CornerRadius="4" Padding="8,6" Margin="0,0,12,0"
+                            VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Faction" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TacticalTextSecondaryBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <RadioButton x:Name="RbProfileBear" Content="BEAR" GroupName="ProfileFaction"
+                                         PreviewMouseDown="ProfileFaction_PreviewMouseDown"
+                                         Checked="ProfileFaction_Changed" Margin="0,0,4,0"
+                                         Style="{StaticResource ProfileFactionSegmentStyle}"
+                                         ToolTip="Select BEAR faction (click again to clear filter)"/>
+                            <RadioButton x:Name="RbProfileUsec" Content="USEC" GroupName="ProfileFaction"
+                                         PreviewMouseDown="ProfileFaction_PreviewMouseDown"
+                                         Checked="ProfileFaction_Changed"
+                                         Style="{StaticResource ProfileFactionSegmentStyle}"
+                                         ToolTip="Select USEC faction (click again to clear filter)"/>
+                        </StackPanel>
+                    </Border>
 
-        <!-- Profile Drawer Overlay (slides down from title bar) -->
-        <Border x:Name="ProfileDrawer" Grid.RowSpan="2" Background="{StaticResource BackgroundLightBrush}"
-                VerticalAlignment="Top" Margin="0,52,0,0"
-                Visibility="Collapsed">
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="8" ShadowDepth="2" Direction="270" Opacity="0.3"/>
-            </Border.Effect>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="16,12">
-                <!-- Scav Rep Control -->
-                <Border Background="{StaticResource BackgroundMediumBrush}"
-                        CornerRadius="4" Padding="8,6" Margin="0,0,16,0"
-                        VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Scav Karma" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <Button x:Name="BtnScavRepDown" Content="-" Width="24" Height="24"
-                                Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                Click="BtnScavRepDown_Click"
-                                ToolTip="Decrease karma (-0.1)"/>
-                        <TextBox x:Name="TxtScavRep" Text="1.0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                 Foreground="{StaticResource AccentBrush}"
-                                 Background="Transparent"
-                                 BorderThickness="0"
-                                 VerticalAlignment="Center" Margin="8,0"
-                                 MinWidth="36" MaxWidth="48"
-                                 TextAlignment="Center"
-                                 VerticalContentAlignment="Center"
-                                 PreviewTextInput="TxtScavRep_PreviewTextInput"
-                                 LostFocus="TxtScavRep_LostFocus"
-                                 KeyDown="TxtScavRep_KeyDown"/>
-                        <Button x:Name="BtnScavRepUp" Content="+" Width="24" Height="24"
-                                Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                Click="BtnScavRepUp_Click"
-                                ToolTip="Increase karma (+0.1)"/>
-                    </StackPanel>
-                </Border>
+                    <!-- DSP Decode Count Control -->
+                    <Border Background="{StaticResource TacticalSurface2Brush}" BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                            CornerRadius="4" Padding="8,6" Margin="0,0,12,0"
+                            VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="DSP Decodes" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TacticalTextSecondaryBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Button x:Name="BtnDsp0" Content="0" Width="22" Height="22"
+                                    Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                    Click="BtnDsp_Click" Tag="0"
+                                    ToolTip="0 decodes - No Make Amends quest"/>
+                            <Button x:Name="BtnDsp1" Content="1" Width="22" Height="22"
+                                    Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                    Click="BtnDsp_Click" Tag="1" Margin="2,0,0,0"
+                                    ToolTip="1 decode - Make Amends: Buyout"/>
+                            <Button x:Name="BtnDsp2" Content="2" Width="22" Height="22"
+                                    Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                    Click="BtnDsp_Click" Tag="2" Margin="2,0,0,0"
+                                    ToolTip="2 decodes - Make Amends: Security"/>
+                            <Button x:Name="BtnDsp3" Content="3" Width="22" Height="22"
+                                    Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                    Click="BtnDsp_Click" Tag="3" Margin="2,0,0,0"
+                                    ToolTip="3 decodes - Make Amends: Software"/>
+                        </StackPanel>
+                    </Border>
 
-                <!-- DSP Decode Count Control -->
-                <Border Background="{StaticResource BackgroundMediumBrush}"
-                        CornerRadius="4" Padding="8,6" Margin="0,0,16,0"
-                        VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="DSP Decodes" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <Button x:Name="BtnDsp0" Content="0" Width="24" Height="24"
-                                Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                Click="BtnDsp_Click" Tag="0"
-                                ToolTip="0 decodes - No Make Amends quest"/>
-                        <Button x:Name="BtnDsp1" Content="1" Width="24" Height="24"
-                                Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                Click="BtnDsp_Click" Tag="1" Margin="2,0,0,0"
-                                ToolTip="1 decode - Make Amends: Buyout"/>
-                        <Button x:Name="BtnDsp2" Content="2" Width="24" Height="24"
-                                Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                Click="BtnDsp_Click" Tag="2" Margin="2,0,0,0"
-                                ToolTip="2 decodes - Make Amends: Security"/>
-                        <Button x:Name="BtnDsp3" Content="3" Width="24" Height="24"
-                                Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                Click="BtnDsp_Click" Tag="3" Margin="2,0,0,0"
-                                ToolTip="3 decodes - Make Amends: Software"/>
-                    </StackPanel>
-                </Border>
+                    <!-- Game Edition Checkboxes -->
+                    <Border Background="{StaticResource TacticalSurface2Brush}" BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                            CornerRadius="4" Padding="8,6" Margin="0,0,12,0"
+                            VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Edition" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TacticalTextSecondaryBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <CheckBox x:Name="ChkEodEdition" Content="EOD"
+                                      Foreground="{StaticResource TacticalTextPrimaryBrush}"
+                                      FontSize="{DynamicResource FontSizeXSmall}"
+                                      VerticalAlignment="Center" Margin="0,0,8,0"
+                                      Checked="ChkEdition_Changed" Unchecked="ChkEdition_Changed"
+                                      ToolTip="Edge of Darkness Edition"/>
+                            <CheckBox x:Name="ChkUnheardEdition" Content="Unheard"
+                                      Foreground="{StaticResource TacticalTextPrimaryBrush}"
+                                      FontSize="{DynamicResource FontSizeXSmall}"
+                                      VerticalAlignment="Center"
+                                      Checked="ChkEdition_Changed" Unchecked="ChkEdition_Changed"
+                                      ToolTip="The Unheard Edition"/>
+                        </StackPanel>
+                    </Border>
 
-                <!-- Game Edition Checkboxes -->
-                <Border Background="{StaticResource BackgroundMediumBrush}"
-                        CornerRadius="4" Padding="8,6" Margin="0,0,16,0"
-                        VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Edition" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <CheckBox x:Name="ChkEodEdition" Content="EOD"
-                                  Foreground="{StaticResource TextPrimaryBrush}"
-                                  FontSize="{DynamicResource FontSizeXSmall}"
-                                  VerticalAlignment="Center" Margin="0,0,12,0"
-                                  Checked="ChkEdition_Changed" Unchecked="ChkEdition_Changed"
-                                  ToolTip="Edge of Darkness Edition"/>
-                        <CheckBox x:Name="ChkUnheardEdition" Content="Unheard"
-                                  Foreground="{StaticResource TextPrimaryBrush}"
-                                  FontSize="{DynamicResource FontSizeXSmall}"
-                                  VerticalAlignment="Center"
-                                  Checked="ChkEdition_Changed" Unchecked="ChkEdition_Changed"
-                                  ToolTip="The Unheard Edition"/>
-                    </StackPanel>
-                </Border>
+                    <!-- Prestige Level Control -->
+                    <Border Background="{StaticResource TacticalSurface2Brush}" BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                            CornerRadius="4" Padding="8,6"
+                            VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Prestige" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TacticalTextSecondaryBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Button x:Name="BtnPrestigeDown" Content="-" Width="22" Height="22"
+                                    Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                    Click="BtnPrestigeDown_Click"
+                                    ToolTip="Decrease prestige level"/>
+                            <TextBlock x:Name="TxtPrestigeLevel" Text="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                       Foreground="{StaticResource TacticalGoldBrush}"
+                                       VerticalAlignment="Center" Margin="8,0"
+                                       MinWidth="16" TextAlignment="Center"/>
+                            <Button x:Name="BtnPrestigeUp" Content="+" Width="22" Height="22"
+                                    Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                    Click="BtnPrestigeUp_Click"
+                                    ToolTip="Increase prestige level"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </Popup>
 
-                <!-- Prestige Level Control -->
-                <Border Background="{StaticResource BackgroundMediumBrush}"
-                        CornerRadius="4" Padding="8,6"
-                        VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Prestige" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <Button x:Name="BtnPrestigeDown" Content="-" Width="24" Height="24"
-                                Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                Click="BtnPrestigeDown_Click"
-                                ToolTip="Decrease prestige level"/>
-                        <TextBlock x:Name="TxtPrestigeLevel" Text="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                   Foreground="{StaticResource AccentBrush}"
-                                   VerticalAlignment="Center" Margin="8,0"
-                                   MinWidth="16" TextAlignment="Center"/>
-                        <Button x:Name="BtnPrestigeUp" Content="+" Width="24" Height="24"
-                                Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                Click="BtnPrestigeUp_Click"
-                                ToolTip="Increase prestige level"/>
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </Border>
+
 
         <!-- Loading Overlay -->
-        <Grid x:Name="LoadingOverlay" Visibility="Collapsed" Background="#AA1A1A1A" Grid.RowSpan="2">
-            <Border Background="{StaticResource BackgroundDarkBrush}"
+        <Grid x:Name="LoadingOverlay" Visibility="Visible" Background="#D00A0B0E" Grid.RowSpan="2">
+            <Border Background="{StaticResource TacticalSurface1Brush}"
+                    BorderBrush="{StaticResource TacticalBorderMediumBrush}" BorderThickness="1"
                     CornerRadius="8" Padding="32,24"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     MinWidth="320">
                 <Border.Effect>
-                    <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="0" Opacity="0.6"/>
                 </Border.Effect>
                 <StackPanel>
                     <TextBlock Text="Loading Data" FontSize="{DynamicResource FontSizeLarge}" FontWeight="SemiBold"
-                               Foreground="{StaticResource AccentBrush}"
+                               FontFamily="{DynamicResource TacticalDisplayFont}"
+                               Foreground="{StaticResource TacticalGoldBrush}"
                                HorizontalAlignment="Center" Margin="0,0,0,16"/>
                     <ProgressBar x:Name="LoadingProgressBar"
                                  Height="6" IsIndeterminate="True"
-                                 Foreground="{StaticResource AccentBrush}"
-                                 Background="{StaticResource BackgroundMediumBrush}"/>
+                                 Foreground="{StaticResource TacticalGoldBrush}"
+                                 Background="{StaticResource TacticalSurface0Brush}"/>
                     <TextBlock x:Name="LoadingStatusText"
                                Text="Initializing..."
                                FontSize="{DynamicResource FontSizeXSmall}" Margin="0,12,0,0"
-                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Foreground="{StaticResource TacticalTextSecondaryBrush}"
                                HorizontalAlignment="Center"
                                TextWrapping="Wrap" MaxWidth="280"/>
                 </StackPanel>
             </Border>
         </Grid>
 
+
+
         <!-- Settings Overlay -->
-        <Grid x:Name="SettingsOverlay" Visibility="Collapsed" Background="#AA1A1A1A" Grid.RowSpan="2"
+        <Grid x:Name="SettingsOverlay" Visibility="Collapsed" Background="#D00A0B0E" Grid.RowSpan="2"
               MouseDown="SettingsOverlay_MouseDown">
-            <Border Background="{StaticResource BackgroundDarkBrush}"
+            <Border Background="{StaticResource TacticalSurface1Brush}"
+                    BorderBrush="{StaticResource TacticalBorderMediumBrush}" BorderThickness="1"
                     CornerRadius="8" Padding="24"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     MinWidth="800" MaxWidth="900" MaxHeight="550">
                 <Border.Effect>
-                    <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="0" Opacity="0.6"/>
                 </Border.Effect>
                 <Grid>
                     <Grid.RowDefinitions>
@@ -351,291 +495,584 @@
                     <!-- Header -->
                     <Grid Grid.Row="0" Margin="0,0,0,20">
                         <TextBlock x:Name="TxtSettingsTitle" Text="Settings" FontSize="{DynamicResource FontSizeTitle}" FontWeight="SemiBold"
-                                   Foreground="{StaticResource AccentBrush}"/>
+                                   FontFamily="{DynamicResource TacticalDisplayFont}"
+                                   Foreground="{StaticResource TacticalGoldBrush}"/>
                         <Button x:Name="BtnCloseSettings" Content="✕"
                                 HorizontalAlignment="Right"
                                 Padding="8,4" FontSize="{DynamicResource FontSizeSmall}"
                                 Click="BtnCloseSettings_Click"/>
                     </Grid>
 
+
+
                     <!-- Scrollable Content -->
+
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+
                         <Grid>
+
                             <Grid.ColumnDefinitions>
+
                                 <ColumnDefinition Width="*"/>
+
                                 <ColumnDefinition Width="24"/>
+
                                 <ColumnDefinition Width="*"/>
+
                             </Grid.ColumnDefinitions>
 
+
+
                             <!-- Left Column -->
+
                             <StackPanel Grid.Column="0">
+
                                 <!-- Log Folder Section -->
+
                                 <TextBlock x:Name="TxtLogFolderLabel" Text="Tarkov Log Folder"
+
                                            FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+
                                            Foreground="{StaticResource TextPrimaryBrush}"
+
                                            Margin="0,0,0,8"/>
+
+
 
                                 <TextBlock x:Name="TxtLogFolderDesc"
+
                                            Text="Set the Tarkov Logs folder path to automatically track completed quests."
+
                                            FontSize="{DynamicResource FontSizeXSmall}"
+
                                            Foreground="{StaticResource TextSecondaryBrush}"
+
                                            TextWrapping="Wrap"
+
                                            Margin="0,0,0,12"/>
+
+
 
                                 <!-- Current Path Display -->
+
                                 <Border Background="{StaticResource BackgroundMediumBrush}"
+
                                         CornerRadius="4" Padding="12,8" Margin="0,0,0,8">
+
                                     <Grid>
+
                                         <Grid.ColumnDefinitions>
+
                                             <ColumnDefinition Width="*"/>
+
                                             <ColumnDefinition Width="Auto"/>
+
                                         </Grid.ColumnDefinitions>
+
                                         <TextBlock x:Name="TxtCurrentLogPath"
+
                                                    Text="Not configured"
+
                                                    FontSize="{DynamicResource FontSizeXSmall}"
+
                                                    Foreground="{StaticResource TextSecondaryBrush}"
+
                                                    TextTrimming="CharacterEllipsis"
+
                                                    VerticalAlignment="Center"/>
+
                                         <StackPanel Grid.Column="1" Orientation="Horizontal">
+
                                             <TextBlock x:Name="TxtDetectionMethod"
+
                                                        Text=""
+
                                                        FontSize="{DynamicResource FontSizeTiny}"
+
                                                        Foreground="{StaticResource AccentBrush}"
+
                                                        VerticalAlignment="Center"
+
                                                        Margin="8,0"/>
+
                                         </StackPanel>
+
                                     </Grid>
+
                                 </Border>
+
+
 
                                 <!-- Status Indicator -->
+
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+
                                     <Ellipse x:Name="LogFolderStatusIndicator"
+
                                              Width="8" Height="8"
+
                                              Fill="#FF4444"
+
                                              VerticalAlignment="Center"
+
                                              Margin="0,0,8,0"/>
+
                                     <TextBlock x:Name="TxtLogFolderStatus"
+
                                                Text="Invalid path"
+
                                                FontSize="{DynamicResource FontSizeXSmall}"
+
                                                Foreground="{StaticResource TextSecondaryBrush}"/>
+
                                 </StackPanel>
+
+
 
                                 <!-- Action Buttons -->
+
                                 <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
+
                                     <Button x:Name="BtnAutoDetect" Content="Auto Detect"
+
                                             Padding="12,8" Margin="0,0,8,8"
+
                                             Click="BtnAutoDetect_Click"/>
+
                                     <Button x:Name="BtnBrowseLogFolder" Content="Browse..."
+
                                             Padding="12,8" Margin="0,0,8,8"
+
                                             Click="BtnBrowseLogFolder_Click"/>
+
                                     <Button x:Name="BtnResetLogFolder" Content="Reset"
+
                                             Padding="12,8" Margin="0,0,0,8"
+
                                             Click="BtnResetLogFolder_Click"/>
+
                                 </WrapPanel>
+
+
 
                                 <!-- Quest Sync Section -->
+
                                 <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+
                                         Margin="0,12,0,0" Padding="0,16,0,0">
+
                                     <StackPanel>
+
                                         <TextBlock x:Name="TxtQuestSyncLabel" Text="Quest Log Sync"
+
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+
                                                    Foreground="{StaticResource TextPrimaryBrush}"
+
                                                    Margin="0,0,0,8"/>
+
+
 
                                         <TextBlock x:Name="TxtQuestSyncDesc"
+
                                                    Text="Sync quest progress from game log files. Analyzes Tarkov logs to update completed quests."
+
                                                    FontSize="{DynamicResource FontSizeXSmall}"
+
                                                    Foreground="{StaticResource TextSecondaryBrush}"
+
                                                    TextWrapping="Wrap"
+
                                                    Margin="0,0,0,12"/>
+
+
 
                                         <!-- Monitoring Status -->
+
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+
                                             <Ellipse x:Name="MonitoringStatusIndicator"
+
                                                      Width="8" Height="8"
+
                                                      Fill="#FF4444"
+
                                                      VerticalAlignment="Center"
+
                                                      Margin="0,0,8,0"/>
+
                                             <TextBlock x:Name="TxtMonitoringStatus"
+
                                                        Text="Not monitoring"
+
                                                        FontSize="{DynamicResource FontSizeXSmall}"
+
                                                        Foreground="{StaticResource TextSecondaryBrush}"/>
+
                                         </StackPanel>
+
+
 
                                         <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
+
                                             <Button x:Name="BtnSyncQuest" Content="Sync Quests"
+
                                                     Padding="12,8" Margin="0,0,8,8"
+
                                                     Click="BtnSyncQuest_Click"/>
+
                                             <Button x:Name="BtnToggleMonitoring" Content="Start Monitoring"
+
                                                     Padding="12,8" Margin="0,0,0,8"
+
                                                     Click="BtnToggleMonitoring_Click"/>
+
                                         </WrapPanel>
 
+
+
                                         <!-- Enter In-Progress Quests Button -->
+
                                         <Button x:Name="BtnInProgressQuestInput" Content="Enter In-Progress Quests"
+
                                                 Padding="12,8" Margin="0,4,0,0"
+
                                                 HorizontalAlignment="Left"
+
                                                 Click="BtnInProgressQuestInput_Click"/>
+
                                     </StackPanel>
+
                                 </Border>
+
                             </StackPanel>
+
+
 
                             <!-- Right Column -->
+
                             <StackPanel Grid.Column="2">
+
                                 <!-- Cache Management Section -->
+
                                 <TextBlock Text="Cache Management"
+
                                            FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+
                                            Foreground="{StaticResource TextPrimaryBrush}"
+
                                            Margin="0,0,0,8"/>
 
+
+
                                 <TextBlock Text="Clear wiki page cache and downloaded data. Use if data is corrupted or to re-download everything."
+
                                            FontSize="{DynamicResource FontSizeXSmall}"
+
                                            Foreground="{StaticResource TextSecondaryBrush}"
+
                                            TextWrapping="Wrap"
+
                                            Margin="0,0,0,12"/>
 
+
+
                                 <!-- Cache Size Display -->
+
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+
                                     <TextBlock Text="Cache size: "
+
                                                FontSize="{DynamicResource FontSizeXSmall}"
+
                                                Foreground="{StaticResource TextSecondaryBrush}"/>
+
                                     <TextBlock x:Name="TxtCacheSize"
+
                                                Text="Calculating..."
+
                                                FontSize="{DynamicResource FontSizeXSmall}"
+
                                                Foreground="{StaticResource TextPrimaryBrush}"/>
+
                                 </StackPanel>
 
+
+
                                 <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
+
                                     <Button x:Name="BtnClearCache" Content="Clear Cache"
+
                                             Padding="12,8" Margin="0,0,8,8"
+
                                             Click="BtnClearCache_Click"/>
+
                                     <Button x:Name="BtnClearAllData" Content="Delete All Data"
+
                                             Padding="12,8" Margin="0,0,0,8"
+
                                             Click="BtnClearAllData_Click"
+
                                             ToolTip="Delete cache and all downloaded data (quests, items, etc.)"/>
+
                                 </WrapPanel>
 
+
+
                                 <!-- Data Update Section -->
+
                                 <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+
                                         Margin="0,12,0,0" Padding="0,16,0,0">
+
                                     <StackPanel>
+
                                         <TextBlock Text="Data Update"
+
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+
                                                    Foreground="{StaticResource TextPrimaryBrush}"
+
                                                    Margin="0,0,0,8"/>
 
-                                        <TextBlock Text="Manually update latest items and quest info from tarkov.dev API."
+
+
+                                        <TextBlock Text="Manually update latest quest and trader requirements from Tarkov Tracker API."
+
                                                    FontSize="{DynamicResource FontSizeXSmall}"
+
                                                    Foreground="{StaticResource TextSecondaryBrush}"
+
                                                    TextWrapping="Wrap"
+
                                                    Margin="0,0,0,12"/>
+
+
 
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+
                                             <Button x:Name="BtnUpdateApiData" Content="Update API Data"
-                                                    Padding="12,8" Margin="0,0,12,0"
+                                                    ToolTip="Consultar y sincronizar requisitos y misiones desde Tarkov Tracker"
+
+                                                    Padding="12,8" Margin="0,0,8,0"
+
                                                     Click="BtnUpdateApiData_Click"/>
+
+                                            <Button x:Name="BtnRollbackBackup" Content="Restaurar Respaldo"
+
+                                                    Padding="12,8" Margin="0,0,12,0"
+
+                                                    Click="BtnRollbackBackup_Click"
+
+                                                    ToolTip="Ver y restaurar copias de seguridad anteriores de la base de datos (.bak)"/>
+
                                             <TextBlock x:Name="TxtApiUpdateStatus"
+
                                                        Text=""
+
                                                        FontSize="{DynamicResource FontSizeXSmall}"
+
                                                        Foreground="{StaticResource TextSecondaryBrush}"
+
                                                        VerticalAlignment="Center"/>
+
                                         </StackPanel>
+
                                     </StackPanel>
+
                                 </Border>
+
+
 
                                                                  <!-- Font Family Section -->
+
                                  <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+
                                          Margin="0,12,0,0" Padding="0,16,0,0">
+
                                      <StackPanel>
+
                                          <TextBlock x:Name="TxtFontLabel" Text="Font"
+
                                                     FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+
                                                     Foreground="{StaticResource TextPrimaryBrush}"
+
                                                     Margin="0,0,0,8"/>
 
+
+
                                          <TextBlock x:Name="TxtFontDesc" Text="Change application font. Automatically recognizes fonts in the Fonts folder."
+
                                                     FontSize="{DynamicResource FontSizeXSmall}"
+
                                                     Foreground="{StaticResource TextSecondaryBrush}"
+
                                                     TextWrapping="Wrap"
+
                                                     Margin="0,0,0,12"/>
 
+
+
                                          <Grid>
+
                                              <Grid.ColumnDefinitions>
+
                                                  <ColumnDefinition Width="*"/>
+
                                                  <ColumnDefinition Width="Auto"/>
+
                                              </Grid.ColumnDefinitions>
+
                                              <ComboBox x:Name="ComboFontFamily" 
+
                                                        Grid.Column="0"
+
                                                        Margin="0,0,4,0"
+
                                                        SelectionChanged="ComboFontFamily_SelectionChanged"/>
+
                                              <Button x:Name="BtnRefreshFonts" 
+
                                                      Grid.Column="1"
+
                                                      Content="↻" 
+
                                                      FontSize="16"
+
                                                      Padding="8,2"
+
                                                      ToolTip="Refresh font list"
+
                                                      Click="BtnRefreshFonts_Click"
+
                                                      Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}"/>
+
                                          </Grid>
+
                                      </StackPanel>
 
+
+
                                  </Border>
+
 <!-- Font Size Section -->
+
                                 <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+
                                         Margin="0,12,0,0" Padding="0,16,0,0">
+
                                     <StackPanel>
+
                                         <TextBlock Text="Font Size"
+
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+
                                                    Foreground="{StaticResource TextPrimaryBrush}"
+
                                                    Margin="0,0,0,8"/>
 
+
+
                                         <TextBlock Text="Adjust default application font size."
+
                                                    FontSize="{DynamicResource FontSizeXSmall}"
+
                                                    Foreground="{StaticResource TextSecondaryBrush}"
+
                                                    TextWrapping="Wrap"
+
                                                    Margin="0,0,0,12"/>
 
+
+
                                         <!-- Font Size Control -->
+
                                         <Grid Margin="0,0,0,8">
+
                                             <Grid.ColumnDefinitions>
+
                                                 <ColumnDefinition Width="Auto"/>
+
                                                 <ColumnDefinition Width="*"/>
+
                                                 <ColumnDefinition Width="Auto"/>
+
                                             </Grid.ColumnDefinitions>
 
+
+
                                             <Button x:Name="BtnFontSizeDown" Content="-" Width="32" Height="32"
+
                                                     Grid.Column="0" Padding="0" FontSize="{DynamicResource FontSizeMedium}" FontWeight="Bold"
+
                                                     Click="BtnFontSizeDown_Click"/>
 
+
+
                                             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+
                                                 <TextBlock x:Name="TxtCurrentFontSize" Text="16"
+
                                                            FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
+
                                                            Foreground="{StaticResource AccentBrush}"
+
                                                            VerticalAlignment="Center"/>
+
                                                 <TextBlock Text=" pt"
+
                                                            FontSize="{DynamicResource FontSizeSmall}"
+
                                                            Foreground="{StaticResource TextSecondaryBrush}"
+
                                                            VerticalAlignment="Center"/>
+
                                             </StackPanel>
 
+
+
                                             <Button x:Name="BtnFontSizeUp" Content="+" Width="32" Height="32"
+
                                                     Grid.Column="2" Padding="0" FontSize="{DynamicResource FontSizeMedium}" FontWeight="Bold"
+
                                                     Click="BtnFontSizeUp_Click"/>
+
                                         </Grid>
 
+
+
                                         <Button x:Name="BtnResetFontSize" Content="Restore Defaults"
+
                                                 Padding="12,8" HorizontalAlignment="Left"
+
                                                 Click="BtnResetFontSize_Click"/>
+
                                     </StackPanel>
+
                                 </Border>
+
+
+
 
 
                             </StackPanel>
+
                         </Grid>
+
                     </ScrollViewer>
+
                 </Grid>
+
             </Border>
+
         </Grid>
+
+
 
     </Grid>
 
+
+
 </Window>
+

@@ -16,6 +16,27 @@ namespace TarkovHelper.Models
         public List<string>? Ids { get; set; } = new();
 
         /// <summary>
+        /// Primary canonical BSG Task ID (24-character hexadecimal MongoDB ObjectId).
+        /// </summary>
+        [JsonIgnore]
+        public string Id
+        {
+            get => Ids?.FirstOrDefault() ?? string.Empty;
+            set
+            {
+                if (Ids == null) Ids = new List<string>();
+                if (Ids.Count == 0) Ids.Add(value);
+                else Ids[0] = value;
+            }
+        }
+
+        /// <summary>
+        /// Alias for Id (canonical 24-character hexadecimal BSG ID).
+        /// </summary>
+        [JsonIgnore]
+        public string BsgId => Id;
+
+        /// <summary>
         /// English task name
         /// </summary>
         [JsonPropertyName("name")]
@@ -144,6 +165,12 @@ namespace TarkovHelper.Models
         public int? RequiredDecodeCount { get; set; }
 
         /// <summary>
+        /// Whether this quest is a seasonal wipe quest
+        /// </summary>
+        [JsonPropertyName("isSeasonal")]
+        public bool IsSeasonal { get; set; }
+
+        /// <summary>
         /// Alternative quests (mutually exclusive - completing one fails the others)
         /// These are "Other choices" quests from wiki's |related field
         /// </summary>
@@ -169,6 +196,28 @@ namespace TarkovHelper.Models
         /// </summary>
         [JsonPropertyName("wikiPageLink")]
         public string? WikiPageLink { get; set; }
+
+        /// <summary>
+        /// Trader loyalty level requirements for this quest
+        /// </summary>
+        [JsonPropertyName("traderRequirements")]
+        public List<QuestTraderRequirement> TraderRequirements { get; set; } = new();
+
+        /// <summary>
+        /// Task pool threshold requirements for this quest
+        /// </summary>
+        [JsonPropertyName("poolRequirements")]
+        public List<QuestPoolRequirement> PoolRequirements { get; set; } = new();
+
+        /// <summary>
+        /// Task pool requirements alias for backwards/test compatibility
+        /// </summary>
+        [JsonIgnore]
+        public List<QuestPoolRequirement> TaskPoolRequirements
+        {
+            get => PoolRequirements;
+            set => PoolRequirements = value;
+        }
     }
 
     /// <summary>
@@ -282,5 +331,106 @@ namespace TarkovHelper.Models
         /// </summary>
         [JsonPropertyName("dogtagMinLevel")]
         public int? DogtagMinLevel { get; set; }
+    }
+
+    /// <summary>
+    /// Trader loyalty level requirement for a quest
+    /// </summary>
+    public class QuestTraderRequirement
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonPropertyName("questId")]
+        public string QuestId { get; set; } = string.Empty;
+
+        [JsonPropertyName("traderId")]
+        public string? TraderId { get; set; }
+
+        [JsonPropertyName("traderName")]
+        public string TraderName { get; set; } = string.Empty;
+
+        [JsonPropertyName("requirementType")]
+        public string RequirementType { get; set; } = "Level";
+
+        [JsonPropertyName("compareMethod")]
+        public string CompareMethod { get; set; } = ">=";
+
+        [JsonPropertyName("requiredLevel")]
+        public int RequiredLevel { get; set; }
+
+        [JsonPropertyName("sortOrder")]
+        public int SortOrder { get; set; }
+
+        // Test compatibility aliases
+        [JsonIgnore]
+        public string Trader
+        {
+            get => TraderName;
+            set => TraderName = value;
+        }
+
+        [JsonIgnore]
+        public int LoyaltyLevel
+        {
+            get => RequiredLevel;
+            set => RequiredLevel = value;
+        }
+    }
+
+    /// <summary>
+    /// Task pool threshold requirement for a quest
+    /// </summary>
+    public class QuestPoolRequirement
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonPropertyName("questId")]
+        public string QuestId { get; set; } = string.Empty;
+
+        [JsonPropertyName("poolTrader")]
+        public string PoolTrader { get; set; } = string.Empty;
+
+        [JsonPropertyName("poolTraderLL")]
+        public int? PoolTraderLL { get; set; }
+
+        [JsonPropertyName("requiredCompletedCount")]
+        public int RequiredCompletedCount { get; set; }
+
+        [JsonPropertyName("description")]
+        public string? Description { get; set; }
+
+        // Test compatibility aliases
+        [JsonIgnore]
+        public string PoolId
+        {
+            get => Id;
+            set => Id = value;
+        }
+
+        [JsonIgnore]
+        public string Trader
+        {
+            get => PoolTrader;
+            set => PoolTrader = value;
+        }
+
+        [JsonIgnore]
+        public int TraderLevel
+        {
+            get => PoolTraderLL ?? 0;
+            set => PoolTraderLL = value;
+        }
+
+        [JsonIgnore]
+        public int RequiredCount
+        {
+            get => RequiredCompletedCount;
+            set => RequiredCompletedCount = value;
+        }
+
+        [JsonIgnore]
+        public List<string> TaskIds { get; set; } = new();
     }
 }

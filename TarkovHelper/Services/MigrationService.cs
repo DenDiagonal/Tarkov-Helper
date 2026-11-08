@@ -139,8 +139,8 @@ public static class MigrationService
     /// </summary>
     private static bool RequiresMigration(Version lastVersion, Version currentVersion)
     {
-        // Upgrading from 1.x.x to 2.x.x requires data cleanup
-        return lastVersion.Major < 3;
+        // Only upgrading across a major version boundary requires data cleanup (e.g. 1.x -> 2.x)
+        return lastVersion < currentVersion && lastVersion.Major < 2 && currentVersion.Major >= 2;
     }
 
     /// <summary>

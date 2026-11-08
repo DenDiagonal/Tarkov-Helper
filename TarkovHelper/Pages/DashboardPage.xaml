@@ -1,0 +1,1137 @@
+<UserControl x:Class="TarkovHelper.Pages.DashboardPage"
+
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+
+             xmlns:local="clr-namespace:TarkovHelper.Pages"
+
+             xmlns:controls="clr-namespace:TarkovHelper.Controls"
+
+             mc:Ignorable="d" 
+
+             d:DesignHeight="1000" d:DesignWidth="1200"
+
+             TextOptions.TextFormattingMode="Display"
+
+             TextOptions.TextRenderingMode="ClearType"
+
+             RenderOptions.ClearTypeHint="Enabled"
+
+             SnapsToDevicePixels="True"
+
+             UseLayoutRounding="True"
+
+             Background="{DynamicResource TacticalSurface0Brush}">
+
+
+
+    <UserControl.Resources>
+
+        <local:BadgeBackgroundConverter x:Key="BadgeBgConverter"/>
+
+        <local:BadgeForegroundConverter x:Key="BadgeFgConverter"/>
+
+        <local:BadgeBorderConverter x:Key="BadgeBorderConverter"/>
+
+        <local:LoyaltyButtonBgConverter x:Key="LoyaltyBgConverter"/>
+
+        <local:LoyaltyButtonFgConverter x:Key="LoyaltyFgConverter"/>
+
+        <local:LoyaltyButtonBorderConverter x:Key="LoyaltyBorderConverter"/>
+
+        <local:BoolToVisibilityConverter x:Key="BoolToVisConverter"/>
+
+        <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisConverter"/>
+
+
+
+        <Style x:Key="SectionHeaderStyle" TargetType="TextBlock">
+
+            <Setter Property="FontSize" Value="13"/>
+
+            <Setter Property="FontWeight" Value="Bold"/>
+
+            <Setter Property="Foreground" Value="{DynamicResource TacticalGoldBrush}"/>
+
+            <Setter Property="VerticalAlignment" Value="Center"/>
+
+        </Style>
+
+
+
+        <Style x:Key="SectionSubHeaderStyle" TargetType="TextBlock">
+
+            <Setter Property="FontSize" Value="11"/>
+
+            <Setter Property="Foreground" Value="{DynamicResource TacticalTextSecondaryBrush}"/>
+
+            <Setter Property="Margin" Value="0,2,0,0"/>
+
+        </Style>
+
+
+
+        <Style x:Key="TacticalLoyaltyButtonStyle" TargetType="Button">
+
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+
+            <Setter Property="Margin" Value="1,0"/>
+
+            <Setter Property="Padding" Value="0,1"/>
+
+            <Setter Property="FontSize" Value="10.5"/>
+
+            <Setter Property="FontWeight" Value="Bold"/>
+
+            <Setter Property="Cursor" Value="Hand"/>
+
+            <Setter Property="Template">
+
+                <Setter.Value>
+
+                    <ControlTemplate TargetType="Button">
+
+                        <Border x:Name="Bd"
+
+                                Background="{TemplateBinding Background}"
+
+                                BorderBrush="{TemplateBinding BorderBrush}"
+
+                                BorderThickness="1"
+
+                                CornerRadius="3">
+
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                        </Border>
+
+                        <ControlTemplate.Triggers>
+
+                            <Trigger Property="IsMouseOver" Value="True">
+
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TacticalGoldBrush}"/>
+
+                            </Trigger>
+
+                        </ControlTemplate.Triggers>
+
+                    </ControlTemplate>
+
+                </Setter.Value>
+
+            </Setter>
+
+        </Style>
+
+    </UserControl.Resources>
+
+
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+
+        <Grid Margin="24,16,24,24">
+
+            <Grid.RowDefinitions>
+
+                <RowDefinition Height="Auto"/> <!-- 0: Top stats row -->
+
+                <RowDefinition Height="Auto"/> <!-- 1: Up Next list -->
+
+                <RowDefinition Height="Auto"/> <!-- 2: Trader Progress grid -->
+
+            </Grid.RowDefinitions>
+
+
+
+            <!-- Row 0: Top Stats Overview Row (Adaptive: 3 columns on wide, 2 or 1 on narrow) -->
+
+            <controls:AdaptiveUniformGrid Grid.Row="0" MinItemWidth="240" MaxColumns="3" Margin="-4,0,-4,12">
+
+                <!-- 1. Tasks Completion % -->
+
+                <Border Margin="4,4" Background="{DynamicResource TacticalSurface2Brush}"
+
+                        BorderBrush="{DynamicResource TacticalBorderMediumBrush}" BorderThickness="1"
+
+                        CornerRadius="8" Padding="18,14">
+
+                    <Grid>
+
+                        <Grid.RowDefinitions>
+
+                            <RowDefinition Height="Auto"/>
+
+                            <RowDefinition Height="Auto"/>
+
+                            <RowDefinition Height="Auto"/>
+
+                            <RowDefinition Height="Auto"/>
+
+                        </Grid.RowDefinitions>
+
+                        <!-- Top Accent Line -->
+
+                        <Rectangle Grid.Row="0" Height="2" Fill="{DynamicResource TacticalGoldBrush}" Margin="-18,-14,-18,12"/>
+
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+
+                            <TextBlock Text="TASKS PROGRESSION" FontSize="11.5" FontWeight="Bold"
+
+                                       Foreground="{DynamicResource TacticalTextSecondaryBrush}" VerticalAlignment="Center"/>
+
+                        </StackPanel>
+
+                        <Grid Grid.Row="2" Margin="0,0,0,8">
+
+                            <TextBlock x:Name="TasksPercentageText" Text="{Binding TasksPercentageText}"
+
+                                       FontFamily="{DynamicResource TacticalDisplayFont}"
+
+                                       FontSize="32" FontWeight="Bold"
+
+                                       Foreground="{DynamicResource TacticalGoldBrush}" VerticalAlignment="Bottom"/>
+
+                            <TextBlock Text="{Binding TasksCountText}" FontSize="12"
+
+                                       Foreground="{DynamicResource TacticalTextMutedBrush}"
+
+                                       HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,4"/>
+
+                        </Grid>
+
+                        <Border Grid.Row="3" Background="#0A0C10" BorderBrush="#1E232D" BorderThickness="1" CornerRadius="3" Height="8" Padding="1">
+
+                            <ProgressBar Minimum="0" Maximum="100"
+
+                                         Value="{Binding TopStats.TasksCompletionPercentage, Mode=OneWay, FallbackValue=0}"
+
+                                         Foreground="{DynamicResource TacticalGoldBrush}"
+
+                                         Background="Transparent" BorderThickness="0"/>
+
+                        </Border>
+
+                    </Grid>
+
+                </Border>
+
+
+
+                <!-- 2. Kappa Quest Progress -->
+
+                <Border Margin="4,4" BorderThickness="1"
+                        CornerRadius="8" Padding="18,14"
+                        Cursor="Hand" MouseLeftButtonUp="KappaCard_Click"
+                        ToolTip="Click to view all Kappa required quests in Tasks tab">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{DynamicResource TacticalSurface2Brush}"/>
+                            <Setter Property="BorderBrush" Value="#554418"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="BorderBrush" Value="#E5C86A"/>
+                                    <Setter Property="Background" Value="#221C12"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+
+                    <Grid>
+
+                        <Grid.RowDefinitions>
+
+                            <RowDefinition Height="Auto"/>
+
+                            <RowDefinition Height="Auto"/>
+
+                            <RowDefinition Height="Auto"/>
+
+                            <RowDefinition Height="Auto"/>
+
+                        </Grid.RowDefinitions>
+
+                        <!-- Top Accent Line -->
+
+                        <Rectangle Grid.Row="0" Height="2" Fill="#E5C86A" Margin="-18,-14,-18,12"/>
+
+                        <Grid Grid.Row="1" Margin="0,0,0,8">
+
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+
+                                <TextBlock Text="KAPPA CONTAINER PROGRESS" FontSize="11.5" FontWeight="Bold"
+
+                                           Foreground="#E5C86A" VerticalAlignment="Center"/>
+
+                                <Border Background="#1C180A" BorderBrush="#554418" BorderThickness="1" CornerRadius="3"
+                                        Padding="5,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="VIEW TASKS &#x2794;" FontSize="9" FontWeight="SemiBold" Foreground="#C5A84A"/>
+                                </Border>
+
+                            </StackPanel>
+
+                            <Border Background="#2B2412" BorderBrush="#C5A84A" BorderThickness="1"
+
+                                    CornerRadius="3" Padding="6,2" HorizontalAlignment="Right"
+
+                                    Visibility="{Binding IsKappaReady, Converter={StaticResource BoolToVisConverter}}">
+
+                                <TextBlock Text="✓ KAPPA READY" FontSize="10" FontWeight="Bold" Foreground="#F0D060"/>
+
+                            </Border>
+
+                        </Grid>
+
+                        <Grid Grid.Row="2" Margin="0,0,0,8">
+
+                            <TextBlock x:Name="KappaPercentageText" Text="{Binding KappaPercentageText}"
+
+                                       FontFamily="{DynamicResource TacticalDisplayFont}"
+
+                                       FontSize="32" FontWeight="Bold"
+
+                                       Foreground="#F5D77F" VerticalAlignment="Bottom"/>
+
+                            <TextBlock x:Name="KappaText" Text="{Binding KappaText}" FontSize="12"
+
+                                       Foreground="{DynamicResource TacticalTextMutedBrush}"
+
+                                       HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,4"/>
+
+                        </Grid>
+
+                        <Border Grid.Row="3" Background="#0A0C10" BorderBrush="#1E232D" BorderThickness="1" CornerRadius="3" Height="8" Padding="1">
+
+                            <ProgressBar Minimum="0"
+
+                                         Maximum="{Binding TopStats.TotalKappaTasks, Mode=OneWay, FallbackValue=100}"
+
+                                         Value="{Binding TopStats.CompletedKappaTasks, Mode=OneWay, FallbackValue=0}"
+
+                                         Foreground="#D4AF37" Background="Transparent" BorderThickness="0"/>
+
+                        </Border>
+
+                    </Grid>
+
+                </Border>
+
+
+
+                <!-- 3. Hideout Item Progression % -->
+
+                <Border Margin="4,4" Background="{DynamicResource TacticalSurface2Brush}"
+
+                        BorderBrush="{DynamicResource TacticalBorderMediumBrush}" BorderThickness="1"
+
+                        CornerRadius="8" Padding="18,14">
+
+                    <Grid>
+
+                        <Grid.RowDefinitions>
+
+                            <RowDefinition Height="Auto"/>
+
+                            <RowDefinition Height="Auto"/>
+
+                            <RowDefinition Height="Auto"/>
+
+                            <RowDefinition Height="Auto"/>
+
+                        </Grid.RowDefinitions>
+
+                        <!-- Top Accent Line -->
+
+                        <Rectangle Grid.Row="0" Height="2" Fill="{DynamicResource TacticalInfoBrush}" Margin="-18,-14,-18,12"/>
+
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+
+                            <TextBlock Text="HIDEOUT ITEMS PROGRESS" FontSize="11.5" FontWeight="Bold"
+
+                                       Foreground="{DynamicResource TacticalTextSecondaryBrush}" VerticalAlignment="Center"/>
+
+                        </StackPanel>
+
+                        <Grid Grid.Row="2" Margin="0,0,0,8">
+
+                            <TextBlock x:Name="HideoutPercentageText" Text="{Binding HideoutPercentageText}"
+
+                                       FontFamily="{DynamicResource TacticalDisplayFont}"
+
+                                       FontSize="32" FontWeight="Bold"
+
+                                       Foreground="{DynamicResource TacticalInfoBrush}" VerticalAlignment="Bottom"/>
+
+                            <TextBlock Text="{Binding HideoutCountText}" FontSize="12"
+
+                                       Foreground="{DynamicResource TacticalTextMutedBrush}"
+
+                                       HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,4"/>
+
+                        </Grid>
+
+                        <Border Grid.Row="3" Background="#0A0C10" BorderBrush="#1E232D" BorderThickness="1" CornerRadius="3" Height="8" Padding="1">
+
+                            <ProgressBar Minimum="0" Maximum="100"
+
+                                         Value="{Binding TopStats.HideoutItemsPercentage, Mode=OneWay, FallbackValue=0}"
+
+                                         Foreground="{DynamicResource TacticalInfoBrush}"
+
+                                         Background="Transparent" BorderThickness="0"/>
+
+                        </Border>
+
+                    </Grid>
+
+                </Border>
+
+            </controls:AdaptiveUniformGrid>
+
+
+
+            <!-- Row 1: "Up Next" / Relevant Tasks List (High-Density & Clean) -->
+
+            <Border Grid.Row="1" Background="{DynamicResource TacticalSurface1Brush}"
+
+                    BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
+
+                    CornerRadius="8" Padding="14,10" Margin="0,0,0,16">
+
+                <StackPanel>
+
+                    <!-- Header -->
+
+                    <Grid Margin="0,0,0,8">
+
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+
+                            <TextBlock Text="Up next" FontSize="14" FontWeight="Bold"
+
+                                       Foreground="{DynamicResource TacticalGoldBrush}" VerticalAlignment="Center"/>
+
+                        </StackPanel>
+
+                        <Button Content="View all tasks ➔" HorizontalAlignment="Right" Click="BtnViewAllTasks_Click"
+
+                                Background="Transparent" BorderThickness="0"
+
+                                Foreground="{DynamicResource TacticalTextSecondaryBrush}" FontSize="11" FontWeight="SemiBold"
+
+                                Cursor="Hand" ToolTip="Open full Tasks list"/>
+
+                    </Grid>
+
+
+
+                    <!-- ItemsControl for UpNextTasks (High-Density) -->
+
+                    <ItemsControl ItemsSource="{Binding UpNextTasks}">
+
+                        <ItemsControl.ItemTemplate>
+
+                            <DataTemplate>
+
+                                <Border Background="{DynamicResource TacticalSurface2Brush}"
+
+                                        BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+
+                                        BorderThickness="3,1,1,1"
+
+                                        CornerRadius="5" Padding="12,8" Margin="0,0,0,6">
+
+                                    <Grid>
+
+                                        <Grid.ColumnDefinitions>
+
+                                            <ColumnDefinition Width="32"/>
+
+                                            <ColumnDefinition Width="*"/>
+
+                                            <ColumnDefinition Width="Auto"/>
+
+                                            <ColumnDefinition Width="Auto"/>
+
+                                        </Grid.ColumnDefinitions>
+
+
+
+                                        <!-- Trader Avatar / Initial Badge (28x28) -->
+
+                                        <Border Grid.Column="0" Width="28" Height="28" CornerRadius="4"
+
+                                                Background="{DynamicResource TacticalSurface3Brush}"
+
+                                                BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+
+                                                BorderThickness="1" ClipToBounds="True"
+
+                                                VerticalAlignment="Center">
+
+                                            <Grid>
+
+                                                <Image Source="{Binding AvatarSource}" Width="28" Height="28" Stretch="UniformToFill"
+
+                                                       Visibility="{Binding AvatarVisibility}"/>
+
+                                                <TextBlock Text="{Binding TraderInitial}"
+
+                                                           FontSize="11.5" FontWeight="Bold"
+
+                                                           Foreground="{DynamicResource TacticalGoldBrush}"
+
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+
+                                                           Visibility="{Binding FallbackVisibility}"/>
+
+                                            </Grid>
+
+                                        </Border>
+
+
+
+                                        <!-- Task Title & Map inline -->
+
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+
+                                            <TextBlock Text="{Binding Trader}" FontSize="13" FontWeight="SemiBold"
+
+                                                       Foreground="{DynamicResource TacticalGoldBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+
+                                            <TextBlock Text="·" FontSize="13" Foreground="{DynamicResource TacticalTextMutedBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+
+                                            <TextBlock Text="{Binding QuestName}" FontWeight="SemiBold" FontSize="14"
+
+                                                       Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+
+                                                       Cursor="Hand" MouseLeftButtonUp="BtnQuestTitle_Click"
+
+                                                       ToolTip="Click to view quest in Tasks list" VerticalAlignment="Center"/>
+
+                                            <Border Background="#1E232E" CornerRadius="4" Padding="7,2" Margin="10,0,0,0"
+
+                                                    VerticalAlignment="Center" BorderThickness="1" BorderBrush="#323846">
+
+                                                <TextBlock Text="{Binding Map}" FontSize="11.5" FontWeight="Medium" Foreground="#D0D5DD"/>
+
+                                            </Border>
+
+                                        </StackPanel>
+
+
+
+                                        <!-- Reason / Unlock Text (clean single pill) -->
+
+                                        <Border Grid.Column="2" CornerRadius="4" Padding="8,3" Margin="12,0,10,0"
+
+                                                VerticalAlignment="Center"
+
+                                                Background="{Binding BadgeType, Converter={StaticResource BadgeBgConverter}}"
+
+                                                BorderBrush="{Binding BadgeType, Converter={StaticResource BadgeBorderConverter}}"
+
+                                                BorderThickness="1">
+
+                                            <TextBlock Text="{Binding ReasonText}" FontSize="11.5" FontWeight="SemiBold"
+
+                                                       Foreground="{Binding BadgeType, Converter={StaticResource BadgeFgConverter}}"/>
+
+                                        </Border>
+
+
+
+                                        <!-- Action Button (compact ➔) -->
+
+                                        <Button Grid.Column="3" Content="➔" Click="BtnViewQuest_Click"
+
+                                                Padding="0" Width="28" Height="26" FontSize="12" FontWeight="Bold"
+
+                                                Background="{DynamicResource TacticalSurface3Brush}"
+
+                                                Foreground="{DynamicResource TacticalGoldBrush}"
+
+                                                BorderBrush="{DynamicResource TacticalBorderMediumBrush}" BorderThickness="1"
+
+                                                Cursor="Hand" ToolTip="Open this quest in Quests view"
+
+                                                VerticalAlignment="Center"/>
+
+                                    </Grid>
+
+                                </Border>
+
+                            </DataTemplate>
+
+                        </ItemsControl.ItemTemplate>
+
+                    </ItemsControl>
+
+                </StackPanel>
+
+            </Border>
+
+
+
+            <!-- Row 2: 11-Trader Progression Grid (F19) with Real Trader Portraits -->
+
+            <Border Grid.Row="2" Background="{DynamicResource TacticalSurface1Brush}"
+
+                    BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
+
+                    CornerRadius="8" Padding="16,14">
+
+                <StackPanel>
+
+                    <Grid Margin="0,0,0,12">
+
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+
+                            <TextBlock Text="TRADER PROGRESSION &amp; LOYALTY LEVELS" Style="{StaticResource SectionHeaderStyle}"/>
+
+                        </StackPanel>
+
+                    </Grid>
+
+
+
+                    <ItemsControl ItemsSource="{Binding TraderCards}">
+
+                        <ItemsControl.ItemsPanel>
+
+                            <ItemsPanelTemplate>
+
+                                <controls:AdaptiveUniformGrid MinItemWidth="140" MaxColumns="6" Margin="-3,0"/>
+
+                            </ItemsPanelTemplate>
+
+                        </ItemsControl.ItemsPanel>
+
+                        <ItemsControl.ItemTemplate>
+
+                            <DataTemplate>
+
+                                <Border Margin="3,4" Padding="10"
+
+                                        Background="{DynamicResource TacticalSurface2Brush}"
+
+                                        BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+
+                                        BorderThickness="1"
+
+                                        CornerRadius="6">
+
+                                    <Border.Style>
+
+                                        <Style TargetType="Border">
+
+                                            <Style.Triggers>
+
+                                                <Trigger Property="IsMouseOver" Value="True">
+
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource TacticalBorderHighlightBrush}"/>
+
+                                                </Trigger>
+
+                                            </Style.Triggers>
+
+                                        </Style>
+
+                                    </Border.Style>
+
+                                    <StackPanel>
+
+                                        <!-- Header: Avatar Portrait, Name, Unlock / Crown Badge -->
+
+                                        <Grid Height="46" Margin="0,0,0,8">
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="48"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                            </Grid.ColumnDefinitions>
+
+
+
+                                            <!-- Trader Avatar Portrait -->
+
+                                            <Border Grid.Column="0" Width="42" Height="42" CornerRadius="5"
+
+                                                    Background="{DynamicResource TacticalSurface0Brush}"
+
+                                                    BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+
+                                                    BorderThickness="1"
+
+                                                    ClipToBounds="True" VerticalAlignment="Center"
+
+                                                    Cursor="Hand" MouseLeftButtonUp="TraderCardHeader_Click"
+
+                                                    ToolTip="Click to filter quests for this trader">
+
+                                                <Grid>
+
+                                                    <Image Source="{Binding AvatarSource}" Width="42" Height="42" Stretch="UniformToFill"
+
+                                                           Visibility="{Binding AvatarVisibility}"/>
+
+                                                    <TextBlock Text="{Binding FallbackInitials}"
+
+                                                               FontFamily="{DynamicResource TacticalDisplayFont}"
+
+                                                               FontSize="13" FontWeight="Bold" Foreground="{DynamicResource TacticalGoldBrush}"
+
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+
+                                                               Visibility="{Binding FallbackVisibility}"/>
+
+                                                </Grid>
+
+                                            </Border>
+
+
+
+                                            <!-- Name and Status -->
+
+                                            <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
+
+                                                <TextBlock Text="{Binding DisplayName}" FontWeight="Bold"
+
+                                                           FontSize="13" Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+
+                                                           TextTrimming="CharacterEllipsis"
+
+                                                           Cursor="Hand" MouseLeftButtonUp="TraderCardHeader_Click"
+
+                                                           ToolTip="Click to filter quests for this trader"/>
+
+
+
+                                                <!-- Locked Badge -->
+
+                                                <Border Padding="5,2" CornerRadius="3" Margin="0,2,0,0"
+
+                                                        HorizontalAlignment="Left"
+
+                                                        Background="#331A1A" BorderBrush="#5E2A2A" BorderThickness="1"
+
+                                                        Visibility="{Binding IsLocked, Converter={StaticResource BoolToVisConverter}}">
+
+                                                    <TextBlock Text="{Binding UnlockRequirementText}"
+
+                                                               FontSize="10.5" FontWeight="Bold" Foreground="#FF8A80"
+
+                                                               TextTrimming="CharacterEllipsis" MaxWidth="140"/>
+
+                                                </Border>
+
+
+
+                                                <!-- LL4 Crown Badge -->
+
+                                                <Border Padding="5,2" CornerRadius="3" Margin="0,2,0,0"
+
+                                                        HorizontalAlignment="Left"
+
+                                                        Background="#2A2412" BorderBrush="{DynamicResource TacticalBorderSubtleGoldBrush}" BorderThickness="1"
+
+                                                        Visibility="{Binding IsCrown, Converter={StaticResource BoolToVisConverter}}">
+
+                                                    <TextBlock Text="★ MAX LL"
+
+                                                               FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource TacticalGoldBrush}"/>
+
+                                                </Border>
+
+                                            </StackPanel>
+
+                                        </Grid>
+
+
+
+                                        <!-- Tasks Progress -->
+
+                                        <StackPanel Margin="0,0,0,8">
+
+                                            <Grid Margin="0,0,0,3">
+
+                                                <TextBlock Text="Tasks" FontSize="12" Foreground="{DynamicResource TacticalTextSecondaryBrush}" HorizontalAlignment="Left"/>
+
+                                                <TextBlock Text="{Binding ProgressText}" FontSize="12" FontWeight="SemiBold"
+
+                                                           FontFamily="{DynamicResource TacticalDisplayFont}"
+
+                                                           Foreground="{DynamicResource TacticalTextPrimaryBrush}" HorizontalAlignment="Right"/>
+
+                                            </Grid>
+
+                                            <Border Background="#0A0C10" BorderBrush="#1E232D" BorderThickness="1" CornerRadius="3" Height="7" Padding="1">
+
+                                                <ProgressBar Minimum="0"
+
+                                                             Maximum="{Binding TotalTasks, Mode=OneWay, FallbackValue=100}"
+
+                                                             Value="{Binding CompletedTasks, Mode=OneWay, FallbackValue=0}"
+
+                                                             Foreground="{DynamicResource TacticalGoldBrush}"
+
+                                                             Background="Transparent" BorderThickness="0"/>
+
+                                            </Border>
+
+                                        </StackPanel>
+
+
+
+                                        <!-- Loyalty Level Selectors [1] [2] [3] [4] (Regular Traders) -->
+
+                                        <Grid Height="26" Margin="0,2,0,2" Visibility="{Binding HasLoyaltyLevels, Converter={StaticResource BoolToVisConverter}}">
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="Auto"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                            </Grid.ColumnDefinitions>
+
+
+
+                                            <TextBlock Text="LL" FontSize="11" FontWeight="Bold"
+
+                                                       Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+
+                                                       VerticalAlignment="Center" Margin="0,0,6,0"/>
+
+
+
+                                            <Border Grid.Column="1" Background="{DynamicResource TacticalSurface0Brush}"
+
+                                                    BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+
+                                                    BorderThickness="1" CornerRadius="4" Padding="2">
+
+                                                <UniformGrid Columns="4" Rows="1">
+
+                                                    <Button Content="1" Tag="1" Click="BtnLoyaltyLevel_Click" ToolTip="Set Loyalty Level 1"
+
+                                                            Style="{StaticResource TacticalLoyaltyButtonStyle}">
+
+                                                        <Button.Background>
+
+                                                            <MultiBinding Converter="{StaticResource LoyaltyBgConverter}">
+
+                                                                <Binding Path="CurrentLoyaltyLevel"/>
+
+                                                                <Binding Source="1"/>
+
+                                                            </MultiBinding>
+
+                                                        </Button.Background>
+
+                                                        <Button.Foreground>
+
+                                                            <MultiBinding Converter="{StaticResource LoyaltyFgConverter}">
+
+                                                                <Binding Path="CurrentLoyaltyLevel"/>
+
+                                                                <Binding Source="1"/>
+
+                                                            </MultiBinding>
+
+                                                        </Button.Foreground>
+
+                                                        <Button.BorderBrush>
+
+                                                            <MultiBinding Converter="{StaticResource LoyaltyBorderConverter}">
+
+                                                                <Binding Path="CurrentLoyaltyLevel"/>
+
+                                                                <Binding Source="1"/>
+
+                                                            </MultiBinding>
+
+                                                        </Button.BorderBrush>
+
+                                                    </Button>
+
+
+
+                                                    <Button Content="2" Tag="2" Click="BtnLoyaltyLevel_Click" ToolTip="Set Loyalty Level 2"
+
+                                                            Style="{StaticResource TacticalLoyaltyButtonStyle}">
+
+                                                        <Button.Background>
+
+                                                            <MultiBinding Converter="{StaticResource LoyaltyBgConverter}">
+
+                                                                <Binding Path="CurrentLoyaltyLevel"/>
+
+                                                                <Binding Source="2"/>
+
+                                                            </MultiBinding>
+
+                                                        </Button.Background>
+
+                                                        <Button.Foreground>
+
+                                                            <MultiBinding Converter="{StaticResource LoyaltyFgConverter}">
+
+                                                                <Binding Path="CurrentLoyaltyLevel"/>
+
+                                                                <Binding Source="2"/>
+
+                                                            </MultiBinding>
+
+                                                        </Button.Foreground>
+
+                                                        <Button.BorderBrush>
+
+                                                            <MultiBinding Converter="{StaticResource LoyaltyBorderConverter}">
+
+                                                                <Binding Path="CurrentLoyaltyLevel"/>
+
+                                                                <Binding Source="2"/>
+
+                                                            </MultiBinding>
+
+                                                        </Button.BorderBrush>
+
+                                                    </Button>
+
+
+
+                                                    <Button Content="3" Tag="3" Click="BtnLoyaltyLevel_Click" ToolTip="Set Loyalty Level 3"
+
+                                                            Style="{StaticResource TacticalLoyaltyButtonStyle}">
+
+                                                        <Button.Background>
+
+                                                            <MultiBinding Converter="{StaticResource LoyaltyBgConverter}">
+
+                                                                <Binding Path="CurrentLoyaltyLevel"/>
+
+                                                                <Binding Source="3"/>
+
+                                                            </MultiBinding>
+
+                                                        </Button.Background>
+
+                                                        <Button.Foreground>
+
+                                                            <MultiBinding Converter="{StaticResource LoyaltyFgConverter}">
+
+                                                                <Binding Path="CurrentLoyaltyLevel"/>
+
+                                                                <Binding Source="3"/>
+
+                                                            </MultiBinding>
+
+                                                        </Button.Foreground>
+
+                                                        <Button.BorderBrush>
+
+                                                            <MultiBinding Converter="{StaticResource LoyaltyBorderConverter}">
+
+                                                                <Binding Path="CurrentLoyaltyLevel"/>
+
+                                                                <Binding Source="3"/>
+
+                                                            </MultiBinding>
+
+                                                        </Button.BorderBrush>
+
+                                                    </Button>
+
+
+
+                                                    <Button Content="4" Tag="4" Click="BtnLoyaltyLevel_Click" ToolTip="Set Loyalty Level 4"
+
+                                                            Style="{StaticResource TacticalLoyaltyButtonStyle}">
+
+                                                        <Button.Background>
+
+                                                            <MultiBinding Converter="{StaticResource LoyaltyBgConverter}">
+
+                                                                <Binding Path="CurrentLoyaltyLevel"/>
+
+                                                                <Binding Source="4"/>
+
+                                                            </MultiBinding>
+
+                                                        </Button.Background>
+
+                                                        <Button.Foreground>
+
+                                                            <MultiBinding Converter="{StaticResource LoyaltyFgConverter}">
+
+                                                                <Binding Path="CurrentLoyaltyLevel"/>
+
+                                                                <Binding Source="4"/>
+
+                                                            </MultiBinding>
+
+                                                        </Button.Foreground>
+
+                                                        <Button.BorderBrush>
+
+                                                            <MultiBinding Converter="{StaticResource LoyaltyBorderConverter}">
+
+                                                                <Binding Path="CurrentLoyaltyLevel"/>
+
+                                                                <Binding Source="4"/>
+
+                                                            </MultiBinding>
+
+                                                        </Button.BorderBrush>
+
+                                                    </Button>
+
+                                                </UniformGrid>
+
+                                            </Border>
+
+                                        </Grid>
+
+
+
+                                        <!-- Fence Scav Karma Steppers (Pixel-identical height to regular LL grid) -->
+
+                                        <Grid Height="26" Margin="0,2,0,2" Visibility="{Binding IsFence, Converter={StaticResource BoolToVisConverter}}">
+
+                                            <Grid.ColumnDefinitions>
+
+                                                <ColumnDefinition Width="Auto"/>
+
+                                                <ColumnDefinition Width="22"/>
+
+                                                <ColumnDefinition Width="*"/>
+
+                                                <ColumnDefinition Width="22"/>
+
+                                            </Grid.ColumnDefinitions>
+
+
+
+                                            <!-- Invisible placeholder for LL label to align start position with regular traders -->
+
+                                            <TextBlock Text="LL" FontSize="11" FontWeight="Bold"
+
+                                                       Foreground="Transparent"
+
+                                                       VerticalAlignment="Center" Margin="0,0,6,0"/>
+
+
+
+                                            <Button Grid.Column="1" Content="&#x2212;" Click="BtnScavKarmaMinus_Click"
+
+                                                    Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold"
+
+                                                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+
+                                                    Background="{DynamicResource TacticalSurface3Brush}"
+
+                                                    Foreground="#FF8A80"
+
+                                                    BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+
+                                                    BorderThickness="1" Cursor="Hand" ToolTip="Decrement Scav Karma (-0.10)"/>
+
+
+
+                                            <Border Grid.Column="2" Height="22"
+
+                                                    Background="{DynamicResource TacticalSurface0Brush}"
+
+                                                    BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+
+                                                    BorderThickness="1"
+
+                                                    CornerRadius="3" Margin="4,0" Padding="0">
+
+                                                <TextBlock Text="{Binding CurrentReputation, StringFormat='Karma: {0:F2}'}"
+
+                                                           FontSize="10" FontWeight="Bold" Foreground="{DynamicResource TacticalGoldBrush}"
+
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                                            </Border>
+
+
+
+                                            <Button Grid.Column="3" Content="+" Click="BtnScavKarmaPlus_Click"
+
+                                                    Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold"
+
+                                                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+
+                                                    Background="{DynamicResource TacticalSurface3Brush}"
+
+                                                    Foreground="#81C784"
+
+                                                    BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+
+                                                    BorderThickness="1" Cursor="Hand" ToolTip="Increment Scav Karma (+0.10)"/>
+
+                                        </Grid>
+
+
+
+                                                                                <!-- Special Traders (Lightkeeper, etc.) placeholder -->
+                                        <Grid Height="26" Margin="0,2,0,2" Visibility="{Binding IsSpecialTraderWithoutToggle, Converter={StaticResource BoolToVisConverter}}">
+                                            <Border Background="{DynamicResource TacticalSurface0Brush}"
+                                                    BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                                                    BorderThickness="1" CornerRadius="4" Padding="4,2">
+                                                <TextBlock Text="Special Trader" FontSize="10" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource TacticalTextMutedBrush}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </Grid>
+
+                                        <!-- BTR Driver Availability Toggle Button -->
+                                        <Grid Height="26" Margin="0,2,0,2" Visibility="{Binding IsBtrDriver, Converter={StaticResource BoolToVisConverter}}">
+                                            <Border Background="{Binding BtrToggleBackground}"
+                                                    BorderBrush="{Binding BtrToggleBorderBrush}"
+                                                    BorderThickness="1" CornerRadius="4" Padding="4,2"
+                                                    Cursor="Hand"
+                                                    MouseLeftButtonUp="BtnBtrToggle_Click"
+                                                    ToolTip="{Binding BtrToggleToolTip}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding BtrToggleIcon}" FontWeight="Bold" Margin="2,0,4,0" FontSize="10"
+                                                               Foreground="{Binding BtrToggleForeground}" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding BtrToggleText}" FontSize="9.5" FontWeight="SemiBold"
+                                                               Foreground="{Binding BtrToggleForeground}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                </Grid>
+                                            </Border>
+                                        </Grid>
+
+                                    </StackPanel>
+
+                                </Border>
+
+                            </DataTemplate>
+
+                        </ItemsControl.ItemTemplate>
+
+                    </ItemsControl>
+
+                </StackPanel>
+
+            </Border>
+
+        </Grid>
+
+    </ScrollViewer>
+
+</UserControl>
+

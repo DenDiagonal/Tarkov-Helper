@@ -52,7 +52,12 @@ public class OverlayMiniMapService : IDisposable
     /// <summary>
     /// 오버레이 표시 여부
     /// </summary>
-    public bool IsOverlayVisible => _overlayWindow?.IsVisible == true;
+    public bool IsOverlayVisible => _overlayWindow?.IsVisible == true && _overlayWindow.WindowState != System.Windows.WindowState.Minimized;
+
+    /// <summary>
+    /// 현재 활성화된 오버레이 윈도우 인스턴스
+    /// </summary>
+    public OverlayMiniMapWindow? CurrentOverlayWindow => _overlayWindow;
 
     private OverlayMiniMapService()
     {
@@ -75,6 +80,7 @@ public class OverlayMiniMapService : IDisposable
             GlobalKeyboardHookService.Instance.OverlaySettingsPressed += OnSettingsPressed;
             GlobalKeyboardHookService.Instance.OverlayZoomInPressed += OnZoomInPressed;
             GlobalKeyboardHookService.Instance.OverlayZoomOutPressed += OnZoomOutPressed;
+            GlobalKeyboardHookService.Instance.OverlayClickThroughPressed += OnClickThroughPressed;
 
             _isInitialized = true;
             _log.Info("OverlayMiniMapService initialized");
@@ -105,7 +111,13 @@ public class OverlayMiniMapService : IDisposable
                 CreateOverlayWindow();
             }
 
+            if (_overlayWindow != null && _overlayWindow.WindowState == System.Windows.WindowState.Minimized)
+            {
+                _overlayWindow.WindowState = System.Windows.WindowState.Normal;
+            }
+
             _overlayWindow?.Show();
+            _overlayWindow?.Activate();
             _settings.Enabled = true;
             OverlayVisibilityChanged?.Invoke(true);
 
@@ -136,11 +148,18 @@ public class OverlayMiniMapService : IDisposable
         }
     }
 
+    private DateTime _lastToggleTime = DateTime.MinValue;
+
     /// <summary>
     /// 오버레이 토글
     /// </summary>
     public void ToggleOverlay()
     {
+        var now = DateTime.UtcNow;
+        if ((now - _lastToggleTime).TotalMilliseconds < 250)
+            return;
+        _lastToggleTime = now;
+
         if (IsOverlayVisible)
             HideOverlay();
         else
@@ -164,6 +183,7 @@ public class OverlayMiniMapService : IDisposable
 
     private void OnOverlayClosed()
     {
+        _overlayWindow = null;
         _settings.Enabled = false;
         OverlayVisibilityChanged?.Invoke(false);
         _ = SaveSettingsAsync();
@@ -213,6 +233,20 @@ public class OverlayMiniMapService : IDisposable
         });
     }
 
+    private void OnClickThroughPressed()
+    {
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            if (_overlayWindow != null && IsOverlayVisible)
+            {
+                _overlayWindow.ToggleClickThrough();
+                _settings.ClickThrough = _overlayWindow.IsClickThrough;
+                _ = SaveSettingsAsync();
+                SettingsChanged?.Invoke(_settings);
+            }
+        });
+    }
+
     #endregion
 
     #region Settings Persistence
@@ -231,6 +265,10 @@ public class OverlayMiniMapService : IDisposable
                 if (loaded != null)
                 {
                     _settings = loaded;
+                    if (_settings.ZoomLevel < OverlayMiniMapSettings.MinZoom || _settings.ZoomLevel > OverlayMiniMapSettings.MaxZoom)
+                    {
+                        _settings.ZoomLevel = 1.0;
+                    }
                     _log.Debug("Overlay settings loaded from database");
                 }
             }
@@ -300,6 +338,42 @@ public class OverlayMiniMapService : IDisposable
         _overlayWindow?.RefreshMap();
     }
 
+    /// <summary>
+    /// 마커 새로고침 (맵 이미지는 유지하고 마커만 다시 로드)
+    /// </summary>
+    public void RefreshMarkers()
+    {
+        _overlayWindow?.RefreshMarkers();
+    }
+
+    /// <summary>
+    /// 클릭 통과 모드 토글
+    /// </summary>
+    public void ToggleClickThrough()
+    {
+        if (_overlayWindow != null)
+        {
+            _overlayWindow.ToggleClickThrough();
+            _settings.ClickThrough = _overlayWindow.IsClickThrough;
+            _ = SaveSettingsAsync();
+            SettingsChanged?.Invoke(_settings);
+        }
+    }
+
+    /// <summary>
+    /// 클릭 통과 모드 명시적 설정
+    /// </summary>
+    public void SetClickThrough(bool enabled)
+    {
+        if (_overlayWindow != null)
+        {
+            _overlayWindow.SetClickThrough(enabled);
+            _settings.ClickThrough = enabled;
+            _ = SaveSettingsAsync();
+            SettingsChanged?.Invoke(_settings);
+        }
+    }
+
     private OverlaySettingsWindow? _settingsWindow;
 
     /// <summary>
@@ -322,6 +396,7 @@ public class OverlayMiniMapService : IDisposable
     private void OnSettingsApplied(OverlayMiniMapSettings settings)
     {
         _settings.CopyFrom(settings);
+        _overlayWindow?.ApplyNewSettings(_settings);
         SyncHotkeys();
         _ = SaveSettingsAsync();
         SettingsChanged?.Invoke(_settings);
@@ -343,9 +418,13 @@ public class OverlayMiniMapService : IDisposable
         GlobalKeyboardHookService.Instance.OverlaySettingsPressed -= OnSettingsPressed;
         GlobalKeyboardHookService.Instance.OverlayZoomInPressed -= OnZoomInPressed;
         GlobalKeyboardHookService.Instance.OverlayZoomOutPressed -= OnZoomOutPressed;
+        GlobalKeyboardHookService.Instance.OverlayClickThroughPressed -= OnClickThroughPressed;
 
         _overlayWindow?.Close();
         _overlayWindow = null;
+
+        _settingsWindow?.Close();
+        _settingsWindow = null;
 
         _log.Info("OverlayMiniMapService disposed");
 

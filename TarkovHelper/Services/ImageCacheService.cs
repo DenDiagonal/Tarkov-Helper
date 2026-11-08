@@ -19,11 +19,12 @@ namespace TarkovHelper.Services
         private readonly string _imageCachePath;
         private readonly string _localIconsPath;
         private readonly Dictionary<string, BitmapImage> _memoryCache = new();
+        private readonly HashSet<string> _missingLocalIcons = new(StringComparer.OrdinalIgnoreCase);
         private readonly LinkedList<string> _lruOrder = new(); // Track access order for LRU eviction
         private readonly object _cacheLock = new();
 
         // Memory cache limit (max number of images to keep in memory)
-        private const int MaxMemoryCacheSize = 200;
+        private const int MaxMemoryCacheSize = 5000;
 
         // Wiki image base URL
         private const string WikiImageBaseUrl = "https://escapefromtarkov.fandom.com/wiki/Special:FilePath/";
@@ -64,6 +65,9 @@ namespace TarkovHelper.Services
             var cacheKey = $"local:{itemId}";
             lock (_cacheLock)
             {
+                if (_missingLocalIcons.Contains(itemId))
+                    return null;
+
                 if (_memoryCache.TryGetValue(cacheKey, out var cachedImage))
                 {
                     _lruOrder.Remove(cacheKey);
@@ -76,7 +80,16 @@ namespace TarkovHelper.Services
             var localPath = Path.Combine(_localIconsPath, $"{itemId}.png");
             if (!File.Exists(localPath))
             {
-                return null;
+                var lowerPath = Path.Combine(_localIconsPath, $"{itemId.ToLowerInvariant()}.png");
+                if (File.Exists(lowerPath))
+                {
+                    localPath = lowerPath;
+                }
+                else
+                {
+                    lock (_cacheLock) { _missingLocalIcons.Add(itemId); }
+                    return null;
+                }
             }
 
             var image = LoadImageFromFile(localPath);

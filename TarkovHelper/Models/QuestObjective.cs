@@ -11,15 +11,17 @@ public class LocationPoint
     public double Y { get; set; }
     public double Z { get; set; }
     public string? FloorId { get; set; }
+    public string? MapName { get; set; }
 
     public LocationPoint() { }
 
-    public LocationPoint(double x, double y, double z, string? floorId = null)
+    public LocationPoint(double x, double y, double z, string? floorId = null, string? mapName = null)
     {
         X = x;
         Y = y;
         Z = z;
         FloorId = floorId;
+        MapName = mapName;
     }
 }
 
@@ -87,7 +89,9 @@ public class QuestObjective
     /// <summary>
     /// Effective map name - uses MapName if available, otherwise QuestLocation
     /// </summary>
-    public string? EffectiveMapName => !string.IsNullOrEmpty(MapName) ? MapName : QuestLocation;
+    public string? EffectiveMapName => !string.IsNullOrWhiteSpace(MapName) && !MapName.Equals("None", StringComparison.OrdinalIgnoreCase)
+        ? MapName
+        : QuestLocation;
 
     /// <summary>
     /// Location points defining an area (polygon), line, or single point
@@ -98,6 +102,16 @@ public class QuestObjective
     /// Optional points for OR locations (alternative spots)
     /// </summary>
     public List<LocationPoint> OptionalPoints { get; set; } = new();
+
+    /// <summary>
+    /// Factory original location points JSON string
+    /// </summary>
+    public string? OriginalLocationPoints { get; set; }
+
+    /// <summary>
+    /// Whether this objective has been customized or relocated by user
+    /// </summary>
+    public bool IsCustomized { get; set; }
 
     /// <summary>
     /// JSON setter for LocationPoints

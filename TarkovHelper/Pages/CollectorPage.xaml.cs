@@ -572,8 +572,7 @@ namespace TarkovHelper.Pages
         {
             if (sender is Button btn && btn.Tag is CollectorQuestItemSourceViewModel vm && vm.Task != null)
             {
-                var wikiPageName = NormalizedNameGenerator.GetWikiPageName(vm.Task.Name);
-                var wikiUrl = $"https://escapefromtarkov.fandom.com/wiki/{Uri.EscapeDataString(wikiPageName.Replace(" ", "_"))}";
+                var wikiUrl = NormalizedNameGenerator.GetQuestWikiUrl(vm.Task);
 
                 try
                 {

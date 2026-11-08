@@ -10,7 +10,7 @@
         SizeToContent="WidthAndHeight"
         ShowInTaskbar="False">
 
-    <Border Background="{DynamicResource BackgroundDarkBrush}"
+    <Border Background="{DynamicResource TacticalSurface1Brush}" BorderBrush="{DynamicResource TacticalBorderMediumBrush}" BorderThickness="1"
             CornerRadius="8" Padding="24"
             MinWidth="500" MaxWidth="600">
         <Border.Effect>
@@ -20,11 +20,11 @@
             <!-- Header -->
             <Grid Margin="0,0,0,16">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="" FontSize="{DynamicResource FontSizeHeader}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <TextBlock Text="⚠" FontSize="{DynamicResource FontSizeLarge}" Foreground="{DynamicResource TacticalWarningBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock x:Name="TxtTitle" Text="Before Quest Sync" FontSize="{DynamicResource FontSizeXLarge}" FontWeight="SemiBold"
-                               Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+                               Foreground="{DynamicResource TacticalGoldBrush}" VerticalAlignment="Center"/>
                 </StackPanel>
-                <Button x:Name="BtnClose" Content="X"
+                <Button x:Name="BtnClose" Content="✕"
                         HorizontalAlignment="Right"
                         Padding="8,4" FontSize="{DynamicResource FontSizeSmall}"
                         Click="BtnClose_Click"/>
@@ -34,29 +34,29 @@
             <TextBlock x:Name="TxtMessage"
                        Text="Have you recently reset your account (wipe)?"
                        FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       Foreground="{DynamicResource TacticalTextPrimaryBrush}"
                        TextWrapping="Wrap"
                        Margin="0,0,0,12"/>
 
             <TextBlock x:Name="TxtDescription"
                        Text="If you sync after a wipe, logs from the previous season may mix and quest progress may be displayed incorrectly."
                        FontSize="{DynamicResource FontSizeXSmall}"
-                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       Foreground="{DynamicResource TacticalTextSecondaryBrush}"
                        TextWrapping="Wrap"
                        Margin="0,0,0,16"/>
 
             <!-- Log Folder Path -->
-            <Border Background="{DynamicResource BackgroundMediumBrush}"
+            <Border Background="{DynamicResource TacticalSurface2Brush}" BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
                     CornerRadius="4" Padding="12" Margin="0,0,0,12">
                 <StackPanel>
                     <TextBlock x:Name="TxtLogFolderLabel" Text="Log folder location:"
                                FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Foreground="{DynamicResource TacticalTextPrimaryBrush}"
                                Margin="0,0,0,4"/>
                     <TextBlock x:Name="TxtLogPath"
                                Text=""
                                FontSize="{DynamicResource FontSizeTiny}"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Foreground="{DynamicResource TacticalTextSecondaryBrush}"
                                TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
             </Border>
@@ -65,14 +65,14 @@
             <TextBlock x:Name="TxtRecommendation"
                        Text="Recommended: Delete or backup log folders dated before the wipe."
                        FontSize="{DynamicResource FontSizeXSmall}"
-                       Foreground="{DynamicResource AccentBrush}"
+                       Foreground="{DynamicResource TacticalGoldBrush}"
                        TextWrapping="Wrap"
                        Margin="0,0,0,16"/>
 
             <!-- Don't show again checkbox -->
             <CheckBox x:Name="ChkDontShowAgain"
                       Content="Don't show this again"
-                      Foreground="{DynamicResource TextSecondaryBrush}"
+                      Foreground="{DynamicResource TacticalTextSecondaryBrush}"
                       Margin="0,0,0,16"/>
 
             <!-- Action Buttons -->
@@ -83,8 +83,8 @@
                 <Button x:Name="BtnContinue" Content="Continue"
                         Padding="16,8"
                         Click="BtnContinue_Click"
-                        Background="{DynamicResource AccentBrush}"
-                        Foreground="{DynamicResource BackgroundDarkBrush}"/>
+                        Background="{DynamicResource TacticalGoldBrush}"
+                        Foreground="{DynamicResource TacticalTextInvertedBrush}"/>
             </StackPanel>
         </StackPanel>
     </Border>

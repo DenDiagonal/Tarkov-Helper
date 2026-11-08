@@ -115,6 +115,25 @@ namespace TarkovHelper.Services
     .ToList();
         }
 
+        private static readonly Dictionary<string, string> TraderUnlockQuests = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["jaeger"] = "introduction",
+            ["5c0647fdd443bc2504c2d371"] = "introduction",
+            ["ref"] = "easy-money---part-1",
+            ["6617beeaa9cfa777ca915b7c"] = "easy-money---part-1",
+            ["lightkeeper"] = "getting-acquainted",
+            ["638f541a29ffd1183d187f57"] = "getting-acquainted",
+            ["btr driver"] = "a-helping-hand",
+            ["btr-driver"] = "a-helping-hand",
+            ["656f0f98d80a697f855d34b1"] = "a-helping-hand"
+        };
+
+        public string? GetTraderUnlockQuestNormalizedName(string? trader)
+        {
+            if (string.IsNullOrWhiteSpace(trader)) return null;
+            return TraderUnlockQuests.TryGetValue(trader.Trim(), out var norm) ? norm : null;
+        }
+
         private void CollectPrerequisites(string questName, HashSet<string> visited, HashSet<string> visiting, List<TarkovTask> result)
         {
             if (visited.Contains(questName) || visiting.Contains(questName))
@@ -129,6 +148,16 @@ namespace TarkovHelper.Services
                 {
                     CollectPrerequisites(prev, visited, visiting, result);
                 }
+            }
+
+            // Gated Trader Prerequisite (TarkovTracker parity)
+            // Quests of a gated trader inherently depend on that trader's unlock quest.
+            var traderUnlockQuest = GetTraderUnlockQuestNormalizedName(task?.Trader);
+            if (!string.IsNullOrEmpty(traderUnlockQuest) &&
+                !string.Equals(questName, traderUnlockQuest, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(task?.NormalizedName, traderUnlockQuest, StringComparison.OrdinalIgnoreCase))
+            {
+                CollectPrerequisites(traderUnlockQuest, visited, visiting, result);
             }
 
             visiting.Remove(questName);

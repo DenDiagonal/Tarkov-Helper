@@ -86,14 +86,19 @@ public class GlobalKeyboardHookService : IDisposable
     #region Overlay MiniMap Hotkey Events
 
     /// <summary>
-    /// 오버레이 토글 (Ctrl+M)
+    /// 오버레이 토글 (Ctrl+1)
     /// </summary>
     public event Action? OverlayTogglePressed;
 
     /// <summary>
-    /// 오버레이 설정창 열기 (Ctrl+L)
+    /// 오버레이 설정창 열기 (Ctrl+7)
     /// </summary>
     public event Action? OverlaySettingsPressed;
+
+    /// <summary>
+    /// 오버레이 클릭 통과 모드 토글 (Ctrl+9)
+    /// </summary>
+    public event Action? OverlayClickThroughPressed;
 
     /// <summary>
     /// 오버레이 줌 인 (NumPad +)
@@ -172,21 +177,30 @@ public class GlobalKeyboardHookService : IDisposable
         {
             int vkCode = Marshal.ReadInt32(lParam);
 
+            // Fast candidate filter: if this key is not a candidate key for TarkovHelper, pass it immediately without overhead
+            if (!IsCandidateKey(vkCode))
+            {
+                return CallNextHookEx(_hookId, nCode, wParam, lParam);
+            }
+
             // Check if EscapeFromTarkov.exe or TarkovHelper is the foreground window
             if (IsTarkovOrHelperForeground())
             {
                 // 붕권 커맨드 체크 (S S D D O)
                 CheckSecretCommand(vkCode);
 
-                // NumPad keys for floor selection (0-5)
-                int? floorIndex = GetFloorIndexFromVkCode(vkCode);
-                if (floorIndex.HasValue)
+                // NumPad keys for floor selection (0-5) - only without Ctrl
+                if (!IsCtrlPressed())
                 {
-                    Log($"NumPad{floorIndex.Value} pressed, firing event");
-                    System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+                    int? floorIndex = GetFloorIndexFromVkCode(vkCode);
+                    if (floorIndex.HasValue)
                     {
-                        FloorKeyPressed?.Invoke(floorIndex.Value);
-                    });
+                        Log($"NumPad{floorIndex.Value} pressed, firing event");
+                        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+                        {
+                            FloorKeyPressed?.Invoke(floorIndex.Value);
+                        });
+                    }
                 }
 
                 // NumPad +/- for overlay zoom (오버레이 활성화 시에만)
@@ -202,24 +216,74 @@ public class GlobalKeyboardHookService : IDisposable
                         });
                     }
                 }
+            }
 
-                // Overlay hotkeys (Ctrl + key) - 오버레이 활성화 시에만
-                if (IsCtrlPressed() && IsOverlayVisible)
+            // Global numeric overlay shortcuts (Ctrl+1, Ctrl+7, Ctrl+9)
+            // Active when EFT/TarkovHelper is foreground, or when overlay is currently visible on screen (enables unlocking click-through)
+            if (IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed() && (IsTarkovOrHelperForeground() || IsOverlayVisible))
+            {
+                const int VK_1 = 0x31;
+                const int VK_NUMPAD1 = 0x61;
+                const int VK_7 = 0x37;
+                const int VK_NUMPAD7 = 0x67;
+                const int VK_9 = 0x39;
+                const int VK_NUMPAD9 = 0x69;
+
+                // Overlay Toggle Hotkey: Ctrl+1 (toggle overlay open/close regardless of current visibility)
+                if (vkCode == VK_1 || vkCode == VK_NUMPAD1)
                 {
-                    var overlayAction = GetOverlayActionFromVkCode(vkCode);
-                    if (overlayAction != null)
+                    Log("Ctrl+1 pressed: Toggle overlay");
+                    System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
                     {
-                        Log($"Overlay hotkey detected");
-                        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
-                        {
-                            overlayAction.Invoke();
-                        });
-                    }
+                        OverlayTogglePressed?.Invoke();
+                    });
+                    return (IntPtr)1; // Consume key to prevent duplicate triggering in focused window
+                }
+                // Overlay Settings Hotkey: Ctrl+7
+                else if (vkCode == VK_7 || vkCode == VK_NUMPAD7)
+                {
+                    Log("Ctrl+7 pressed: Open overlay settings");
+                    System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+                    {
+                        OverlaySettingsPressed?.Invoke();
+                    });
+                    return (IntPtr)1; // Consume key to prevent duplicate triggering in focused window
+                }
+                // Overlay Click-Through Hotkey: Ctrl+9
+                else if (vkCode == VK_9 || vkCode == VK_NUMPAD9)
+                {
+                    Log("Ctrl+9 pressed: Toggle click-through");
+                    System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+                    {
+                        OverlayClickThroughPressed?.Invoke();
+                    });
+                    return (IntPtr)1; // Consume key to prevent duplicate triggering in focused window
                 }
             }
         }
 
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
+    }
+
+    /// <summary>
+    /// Fast check if virtual key code is a candidate key for any TarkovHelper action.
+    /// </summary>
+    private bool IsCandidateKey(int vkCode)
+    {
+        // Ctrl+1 (0x31/0x61), Ctrl+7 (0x37/0x67), Ctrl+9 (0x39/0x69)
+        if (vkCode is 0x31 or 0x61 or 0x37 or 0x67 or 0x39 or 0x69)
+            return true;
+        // NumPad 0-5 (0x60-0x65)
+        if (vkCode is >= 0x60 and <= 0x65)
+            return true;
+        // Secret command S, D, O
+        if (vkCode is VK_S or VK_D or VK_O)
+            return true;
+        // Configured zoom keys
+        if (vkCode == ZoomInKey || vkCode == ZoomOutKey)
+            return true;
+
+        return false;
     }
 
     /// <summary>
@@ -236,6 +300,24 @@ public class GlobalKeyboardHookService : IDisposable
 
     private const int VK_LCONTROL = 0xA2;
     private const int VK_RCONTROL = 0xA3;
+    private const int VK_MENU = 0x12;
+    private const int VK_SHIFT = 0x10;
+
+    /// <summary>
+    /// Alt 키가 눌려있는지 확인
+    /// </summary>
+    private static bool IsAltPressed()
+    {
+        return (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+    }
+
+    /// <summary>
+    /// Shift 키가 눌려있는지 확인
+    /// </summary>
+    private static bool IsShiftPressed()
+    {
+        return (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+    }
 
     /// <summary>
     /// 오버레이가 현재 표시 중인지 확인
@@ -358,19 +440,6 @@ public class GlobalKeyboardHookService : IDisposable
         }
     }
 
-    /// <summary>
-    /// Virtual key code를 오버레이 액션으로 변환 (Ctrl + key, 오버레이 활성화 시에만)
-    /// </summary>
-    private Action? GetOverlayActionFromVkCode(int vkCode)
-    {
-        const int VK_L = 0x4C;  // L - 설정창 열기
-
-        return vkCode switch
-        {
-            VK_L => OverlaySettingsPressed,
-            _ => null
-        };
-    }
 
     /// <summary>
     /// Virtual key code를 줌 액션으로 변환 (설정된 단축키 기반)
@@ -383,8 +452,13 @@ public class GlobalKeyboardHookService : IDisposable
         return null;
     }
 
+    private static IntPtr _lastForegroundHwnd = IntPtr.Zero;
+    private static bool _lastForegroundResult = false;
+    private static DateTime _lastForegroundCheck = DateTime.MinValue;
+
     /// <summary>
     /// Checks if EscapeFromTarkov.exe or TarkovHelper is the foreground window.
+    /// Uses HWND caching for 500ms to avoid querying process information repeatedly.
     /// </summary>
     private static bool IsTarkovOrHelperForeground()
     {
@@ -393,23 +467,32 @@ public class GlobalKeyboardHookService : IDisposable
             IntPtr hwnd = GetForegroundWindow();
             if (hwnd == IntPtr.Zero) return false;
 
+            var now = DateTime.UtcNow;
+            if (hwnd == _lastForegroundHwnd && (now - _lastForegroundCheck).TotalMilliseconds < 500)
+            {
+                return _lastForegroundResult;
+            }
+
             GetWindowThreadProcessId(hwnd, out uint processId);
             if (processId == 0) return false;
 
             using var process = SysDiag.Process.GetProcessById((int)processId);
             var processName = process.ProcessName;
 
-            Log($"Foreground process: '{processName}'");
-
             // Allow Tarkov game and TarkovHelper app (including when running via dotnet)
-            return processName.Contains("Tarkov", StringComparison.OrdinalIgnoreCase)
+            var isTarkov = processName.Contains("Tarkov", StringComparison.OrdinalIgnoreCase)
                 || processName.Contains("EFT", StringComparison.OrdinalIgnoreCase)
                 || processName.Equals("TarkovHelper", StringComparison.OrdinalIgnoreCase)
                 || processName.Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+
+            _lastForegroundHwnd = hwnd;
+            _lastForegroundResult = isTarkov;
+            _lastForegroundCheck = now;
+
+            return isTarkov;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Log($"IsTarkovOrHelperForeground error: {ex.Message}");
             return false;
         }
     }

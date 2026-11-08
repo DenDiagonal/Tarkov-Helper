@@ -176,17 +176,72 @@ namespace TarkovHelper.Pages
     }
 
     /// <summary>
-    /// Quest item source - shows which quest requires this item
+    /// Quest item source - shows which quest requires this item with interactive progress stepper
     /// </summary>
-    public class QuestItemSourceViewModel
+    public class QuestItemSourceViewModel : INotifyPropertyChanged
     {
+        private static readonly Brush CompleteBrush;
+        private static readonly Brush IncompleteBrush;
+
+        static QuestItemSourceViewModel()
+        {
+            var cBrush = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
+            cBrush.Freeze();
+            CompleteBrush = cBrush;
+
+            var iBrush = new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B));
+            iBrush.Freeze();
+            IncompleteBrush = iBrush;
+        }
+
         public string QuestName { get; set; } = string.Empty;
         public string TraderName { get; set; } = string.Empty;
-        public int Amount { get; set; }
+        public string ItemNormalizedName { get; set; } = string.Empty;
+        public string NeedKey { get; set; } = string.Empty;
         public bool FoundInRaid { get; set; }
         public string? WikiLink { get; set; }
         public TarkovTask? Task { get; set; }
+
+        private int _amount;
+        public int Amount
+        {
+            get => _amount;
+            set
+            {
+                if (_amount != value)
+                {
+                    _amount = value;
+                    OnPropertyChanged(nameof(Amount));
+                    OnPropertyChanged(nameof(AmountDisplay));
+                    OnPropertyChanged(nameof(ProgressText));
+                    OnPropertyChanged(nameof(IsComplete));
+                    OnPropertyChanged(nameof(ProgressBrush));
+                }
+            }
+        }
+
+        private int _currentCount;
+        public int CurrentCount
+        {
+            get => _currentCount;
+            set
+            {
+                if (_currentCount != value)
+                {
+                    _currentCount = value;
+                    OnPropertyChanged(nameof(CurrentCount));
+                    OnPropertyChanged(nameof(ProgressText));
+                    OnPropertyChanged(nameof(IsComplete));
+                    OnPropertyChanged(nameof(ProgressBrush));
+                }
+            }
+        }
+
         public string AmountDisplay => $"x{Amount}";
+        public string ProgressText => $"{CurrentCount}/{Amount}";
+        public bool IsComplete => CurrentCount >= Amount && Amount > 0;
+        public Brush ProgressBrush => IsComplete ? CompleteBrush : IncompleteBrush;
+
         public Visibility FirVisibility => FoundInRaid ? Visibility.Visible : Visibility.Collapsed;
         public Visibility WikiButtonVisibility => Task != null ? Visibility.Visible : Visibility.Collapsed;
 
@@ -198,23 +253,122 @@ namespace TarkovHelper.Pages
         public bool HasDogtagLevel => DogtagMinLevel.HasValue;
         public Visibility DogtagLevelVisibility => HasDogtagLevel ? Visibility.Visible : Visibility.Collapsed;
         public string DogtagLevelDisplay => DogtagMinLevel.HasValue ? $"(Lv.{DogtagMinLevel}+)" : "";
+
+        public void Increment()
+        {
+            if (string.IsNullOrEmpty(NeedKey)) return;
+            CurrentCount = TarkovHelper.Services.NeededItemProgressService.Instance.Increment(NeedKey, Amount);
+        }
+
+        public void Decrement()
+        {
+            if (string.IsNullOrEmpty(NeedKey)) return;
+            CurrentCount = TarkovHelper.Services.NeededItemProgressService.Instance.Decrement(NeedKey, Amount);
+        }
+
+        public void ToggleComplete()
+        {
+            if (string.IsNullOrEmpty(NeedKey)) return;
+            CurrentCount = TarkovHelper.Services.NeededItemProgressService.Instance.ToggleComplete(NeedKey, Amount);
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged(string propertyName) =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
     /// <summary>
-    /// Hideout item source - shows which hideout module requires this item
+    /// Hideout item source - shows which hideout module requires this item with interactive progress stepper
     /// </summary>
-    public class HideoutItemSourceViewModel
+    public class HideoutItemSourceViewModel : INotifyPropertyChanged
     {
+        private static readonly Brush CompleteBrush;
+        private static readonly Brush IncompleteBrush;
+
+        static HideoutItemSourceViewModel()
+        {
+            var cBrush = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
+            cBrush.Freeze();
+            CompleteBrush = cBrush;
+
+            var iBrush = new SolidColorBrush(Color.FromRgb(0xF5, 0x9E, 0x0B));
+            iBrush.Freeze();
+            IncompleteBrush = iBrush;
+        }
+
         public string ModuleName { get; set; } = string.Empty;
+        public string ItemNormalizedName { get; set; } = string.Empty;
+        public string NeedKey { get; set; } = string.Empty;
         public int Level { get; set; }
-        public int Amount { get; set; }
         public bool FoundInRaid { get; set; }
+
+        private int _amount;
+        public int Amount
+        {
+            get => _amount;
+            set
+            {
+                if (_amount != value)
+                {
+                    _amount = value;
+                    OnPropertyChanged(nameof(Amount));
+                    OnPropertyChanged(nameof(AmountDisplay));
+                    OnPropertyChanged(nameof(ProgressText));
+                    OnPropertyChanged(nameof(IsComplete));
+                    OnPropertyChanged(nameof(ProgressBrush));
+                }
+            }
+        }
+
+        private int _currentCount;
+        public int CurrentCount
+        {
+            get => _currentCount;
+            set
+            {
+                if (_currentCount != value)
+                {
+                    _currentCount = value;
+                    OnPropertyChanged(nameof(CurrentCount));
+                    OnPropertyChanged(nameof(ProgressText));
+                    OnPropertyChanged(nameof(IsComplete));
+                    OnPropertyChanged(nameof(ProgressBrush));
+                }
+            }
+        }
+
         public string LevelDisplay => $"Level {Level}";
         public string AmountDisplay => $"x{Amount}";
+        public string ProgressText => $"{CurrentCount}/{Amount}";
+        public bool IsComplete => CurrentCount >= Amount && Amount > 0;
+        public Brush ProgressBrush => IsComplete ? CompleteBrush : IncompleteBrush;
+
         public Visibility FirVisibility => FoundInRaid ? Visibility.Visible : Visibility.Collapsed;
 
         // Navigation identifier
         public string StationId { get; set; } = string.Empty;
+
+        public void Increment()
+        {
+            if (string.IsNullOrEmpty(NeedKey)) return;
+            CurrentCount = TarkovHelper.Services.NeededItemProgressService.Instance.Increment(NeedKey, Amount);
+        }
+
+        public void Decrement()
+        {
+            if (string.IsNullOrEmpty(NeedKey)) return;
+            CurrentCount = TarkovHelper.Services.NeededItemProgressService.Instance.Decrement(NeedKey, Amount);
+        }
+
+        public void ToggleComplete()
+        {
+            if (string.IsNullOrEmpty(NeedKey)) return;
+            CurrentCount = TarkovHelper.Services.NeededItemProgressService.Instance.ToggleComplete(NeedKey, Amount);
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged(string propertyName) =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
     /// <summary>

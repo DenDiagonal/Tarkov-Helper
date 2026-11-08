@@ -4,7 +4,7 @@ using TarkovHelper.Models;
 namespace TarkovHelper.Services;
 
 /// <summary>
-/// 현재 활성화된 프로필(PVP 또는 PVE)을 관리하고 변경 시 알림을 제공하는 서비스.
+/// 현재 활성화된 프로필(PVP, PVE, 또는 SEASON)을 관리하고 변경 시 알림을 제공하는 서비스.
 /// </summary>
 public sealed class ProfileService
 {
@@ -91,6 +91,7 @@ public sealed class ProfileService
     {
         ProfileType.Pvp => "PVP",
         ProfileType.Pve => "PVE",
+        ProfileType.Seasonal => "SEASON",
         _ => "UNKNOWN"
     };
 }

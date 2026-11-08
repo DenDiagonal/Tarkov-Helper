@@ -45,6 +45,41 @@ public class QuestObjectiveViewModel
     public Brush? FloorBrush { get; }
     public Visibility FloorBadgeVisibility { get; }
 
+    // Geographic filtering & relocation properties
+    public static bool IsGeographicObjective(string? type, string? description)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return false;
+        var t = type.Trim().ToLowerInvariant();
+        if (t is "survive" or "handover" or "build" or "extract")
+            return false;
+
+        if (!string.IsNullOrEmpty(description))
+        {
+            var d = description.Trim().ToLowerInvariant();
+            if (d.StartsWith("survive and extract") ||
+                d.StartsWith("survive in") ||
+                d.StartsWith("hand over") ||
+                d.StartsWith("find and hand over") ||
+                d.StartsWith("extract from"))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public bool CanRelocate => IsGeographicObjective(Objective.Type, Objective.Description) || HasLocation;
+    public Visibility RelocateVisibility => CanRelocate ? Visibility.Visible : Visibility.Collapsed;
+
+    public bool HasLocation => Objective.Locations != null && Objective.Locations.Count > 0;
+    public bool CanRevert => HasLocation;
+    public Visibility RevertVisibility => HasLocation ? Visibility.Visible : Visibility.Collapsed;
+
+    public string RelocateButtonText => HasLocation ? "📍 Reubicar" : "📍 Ubicar";
+    public string RelocateToolTip => HasLocation
+        ? "Reubicar este objetivo en el mapa"
+        : "Ubicar este objetivo en el mapa";
+
     public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, bool isSelected = false)
         : this(objective, loc, null, isSelected, null, null, null)
     {

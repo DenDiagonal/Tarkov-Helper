@@ -159,14 +159,14 @@ public sealed class TaskObjectiveWithLocation
     /// 마커 색상 (목표 유형별 기본값 또는 사용자 설정)
     /// </summary>
     [JsonIgnore]
-    public string MarkerColor => Type switch
+    public string MarkerColor => (Type?.Trim().ToLowerInvariant()) switch
     {
-        "visit" => "#4CAF50",      // Green - 방문
-        "mark" => "#FF9800",       // Orange - 마킹
-        "plantItem" => "#9C27B0",  // Purple - 아이템 설치
-        "extract" => "#2196F3",    // Blue - 탈출
-        "findItem" => "#FFEB3B",   // Yellow - 아이템 찾기
-        _ => "#607D8B"             // Gray - 기타
+        "visit" => "#00E5FF",                                         // Cyan / Teal
+        "mark" => "#FFA000",                                          // Amber / Orange
+        "plantitem" or "plant" or "stash" => "#AB47BC",               // Purple
+        "extract" or "survive" => "#29B6F6",                          // Blue
+        "finditem" or "find" or "collect" or "handover" => "#FFEB3B", // Yellow
+        _ => "#00E5FF"                                                // Cyan fallback
     };
 }
 

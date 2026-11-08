@@ -1,0 +1,222 @@
+<UserControl x:Class="TarkovHelper.Pages.Components.TraderProgressPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignWidth="1100">
+
+    <Border Background="{DynamicResource TacticalSurface1Brush}"
+            BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+            BorderThickness="1"
+            CornerRadius="6"
+            Padding="6,4">
+        <Expander x:Name="TraderExpander" IsExpanded="False">
+            <Expander.Header>
+            <Grid Height="32">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    
+                    <TextBlock x:Name="TxtTraderHeader" Text="Trader Progress &amp; Loyalty Levels"
+                               FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TacticalGoldBrush}"
+                               VerticalAlignment="Center"/>
+                    <Border Background="{DynamicResource TacticalSurface0Brush}" CornerRadius="10" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="TxtOverallProgress" Text="0/0 (0%)"
+                                   FontSize="{DynamicResource FontSizeTiny}" Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
+                    </Border>
+                </StackPanel>
+
+
+            </Grid>
+        </Expander.Header>
+
+        <Border Background="{DynamicResource TacticalSurface0Brush}" Padding="10" CornerRadius="0,0,6,6">
+            <ItemsControl x:Name="TradersItemsControl">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Width="215" Margin="5" Padding="9"
+                                Background="{DynamicResource TacticalSurface2Brush}"
+                                BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="BorderBrush" Value="{DynamicResource TacticalBorderHighlightBrush}"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel>
+                                <!-- Header: Avatar, Name, Unlock Badge -->
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="42"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Trader Avatar -->
+                                    <Border Grid.Column="0" Width="38" Height="38" CornerRadius="4"
+                                            Background="{DynamicResource TacticalSurface0Brush}"
+                                            BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+                                            BorderThickness="1"
+                                            ClipToBounds="True" VerticalAlignment="Center"
+                                            Cursor="Hand" MouseLeftButtonUp="TraderHeader_Click"
+                                            ToolTip="Click to filter quests for this trader">
+                                        <Grid>
+                                            <Image Source="{Binding AvatarSource}" Width="38" Height="38" Stretch="UniformToFill"
+                                                   Visibility="{Binding AvatarVisibility}"/>
+                                            <TextBlock Text="{Binding FallbackInitials}"
+                                                       FontSize="13" FontWeight="Bold" Foreground="{DynamicResource TacticalGoldBrush}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       Visibility="{Binding FallbackVisibility}"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Name and Unlock Badge -->
+                                    <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
+                                                   FontSize="{DynamicResource FontSizeXSmall}"
+                                                   Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Cursor="Hand" MouseLeftButtonUp="TraderHeader_Click"
+                                                   ToolTip="Click to filter quests for this trader"/>
+
+                                        <!-- Unlock Status Badge -->
+                                        <Border Padding="5,2" CornerRadius="3" Margin="0,3,0,0"
+                                                HorizontalAlignment="Left"
+                                                Background="{Binding UnlockBadgeBackground}"
+                                                Visibility="{Binding UnlockBadgeVisibility}"
+                                                ToolTip="{Binding UnlockBadgeToolTip}">
+                                            <TextBlock Text="{Binding UnlockBadgeText}"
+                                                       FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="{Binding UnlockBadgeForeground}"
+                                                       TextTrimming="CharacterEllipsis" MaxWidth="140"/>
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Task Completion Statistics -->
+                                <StackPanel Margin="0,0,0,8">
+                                    <Grid Margin="0,0,0,3">
+                                        <TextBlock Text="Tasks" FontSize="11" Foreground="{DynamicResource TacticalTextSecondaryBrush}" HorizontalAlignment="Left"/>
+                                        <TextBlock Text="{Binding ProgressText}" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TacticalTextPrimaryBrush}" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                    <!-- Styled Progress Bar -->
+                                    <Grid Height="6">
+                                        <Border Background="{DynamicResource TacticalSurface0Brush}" CornerRadius="3"/>
+                                        <Border Background="{DynamicResource TacticalGoldBrush}" CornerRadius="3"
+                                                HorizontalAlignment="Left" Width="{Binding ProgressBarWidth}"/>
+                                    </Grid>
+                                </StackPanel>
+
+                                <!-- Loyalty Level Selectors [1] [2] [3] [4] (Regular Traders) -->
+                                <Grid Margin="0,2,0,0" Visibility="{Binding LLVisibility}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="LL" FontSize="11" FontWeight="Bold"
+                                               Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+                                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+
+                                    <Border Grid.Column="1" Background="{DynamicResource TacticalSurface0Brush}"
+                                            BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                                            BorderThickness="1" CornerRadius="4" Padding="2">
+                                        <UniformGrid Columns="4" Rows="1">
+                                            <Button Content="1" Margin="1,0" Padding="0,2" FontSize="10.5"
+                                                    Background="{Binding LL1Background}" Foreground="{Binding LL1Foreground}"
+                                                    FontWeight="{Binding LL1FontWeight}" BorderBrush="{Binding LL1BorderBrush}"
+                                                    Tag="1" Click="BtnLoyaltyLevel_Click" Cursor="Hand" ToolTip="Set Loyalty Level 1"/>
+                                            <Button Content="2" Margin="1,0" Padding="0,2" FontSize="10.5"
+                                                    Background="{Binding LL2Background}" Foreground="{Binding LL2Foreground}"
+                                                    FontWeight="{Binding LL2FontWeight}" BorderBrush="{Binding LL2BorderBrush}"
+                                                    Tag="2" Click="BtnLoyaltyLevel_Click" Cursor="Hand" ToolTip="Set Loyalty Level 2"/>
+                                            <Button Content="3" Margin="1,0" Padding="0,2" FontSize="10.5"
+                                                    Background="{Binding LL3Background}" Foreground="{Binding LL3Foreground}"
+                                                    FontWeight="{Binding LL3FontWeight}" BorderBrush="{Binding LL3BorderBrush}"
+                                                    Tag="3" Click="BtnLoyaltyLevel_Click" Cursor="Hand" ToolTip="Set Loyalty Level 3"/>
+                                            <Button Content="4" Margin="1,0" Padding="0,2" FontSize="10.5"
+                                                    Background="{Binding LL4Background}" Foreground="{Binding LL4Foreground}"
+                                                    FontWeight="{Binding LL4FontWeight}" BorderBrush="{Binding LL4BorderBrush}"
+                                                    Tag="4" Click="BtnLoyaltyLevel_Click" Cursor="Hand" ToolTip="Set Loyalty Level 4"/>
+                                        </UniformGrid>
+                                    </Border>
+                                </Grid>
+
+                                <!-- Scav Karma Selectors (Fence Only) -->
+                                <Grid Margin="0,2,0,0" Visibility="{Binding ScavKarmaVisibility}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="28"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="28"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="Karma" FontSize="11" FontWeight="Bold"
+                                               Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+                                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+
+                                    <Button Grid.Column="1" Content="−" Margin="1,0" Padding="0,1" FontSize="13" FontWeight="Bold"
+                                            Background="{DynamicResource TacticalSurface3Brush}"
+                                            Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+                                            BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+                                            Click="BtnScavKarmaMinus_Click" Cursor="Hand" ToolTip="Decrease Scav Karma (-0.10)"/>
+
+                                    <Border Grid.Column="2" Background="{DynamicResource TacticalSurface0Brush}"
+                                            BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                                            BorderThickness="1" CornerRadius="3" Margin="2,0">
+                                        <TextBlock Text="{Binding ScavKarmaText}" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TacticalGoldBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+
+                                    <Button Grid.Column="3" Content="+" Margin="1,0" Padding="0,1" FontSize="13" FontWeight="Bold"
+                                            Background="{DynamicResource TacticalSurface3Brush}"
+                                            Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+                                            BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+                                            Click="BtnScavKarmaPlus_Click" Cursor="Hand" ToolTip="Increase Scav Karma (+0.10)"/>
+                                </Grid>
+
+                                <!-- BTR Driver Availability Toggle (BTR Driver Only) -->
+                                <Grid Margin="0,2,0,0" Visibility="{Binding BtrToggleVisibility}">
+                                    <Border Background="{Binding BtrToggleBackground}"
+                                            BorderBrush="{Binding BtrToggleBorderBrush}"
+                                            BorderThickness="1" CornerRadius="4" Padding="6,3"
+                                            Cursor="Hand"
+                                            MouseLeftButtonUp="BtnBtrToggle_Click"
+                                            ToolTip="Clic para alternar la disponibilidad del Conductor del BTR en incursión">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding BtrToggleIcon}" FontWeight="Bold" Margin="0,0,6,0" FontSize="11"
+                                                       Foreground="{Binding BtrToggleForeground}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding BtrToggleText}" FontSize="10.5" FontWeight="SemiBold"
+                                                       Foreground="{Binding BtrToggleForeground}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Border>
+    </Expander>
+    </Border>
+</UserControl>

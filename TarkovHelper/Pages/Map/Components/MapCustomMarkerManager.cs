@@ -1,3 +1,4 @@
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -16,7 +17,7 @@ namespace TarkovHelper.Pages.Map.Components;
 /// <summary>
 /// 사용자가 추가한 커스텀 마커를 관리하는 컴포넌트
 /// </summary>
-public class MapCustomMarkerManager
+public class MapCustomMarkerManager : IDisposable
 {
     private readonly Canvas _container;
     private readonly MapTrackerService _trackerService;
@@ -42,6 +43,47 @@ public class MapCustomMarkerManager
         _trackerService = trackerService;
         _transformer = transformer;
         _loc = loc;
+
+        _userDataDb.CustomMarkersChanged += OnCustomMarkersChanged;
+        _container.Unloaded += OnContainerUnloaded;
+    }
+
+    private void OnContainerUnloaded(object sender, RoutedEventArgs e)
+    {
+        Dispose();
+    }
+
+    private void OnCustomMarkersChanged()
+    {
+        var dispatcher = Application.Current?.Dispatcher ?? _container.Dispatcher;
+        if (dispatcher == null) return;
+
+        if (dispatcher.CheckAccess())
+        {
+            _ = LoadCustomMarkersAsync();
+        }
+        else
+        {
+            dispatcher.BeginInvoke(async () =>
+            {
+                await LoadCustomMarkersAsync();
+            });
+        }
+    }
+
+    /// <summary>
+    /// Loads custom markers from the database for the current map.
+    /// </summary>
+    public async Task LoadCustomMarkersAsync(CancellationToken ct = default)
+    {
+        await RefreshMarkersAsync(ct);
+    }
+
+    public void Dispose()
+    {
+        _userDataDb.CustomMarkersChanged -= OnCustomMarkersChanged;
+        _container.Unloaded -= OnContainerUnloaded;
+        ClearMarkers();
     }
 
     public void SetParameters(string? mapKey, string? floorId, double zoomLevel)
@@ -49,6 +91,31 @@ public class MapCustomMarkerManager
         _currentMapKey = mapKey;
         _currentFloorId = floorId;
         _zoomLevel = zoomLevel;
+    }
+
+    public void SetZoomLevel(double zoomLevel)
+    {
+        _zoomLevel = zoomLevel;
+    }
+
+    public void UpdateMarkerScales()
+    {
+        var inverseScale = 1.0 / Math.Max(0.001, _zoomLevel);
+        foreach (var element in _markerElements)
+        {
+            if (element is Canvas canvas)
+            {
+                canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
+            }
+        }
+
+        foreach (var child in _container.Children)
+        {
+            if (child is Canvas canvas && MarkerRefreshHelper.GetIsRetained(canvas))
+            {
+                canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
+            }
+        }
     }
 
     public async Task RefreshMarkersAsync(CancellationToken ct = default)
@@ -78,11 +145,7 @@ public class MapCustomMarkerManager
 
     private void ClearMarkers()
     {
-        foreach (var element in _markerElements)
-        {
-            _container.Children.Remove(element);
-        }
-        _markerElements.Clear();
+        MarkerRefreshHelper.SafeClear(_container, _markerElements);
     }
 
     public void UpdateMarkerDisplay()
@@ -113,31 +176,52 @@ public class MapCustomMarkerManager
         if (!_transformer.TryTransform(_currentMapKey!, marker.X, marker.Z, null, out var screenPos) || screenPos == null)
             return null;
 
-        var size = marker.Size > 0 ? marker.Size : 24;
-        var container = new Grid
+        var mapConfig = _trackerService.GetMapConfig(_currentMapKey ?? "");
+        var mapScale = mapConfig?.MarkerScale ?? 1.0;
+
+        // Harmonize user slider (8-16) to standard baseline (12-24px) using factor 1.5 * mapScale
+        var userSize = marker.Size > 0 ? marker.Size : 12.0;
+        var markerSize = (userSize * 1.5) * mapScale;
+
+        var canvas = new Canvas
         {
-            Width = size,
-            Height = size,
-            RenderTransform = new TranslateTransform(screenPos.X - (size / 2.0), screenPos.Y - (size / 2.0)),
+            Width = 0,
+            Height = 0,
+            Tag = marker,
             Cursor = Cursors.Hand,
-            ToolTip = marker.Name,
-            Opacity = marker.Opacity * (SettingsService.Instance.MapMarkerOpacity / 100.0),
-            Tag = marker
+            ToolTip = MapTooltipHelper.CreateTooltip(marker.Name, "Custom Marker", !string.IsNullOrEmpty(marker.FloorId) ? $" [{marker.FloorId}]" : null),
+            Opacity = marker.Opacity * (SettingsService.Instance.MapMarkerOpacity / 100.0)
         };
 
-        // 마커 배경 (원형)
+        // Dark theme & extended duration for tooltip (30s)
+        MapTooltipHelper.ConfigureToolTipService(canvas);
+
+        // Continuous hit-test area
+        var hitArea = new Ellipse
+        {
+            Width = markerSize,
+            Height = markerSize,
+            Fill = Brushes.Transparent,
+            Margin = new Thickness(-markerSize / 2.0, -markerSize / 2.0, 0, 0),
+            IsHitTestVisible = true
+        };
+        canvas.Children.Add(hitArea);
+
+        // Center circle around (0,0)
         var ellipse = new Ellipse
         {
-            Fill = GetColorBrush(marker.Color ?? "#FFD700"), // 기본 금색
+            Width = markerSize,
+            Height = markerSize,
+            Fill = GetColorBrush(marker.Color ?? "#FFD700"), // Default gold
             Stroke = Brushes.White,
             StrokeThickness = 1.5,
+            Margin = new Thickness(-markerSize / 2.0, -markerSize / 2.0, 0, 0),
+            IsHitTestVisible = false,
             Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 4, Opacity = 0.5, ShadowDepth = 1 }
         };
-        container.Children.Add(ellipse);
+        canvas.Children.Add(ellipse);
 
-
-
-        // 우클릭 메뉴
+        // Context menu (Edit / Delete)
         var contextMenu = new ContextMenu();
         var editItem = new MenuItem { Header = "Edit Marker" };
         editItem.Click += async (s, e) => await EditMarkerAsync(marker);
@@ -146,9 +230,17 @@ public class MapCustomMarkerManager
         var deleteItem = new MenuItem { Header = "Delete Marker" };
         deleteItem.Click += async (s, e) => await DeleteMarkerAsync(marker);
         contextMenu.Items.Add(deleteItem);
-        container.ContextMenu = contextMenu;
+        canvas.ContextMenu = contextMenu;
 
-        return container;
+        // Apply inverse scale transform so screen size remains constant across zoom
+        var inverseScale = 1.0 / Math.Max(0.001, _zoomLevel);
+        canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
+        canvas.RenderTransformOrigin = new Point(0, 0);
+
+        Canvas.SetLeft(canvas, screenPos.X);
+        Canvas.SetTop(canvas, screenPos.Y);
+
+        return canvas;
     }
 
     public async Task DeleteMarkerAsync(CustomMapMarker marker)
@@ -161,6 +253,7 @@ public class MapCustomMarkerManager
             await _userDataDb.DeleteCustomMarkerAsync(marker.Id);
             Markers.Remove(marker);
             UpdateMarkerDisplay();
+            OverlayMiniMapService.Instance.RefreshMarkers();
             StatusUpdated?.Invoke("Marker deleted.");
         }
         catch (Exception ex)
@@ -187,6 +280,7 @@ public class MapCustomMarkerManager
             }
             
             UpdateMarkerDisplay();
+            OverlayMiniMapService.Instance.RefreshMarkers();
             StatusUpdated?.Invoke("Marker updated.");
         }
     }
@@ -232,6 +326,7 @@ public class MapCustomMarkerManager
                 
                 Markers.Add(newMarker);
                 UpdateMarkerDisplay();
+                OverlayMiniMapService.Instance.RefreshMarkers();
                 StatusUpdated?.Invoke("New marker created successfully.");
             }
         }

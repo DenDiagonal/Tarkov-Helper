@@ -11,24 +11,26 @@
             <StackPanel Orientation="Horizontal">
                 <TextBlock x:Name="TxtRecommendationsHeader" Text="Recommended Quests"
                            FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                           Foreground="{DynamicResource AccentBrush}"
+                           Foreground="{DynamicResource TacticalGoldBrush}"
                            VerticalAlignment="Center"/>
                 <Border x:Name="RecommendationCountBadge" Padding="6,2" CornerRadius="10"
-                        Background="{DynamicResource AccentBrush}" Margin="8,0,0,0"
+                        Background="{DynamicResource TacticalGoldBrush}" Margin="8,0,0,0"
                         VerticalAlignment="Center">
                     <TextBlock x:Name="TxtRecommendationCount" Text="0"
                                FontSize="{DynamicResource FontSizeTiny}" FontWeight="Bold"
-                               Foreground="White"/>
+                               Foreground="{DynamicResource TacticalTextInvertedBrush}"/>
                 </Border>
             </StackPanel>
         </Expander.Header>
-        <Border Background="{DynamicResource BackgroundMediumBrush}"
+        <Border Background="{DynamicResource TacticalSurface1Brush}"
+                BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                BorderThickness="1"
                 CornerRadius="6" Padding="12" Margin="0,8,0,0">
             <StackPanel>
                 <!-- No Recommendations Message -->
                 <TextBlock x:Name="TxtNoRecommendations" Text="No recommended quests at this time"
                            FontSize="{DynamicResource FontSizeXSmall}"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Foreground="{DynamicResource TacticalTextSecondaryBrush}"
                            HorizontalAlignment="Center" Margin="0,8"
                            Visibility="Collapsed"/>
 
@@ -37,14 +39,17 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border Padding="10,8" Margin="0,0,0,6" CornerRadius="4"
-                                    Background="{DynamicResource BackgroundDarkBrush}"
+                                    Background="{DynamicResource TacticalSurface2Brush}"
+                                    BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                                    BorderThickness="1"
                                     Cursor="Hand"
                                     MouseLeftButtonDown="Recommendation_Click">
                                 <Border.Style>
                                     <Style TargetType="Border">
                                         <Style.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter Property="Background" Value="{DynamicResource BackgroundLightBrush}"/>
+                                                <Setter Property="Background" Value="{DynamicResource TacticalSurface3Brush}"/>
+                                                <Setter Property="BorderBrush" Value="{DynamicResource TacticalBorderHighlightBrush}"/>
                                             </Trigger>
                                         </Style.Triggers>
                                     </Style>
@@ -70,7 +75,7 @@
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding QuestName}"
                                                        FontSize="{DynamicResource FontSizeXSmall}"
-                                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                                       Foreground="{DynamicResource TacticalTextPrimaryBrush}"
                                                        TextTrimming="CharacterEllipsis"
                                                        MaxWidth="280"/>
                                             <!-- Kappa Badge -->
@@ -85,18 +90,20 @@
                                         </StackPanel>
                                         <TextBlock Text="{Binding Reason}"
                                                    FontSize="{DynamicResource FontSizeTiny}"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Foreground="{DynamicResource TacticalTextSecondaryBrush}"
                                                    TextTrimming="CharacterEllipsis"
                                                    MaxWidth="280"/>
                                     </StackPanel>
 
                                     <!-- Trader Initial -->
                                     <Border Grid.Column="2" Width="28" Height="28"
-                                            CornerRadius="4" Background="{DynamicResource BackgroundMediumBrush}"
+                                            CornerRadius="4" Background="{DynamicResource TacticalSurface3Brush}"
+                                            BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+                                            BorderThickness="1"
                                             VerticalAlignment="Center" Margin="8,0,0,0">
                                         <TextBlock Text="{Binding TraderInitial}"
                                                    FontSize="{DynamicResource FontSizeXSmall}" FontWeight="Bold"
-                                                   Foreground="{DynamicResource AccentBrush}"
+                                                   Foreground="{DynamicResource TacticalGoldBrush}"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
                                 </Grid>

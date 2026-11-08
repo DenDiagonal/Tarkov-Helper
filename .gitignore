@@ -152,3 +152,9 @@ publish.ps1
 
 # Antigravity
 brain/
+
+# Scratch scripts and temporary test files
+scratch/
+.agents/
+__pycache__/
+*.pyc

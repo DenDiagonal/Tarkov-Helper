@@ -84,6 +84,17 @@ namespace TarkovHelper
 
             try
             {
+                // Dispose log map watcher service
+                TarkovHelper.Services.Map.LogMapWatcherService.Instance.Dispose();
+                _log.Debug("LogMapWatcherService disposed");
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Error disposing LogMapWatcherService", ex);
+            }
+
+            try
+            {
                 // Dispose keyboard hook (releases Windows hook)
                 GlobalKeyboardHookService.Instance.IsEnabled = false;
                 GlobalKeyboardHookService.Instance.Dispose();
@@ -92,6 +103,18 @@ namespace TarkovHelper
             catch (Exception ex)
             {
                 _log.Error("Error disposing GlobalKeyboardHookService", ex);
+            }
+
+            try
+            {
+                // Flush pending needed item progress saves to database
+                NeededItemProgressService.Instance.FlushPendingSaves();
+                ObjectiveProgressService.Instance.SaveObjectiveProgress();
+                _log.Debug("NeededItemProgressService flushed pending saves");
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Error flushing NeededItemProgressService", ex);
             }
 
             try
@@ -105,6 +128,7 @@ namespace TarkovHelper
             }
 
             base.OnExit(e);
+            Environment.Exit(0);
         }
 
         /// <summary>
@@ -113,14 +137,14 @@ namespace TarkovHelper
         public void ApplyBaseFontSize(double baseFontSize)
         {
             Resources["BaseFontSize"] = baseFontSize;
-            Resources["FontSizeTiny"] = baseFontSize - 6;
-            Resources["FontSizeXSmall"] = baseFontSize - 4;
-            Resources["FontSizeSmall"] = baseFontSize - 2;
+            Resources["FontSizeTiny"] = Math.Max(9.5, baseFontSize - 3.5);
+            Resources["FontSizeXSmall"] = Math.Max(10.5, baseFontSize - 2.5);
+            Resources["FontSizeSmall"] = Math.Max(11.5, baseFontSize - 1.5);
             Resources["FontSizeMedium"] = baseFontSize;
             Resources["FontSizeLarge"] = baseFontSize + 2;
             Resources["FontSizeXLarge"] = baseFontSize + 4;
             Resources["FontSizeTitle"] = baseFontSize + 6;
-            Resources["FontSizeHeader"] = baseFontSize + 8;
+            Resources["FontSizeHeader"] = baseFontSize + 10;
         }
 
         /// <summary>

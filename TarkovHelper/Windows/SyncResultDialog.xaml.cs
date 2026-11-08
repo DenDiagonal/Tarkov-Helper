@@ -37,12 +37,14 @@ public partial class SyncResultDialog : Window
     }
 
     /// <summary>
+    /// Gets whether a full progress reset was requested by the user.
+    /// </summary>
+    public bool ResetRequested { get; private set; }
+
+    /// <summary>
     /// Show the sync result dialog and return selected changes.
     /// </summary>
-    /// <param name="result">The sync result to display.</param>
-    /// <param name="owner">Optional owner window for centering.</param>
-    /// <returns>The selected changes to apply, or null if cancelled.</returns>
-    public static List<QuestChangeInfo>? ShowResult(SyncResult result, Window? owner, out int alternativeCount)
+    public static (List<QuestChangeInfo>? selectedChanges, bool resetRequested, int alternativeCount) ShowResult(SyncResult result, Window? owner)
     {
         var dialog = new SyncResultDialog(result);
         if (owner != null)
@@ -50,8 +52,17 @@ public partial class SyncResultDialog : Window
             dialog.Owner = owner;
         }
         dialog.ShowDialog();
-        alternativeCount = dialog.AlternativeGroupCount;
-        return dialog.SelectedChanges;
+        return (dialog.SelectedChanges, dialog.ResetRequested, dialog.AlternativeGroupCount);
+    }
+
+    /// <summary>
+    /// Backward-compatible overload
+    /// </summary>
+    public static List<QuestChangeInfo>? ShowResult(SyncResult result, Window? owner, out int alternativeCount)
+    {
+        var res = ShowResult(result, owner);
+        alternativeCount = res.alternativeCount;
+        return res.selectedChanges;
     }
 
     private void SetupUI()
@@ -172,6 +183,22 @@ public partial class SyncResultDialog : Window
         }
 
         return selectedChanges;
+    }
+
+    private void BtnResetProgress_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            "Are you sure you want to reset all quest and hideout progress?\nThis action cannot be undone.",
+            "Reset Progress",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            ResetRequested = true;
+            SelectedChanges = null;
+            Close();
+        }
     }
 
     private void BtnClose_Click(object sender, RoutedEventArgs e)

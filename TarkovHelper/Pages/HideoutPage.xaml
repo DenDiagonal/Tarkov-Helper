@@ -5,28 +5,71 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d"
              d:DesignHeight="600" d:DesignWidth="900"
-             Background="{StaticResource BackgroundDarkBrush}">
+             TextOptions.TextFormattingMode="Display"
+             TextOptions.TextRenderingMode="ClearType"
+             RenderOptions.ClearTypeHint="Enabled"
+             SnapsToDevicePixels="True"
+             UseLayoutRounding="True"
+             Background="{DynamicResource TacticalSurface0Brush}">
 
     <UserControl.Resources>
         <!-- Inherit FontFamily for all TextBlocks in this page -->
         <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"/>
 
+        <!-- Tactical Stepper Button Style -->
+        <Style x:Key="TacticalStepperButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="{DynamicResource TacticalSurface1Brush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TacticalTextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource TacticalBorderSubtleBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TacticalGoldBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TacticalSurface3Brush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Hideout Module List Item Template -->
         <DataTemplate x:Key="HideoutModuleItemTemplate">
-            <Border x:Name="ItemBorder" Padding="12,8" BorderThickness="0,0,0,1"
-                    BorderBrush="{StaticResource BorderBrush}"
-                    Background="Transparent">
+            <Border x:Name="ItemBorder" Padding="12,10"
+                    BorderThickness="1"
+                    BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
+                    Background="{DynamicResource TacticalSurface2Brush}"
+                    CornerRadius="5" Margin="0,0,0,4">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="40"/>
+                        <ColumnDefinition Width="44"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Module Icon -->
-                    <Border Grid.Column="0" Width="36" Height="36"
-                            CornerRadius="4" Background="{StaticResource BackgroundLightBrush}"
+                    <!-- Module Icon framed in 40x40 -->
+                    <Border Grid.Column="0" Width="40" Height="40"
+                            CornerRadius="4" Background="{DynamicResource TacticalSurface0Brush}"
+                            BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
                             VerticalAlignment="Center">
                         <Image Source="{Binding IconSource}"
                                Width="32" Height="32"
@@ -36,44 +79,50 @@
 
                     <!-- Module Name and Level -->
                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding DisplayName}" FontSize="{DynamicResource FontSizeSmall}"
-                                   Foreground="{StaticResource TextPrimaryBrush}"
+                        <TextBlock Text="{Binding DisplayName}" FontSize="12.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TacticalTextPrimaryBrush}"
                                    TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Text="{Binding SubtitleName}" FontSize="{DynamicResource FontSizeTiny}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
+                        <TextBlock Text="{Binding SubtitleName}" FontSize="10.5"
+                                   Foreground="{DynamicResource TacticalTextSecondaryBrush}"
                                    Visibility="{Binding SubtitleVisibility}"
                                    TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
 
                     <!-- Level Display -->
-                    <TextBlock Grid.Column="2" FontSize="{DynamicResource FontSizeSmall}"
-                               Foreground="{StaticResource AccentBrush}"
+                    <TextBlock Grid.Column="2" FontSize="13" FontWeight="Bold"
+                               FontFamily="{DynamicResource TacticalDisplayFont}"
+                               Foreground="{DynamicResource TacticalGoldBrush}"
                                VerticalAlignment="Center" Margin="0,0,12,0">
                         <Run Text="Lv."/><Run Text="{Binding CurrentLevel}"/>
                     </TextBlock>
 
-                    <!-- Level Controls -->
-                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button Content="-" Width="28" Height="28" Padding="0"
-                                Click="DecrementButton_Click"
-                                Tag="{Binding}"
-                                IsEnabled="{Binding CanDecrement}"/>
-                        <Button Content="+" Width="28" Height="28" Padding="0" Margin="4,0,0,0"
-                                Click="IncrementButton_Click"
-                                Tag="{Binding}"
-                                IsEnabled="{Binding CanIncrement}"/>
-                    </StackPanel>
+                    <!-- Level Controls (Hardware Capsule) -->
+                    <Border Grid.Column="3" Background="{DynamicResource TacticalSurface0Brush}"
+                            BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                            CornerRadius="4" Padding="3,2" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="-" Style="{StaticResource TacticalStepperButtonStyle}"
+                                    Click="DecrementButton_Click"
+                                    Tag="{Binding}"
+                                    IsEnabled="{Binding CanDecrement}"/>
+                            <Button Content="+" Style="{StaticResource TacticalStepperButtonStyle}" Margin="4,0,0,0"
+                                    Click="IncrementButton_Click"
+                                    Tag="{Binding}"
+                                    IsEnabled="{Binding CanIncrement}"/>
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </Border>
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
-                    <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource BackgroundLightBrush}"/>
+                    <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource TacticalSurface3Brush}"/>
+                    <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource TacticalBorderGoldBrush}"/>
                 </DataTrigger>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource BackgroundMediumBrush}"/>
+                    <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource TacticalBorderHighlightBrush}"/>
                 </Trigger>
                 <DataTrigger Binding="{Binding IsMaxLevel}" Value="True">
-                    <Setter TargetName="ItemBorder" Property="Opacity" Value="0.7"/>
+                    <Setter TargetName="ItemBorder" Property="Opacity" Value="0.75"/>
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
@@ -104,292 +153,310 @@
             </Grid.RowDefinitions>
 
             <!-- Search Bar -->
-        <Border Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}"
-                CornerRadius="6" Padding="12,10" Margin="0,0,0,12">
-            <TextBox x:Name="TxtSearch" TextChanged="TxtSearch_TextChanged">
-                <TextBox.Style>
-                    <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
-                        <Setter Property="Tag" Value="Search hideout modules..."/>
-                    </Style>
-                </TextBox.Style>
-            </TextBox>
-        </Border>
-
-        <!-- Statistics Bar -->
-        <Border Grid.Row="1" Padding="12,6" Margin="0,0,0,12">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock x:Name="TxtStats" FontSize="{DynamicResource FontSizeXSmall}"
-                           Foreground="{StaticResource TextSecondaryBrush}"/>
-            </StackPanel>
-        </Border>
-
-        <!-- Main Content -->
-        <Grid Grid.Row="2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" MinWidth="300"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="380" MinWidth="280"/>
-            </Grid.ColumnDefinitions>
-
-            <!-- Module List -->
-            <Border Grid.Column="0" Background="{StaticResource BackgroundMediumBrush}"
-                    CornerRadius="6">
-                <ListBox x:Name="LstModules"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         ItemTemplate="{StaticResource HideoutModuleItemTemplate}"
-                         ItemContainerStyle="{StaticResource HideoutListBoxItem}"
-                         SelectionChanged="LstModules_SelectionChanged"
-                         VirtualizingPanel.IsVirtualizing="True"
-                         VirtualizingPanel.VirtualizationMode="Recycling"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+            <Border Grid.Row="0" Background="{DynamicResource TacticalSurface1Brush}"
+                    BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                    CornerRadius="6" Padding="12,10" Margin="0,0,0,12">
+                <TextBox x:Name="TxtSearch" TextChanged="TxtSearch_TextChanged"
+                         Background="{DynamicResource TacticalSurface2Brush}"
+                         BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
+                         Foreground="{DynamicResource TacticalTextPrimaryBrush}">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                            <Setter Property="Tag" Value="Search hideout modules..."/>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
             </Border>
 
-            <!-- Splitter -->
-            <GridSplitter Grid.Column="1" Width="8" Background="Transparent"
-                          HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+            <!-- Statistics Bar -->
+            <Border Grid.Row="1" Padding="12,6" Margin="0,0,0,12">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="TxtStats" FontSize="{DynamicResource FontSizeXSmall}"
+                               Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
+                </StackPanel>
+            </Border>
 
-            <!-- Detail Panel -->
-            <Border Grid.Column="2" Background="{StaticResource BackgroundMediumBrush}"
-                    CornerRadius="6" Padding="16">
-                <Grid>
-                    <!-- Empty State -->
-                    <TextBlock x:Name="TxtSelectModule"
-                               Text="Select a module to view details"
-                               FontSize="{DynamicResource FontSizeSmall}" Foreground="{StaticResource TextSecondaryBrush}"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <!-- Main Content -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="300"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="380" MinWidth="280"/>
+                </Grid.ColumnDefinitions>
 
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="DetailPanel" Visibility="Collapsed">
-                            <!-- Module Header -->
-                            <Grid Margin="0,0,0,16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
+                <!-- Module List -->
+                <Border Grid.Column="0" Background="{DynamicResource TacticalSurface1Brush}"
+                        BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                        CornerRadius="6" Padding="6">
+                    <ListBox x:Name="LstModules"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ItemTemplate="{StaticResource HideoutModuleItemTemplate}"
+                             ItemContainerStyle="{StaticResource HideoutListBoxItem}"
+                             SelectionChanged="LstModules_SelectionChanged"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                </Border>
 
-                                <!-- Module Icon -->
-                                <Border Grid.Column="0" Width="64" Height="64"
-                                        CornerRadius="8" Background="{StaticResource BackgroundDarkBrush}"
-                                        Margin="0,0,16,0">
-                                    <Image x:Name="ImgDetailIcon"
-                                           Width="56" Height="56"
-                                           Stretch="Uniform"
-                                           RenderOptions.BitmapScalingMode="HighQuality"/>
-                                </Border>
+                <!-- Splitter -->
+                <GridSplitter Grid.Column="1" Width="8" Background="Transparent"
+                              HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
 
-                                <!-- Module Title -->
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <TextBlock x:Name="TxtDetailName" FontSize="{DynamicResource FontSizeLarge}" FontWeight="SemiBold"
-                                               Foreground="{StaticResource AccentBrush}"
-                                               TextWrapping="Wrap"/>
-                                    <TextBlock x:Name="TxtDetailSubtitle" FontSize="{DynamicResource FontSizeXSmall}"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
-                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
-                                </StackPanel>
-                            </Grid>
+                <!-- Detail Panel -->
+                <Border Grid.Column="2" Background="{DynamicResource TacticalSurface1Brush}"
+                        BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                        CornerRadius="6" Padding="16">
+                    <Grid>
+                        <!-- Empty State -->
+                        <TextBlock x:Name="TxtSelectModule"
+                                   Text="Select a module to view details"
+                                   FontSize="{DynamicResource FontSizeSmall}" Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
-                            <!-- Current Level -->
-                            <Border Background="{StaticResource BackgroundDarkBrush}"
-                                    CornerRadius="4" Padding="12" Margin="0,0,0,16">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Current Level: " FontSize="{DynamicResource FontSizeSmall}"
-                                               Foreground="{StaticResource TextSecondaryBrush}"/>
-                                    <TextBlock x:Name="TxtCurrentLevel" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                               Foreground="{StaticResource AccentBrush}"/>
-                                    <TextBlock Text=" / Max Level: " FontSize="{DynamicResource FontSizeSmall}"
-                                               Foreground="{StaticResource TextSecondaryBrush}"/>
-                                    <TextBlock x:Name="TxtMaxLevel" FontSize="{DynamicResource FontSizeSmall}"
-                                               Foreground="{StaticResource TextPrimaryBrush}"/>
-                                </StackPanel>
-                            </Border>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="DetailPanel" Visibility="Collapsed">
+                                <!-- Module Header -->
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
 
-                            <!-- Actions -->
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                                <Button x:Name="BtnWiki" Content="Wiki" Padding="12,6"
-                                        Margin="0,0,8,0" Click="BtnWiki_Click"/>
-                            </StackPanel>
+                                    <!-- Module Icon -->
+                                    <Border Grid.Column="0" Width="64" Height="64"
+                                            CornerRadius="8" Background="{DynamicResource TacticalSurface0Brush}"
+                                            BorderBrush="{DynamicResource TacticalBorderMediumBrush}" BorderThickness="1"
+                                            Margin="0,0,16,0">
+                                        <Image x:Name="ImgDetailIcon"
+                                               Width="56" Height="56"
+                                               Stretch="Uniform"
+                                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                                    </Border>
 
-                            <!-- Next Level Requirements Section -->
-                            <StackPanel x:Name="NextLevelSection">
-                                <TextBlock x:Name="TxtNextLevelHeader" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextPrimaryBrush}"
-                                           Margin="0,0,0,8"/>
-                                <Border Background="{StaticResource BackgroundDarkBrush}"
+                                    <!-- Module Title -->
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Name="TxtDetailName" FontSize="{DynamicResource FontSizeLarge}" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TacticalGoldBrush}"
+                                                   TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="TxtDetailSubtitle" FontSize="{DynamicResource FontSizeXSmall}"
+                                                   Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+                                                   TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Current Level -->
+                                <Border Background="{DynamicResource TacticalSurface2Brush}"
+                                        BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
                                         CornerRadius="4" Padding="12" Margin="0,0,0,16">
-                                    <StackPanel>
-                                        <!-- Items Required -->
-                                        <TextBlock x:Name="TxtItemsHeader" Text="Items:" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                                   Margin="0,0,0,6"/>
-                                        <ItemsControl x:Name="NextLevelItemsList" Margin="0,0,0,12">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <StackPanel Orientation="Horizontal" Margin="0,4"
-                                                                Opacity="{Binding ItemOpacity}"
-                                                                Cursor="Hand"
-                                                                MouseLeftButtonUp="ItemName_Click">
-                                                        <!-- Item Icon -->
-                                                        <Border Width="28" Height="28" CornerRadius="3"
-                                                                Background="{StaticResource BackgroundMediumBrush}"
-                                                                Margin="0,0,8,0">
-                                                            <Grid>
-                                                                <Image Source="{Binding IconSource}"
-                                                                       Width="24" Height="24"
-                                                                       Stretch="Uniform"/>
-                                                                <!-- Fulfilled checkmark overlay -->
-                                                                <TextBlock Text="&#x2713;" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                                                           Foreground="{StaticResource SuccessBrush}"
-                                                                           HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                                                           Margin="0,0,1,0"
-                                                                           Visibility="{Binding FulfilledVisibility}"/>
-                                                            </Grid>
-                                                        </Border>
-                                                        <TextBlock Text="{Binding DisplayText}"
-                                                                   TextDecorations="{Binding TextDecorations}"
-                                                                   FontSize="{DynamicResource FontSizeSmall}"
-                                                                   VerticalAlignment="Center">
-                                                            <TextBlock.Style>
-                                                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                                                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-                                                                    <Style.Triggers>
-                                                                        <DataTrigger Binding="{Binding IsFulfilled}" Value="True">
-                                                                            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-                                                                        </DataTrigger>
-                                                                    </Style.Triggers>
-                                                                </Style>
-                                                            </TextBlock.Style>
-                                                        </TextBlock>
-                                                        <!-- FIR Badge -->
-                                                        <Border Padding="5,2" CornerRadius="2" Margin="6,0,0,0"
-                                                                Background="{StaticResource WarningBrush}"
-                                                                Visibility="{Binding FirVisibility}"
-                                                                VerticalAlignment="Center">
-                                                            <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" Foreground="White"/>
-                                                        </Border>
-                                                    </StackPanel>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-
-                                        <!-- Traders Required -->
-                                        <TextBlock x:Name="TxtTradersHeader" Text="Traders:" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                                   Margin="0,0,0,6" Visibility="Collapsed"/>
-                                        <ItemsControl x:Name="NextLevelTradersList" Margin="0,0,0,12" Visibility="Collapsed">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding DisplayText}"
-                                                               Foreground="{StaticResource TextPrimaryBrush}" FontSize="{DynamicResource FontSizeXSmall}"
-                                                               Margin="0,2"/>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-
-                                        <!-- Skills Required -->
-                                        <TextBlock x:Name="TxtSkillsHeader" Text="Skills:" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                                   Margin="0,0,0,6" Visibility="Collapsed"/>
-                                        <ItemsControl x:Name="NextLevelSkillsList" Margin="0,0,0,12" Visibility="Collapsed">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding DisplayText}"
-                                                               Foreground="{StaticResource TextPrimaryBrush}" FontSize="{DynamicResource FontSizeXSmall}"
-                                                               Margin="0,2"/>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-
-                                        <!-- Other Modules Required -->
-                                        <TextBlock x:Name="TxtModulesHeader" Text="Other Modules:" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                                   Margin="0,0,0,6" Visibility="Collapsed"/>
-                                        <ItemsControl x:Name="NextLevelModulesList" Visibility="Collapsed">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding DisplayText}"
-                                                               Foreground="{StaticResource TextPrimaryBrush}" FontSize="{DynamicResource FontSizeXSmall}"
-                                                               Margin="0,2"/>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Current Level: " FontSize="{DynamicResource FontSizeSmall}"
+                                                   Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
+                                        <TextBlock x:Name="TxtCurrentLevel" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                   FontFamily="{DynamicResource TacticalDisplayFont}"
+                                                   Foreground="{DynamicResource TacticalGoldBrush}"/>
+                                        <TextBlock Text=" / Max Level: " FontSize="{DynamicResource FontSizeSmall}"
+                                                   Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
+                                        <TextBlock x:Name="TxtMaxLevel" FontSize="{DynamicResource FontSizeSmall}"
+                                                   FontFamily="{DynamicResource TacticalDisplayFont}"
+                                                   Foreground="{DynamicResource TacticalTextPrimaryBrush}"/>
                                     </StackPanel>
                                 </Border>
-                            </StackPanel>
 
-                            <!-- Total Remaining Requirements -->
-                            <TextBlock Text="Total Remaining Requirements" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                       Margin="0,0,0,8"/>
-                            <Border Background="{StaticResource BackgroundDarkBrush}"
-                                    CornerRadius="4" Padding="12">
-                                <ItemsControl x:Name="TotalRemainingItemsList">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Orientation="Horizontal" Margin="0,4"
-                                                        Opacity="{Binding ItemOpacity}"
-                                                        Cursor="Hand"
-                                                        MouseLeftButtonUp="ItemName_Click">
-                                                <!-- Item Icon -->
-                                                <Border Width="28" Height="28" CornerRadius="3"
-                                                        Background="{StaticResource BackgroundMediumBrush}"
-                                                        Margin="0,0,8,0">
-                                                    <Grid>
-                                                        <Image Source="{Binding IconSource}"
-                                                               Width="24" Height="24"
-                                                               Stretch="Uniform"/>
-                                                        <!-- Fulfilled checkmark overlay -->
-                                                        <TextBlock Text="&#x2713;" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                                                   Foreground="{StaticResource SuccessBrush}"
-                                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                                                   Margin="0,0,1,0"
-                                                                   Visibility="{Binding FulfilledVisibility}"/>
-                                                    </Grid>
-                                                </Border>
-                                                <TextBlock Text="{Binding DisplayText}"
-                                                           TextDecorations="{Binding TextDecorations}"
-                                                           FontSize="{DynamicResource FontSizeSmall}"
-                                                           VerticalAlignment="Center">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                                                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsFulfilled}" Value="True">
-                                                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                                <!-- FIR Badge -->
-                                                <Border Padding="5,2" CornerRadius="2" Margin="6,0,0,0"
-                                                        Background="{StaticResource WarningBrush}"
-                                                        Visibility="{Binding FirVisibility}"
-                                                        VerticalAlignment="Center">
-                                                    <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" Foreground="White"/>
-                                                </Border>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </Border>
-                        </StackPanel>
-                    </ScrollViewer>
-                </Grid>
-            </Border>
-        </Grid>
+                                <!-- Actions -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                    <Button x:Name="BtnWiki" Content="Wiki" Padding="12,6"
+                                            Margin="0,0,8,0" Click="BtnWiki_Click"/>
+                                </StackPanel>
+
+                                <!-- Next Level Requirements Section -->
+                                <StackPanel x:Name="NextLevelSection">
+                                    <TextBlock x:Name="TxtNextLevelHeader" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <Border Background="{DynamicResource TacticalSurface2Brush}"
+                                            BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                                            CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                                        <StackPanel>
+                                            <!-- Items Required -->
+                                            <TextBlock x:Name="TxtItemsHeader" Text="Items:" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+                                                       Margin="0,0,0,6"/>
+                                            <ItemsControl x:Name="NextLevelItemsList" Margin="0,0,0,12">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,4"
+                                                                    Opacity="{Binding ItemOpacity}"
+                                                                    Cursor="Hand"
+                                                                    MouseLeftButtonUp="ItemName_Click">
+                                                            <!-- Item Icon -->
+                                                            <Border Width="28" Height="28" CornerRadius="3"
+                                                                    Background="{DynamicResource TacticalSurface0Brush}"
+                                                                    BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                                                                    Margin="0,0,8,0">
+                                                                <Grid>
+                                                                    <Image Source="{Binding IconSource}"
+                                                                           Width="24" Height="24"
+                                                                           Stretch="Uniform"/>
+                                                                    <!-- Fulfilled checkmark overlay -->
+                                                                    <TextBlock Text="&#x2713;" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                                                               Foreground="{DynamicResource TacticalSuccessBrush}"
+                                                                               HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                                               Margin="0,0,1,0"
+                                                                               Visibility="{Binding FulfilledVisibility}"/>
+                                                                </Grid>
+                                                            </Border>
+                                                            <TextBlock Text="{Binding DisplayText}"
+                                                                       TextDecorations="{Binding TextDecorations}"
+                                                                       FontSize="{DynamicResource FontSizeSmall}"
+                                                                       VerticalAlignment="Center">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource TacticalTextPrimaryBrush}"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsFulfilled}" Value="True">
+                                                                                <Setter Property="Foreground" Value="{DynamicResource TacticalTextSecondaryBrush}"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                            <!-- FIR Badge -->
+                                                            <Border Padding="5,2" CornerRadius="2" Margin="6,0,0,0"
+                                                                    Background="{DynamicResource BadgeFirBgBrush}"
+                                                                    BorderBrush="{DynamicResource BadgeFirBorderBrush}" BorderThickness="1"
+                                                                    Visibility="{Binding FirVisibility}"
+                                                                    VerticalAlignment="Center">
+                                                                <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" FontWeight="Bold"
+                                                                           Foreground="{DynamicResource BadgeFirFgBrush}"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <!-- Traders Required -->
+                                            <TextBlock x:Name="TxtTradersHeader" Text="Traders:" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+                                                       Margin="0,0,0,6" Visibility="Collapsed"/>
+                                            <ItemsControl x:Name="NextLevelTradersList" Margin="0,0,0,12" Visibility="Collapsed">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding DisplayText}"
+                                                                   Foreground="{DynamicResource TacticalTextPrimaryBrush}" FontSize="{DynamicResource FontSizeXSmall}"
+                                                                   Margin="0,2"/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <!-- Skills Required -->
+                                            <TextBlock x:Name="TxtSkillsHeader" Text="Skills:" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+                                                       Margin="0,0,0,6" Visibility="Collapsed"/>
+                                            <ItemsControl x:Name="NextLevelSkillsList" Margin="0,0,0,12" Visibility="Collapsed">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding DisplayText}"
+                                                                   Foreground="{DynamicResource TacticalTextPrimaryBrush}" FontSize="{DynamicResource FontSizeXSmall}"
+                                                                   Margin="0,2"/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <!-- Other Modules Required -->
+                                            <TextBlock x:Name="TxtModulesHeader" Text="Other Modules:" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TacticalTextSecondaryBrush}"
+                                                       Margin="0,0,0,6" Visibility="Collapsed"/>
+                                            <ItemsControl x:Name="NextLevelModulesList" Visibility="Collapsed">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding DisplayText}"
+                                                                   Foreground="{DynamicResource TacticalTextPrimaryBrush}" FontSize="{DynamicResource FontSizeXSmall}"
+                                                                   Margin="0,2"/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Total Remaining Requirements -->
+                                <TextBlock Text="Total Remaining Requirements" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TacticalTextPrimaryBrush}"
+                                           Margin="0,0,0,8"/>
+                                <Border Background="{DynamicResource TacticalSurface2Brush}"
+                                        BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                                        CornerRadius="4" Padding="12">
+                                    <ItemsControl x:Name="TotalRemainingItemsList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" Margin="0,4"
+                                                            Opacity="{Binding ItemOpacity}"
+                                                            Cursor="Hand"
+                                                            MouseLeftButtonUp="ItemName_Click">
+                                                    <!-- Item Icon -->
+                                                    <Border Width="28" Height="28" CornerRadius="3"
+                                                            Background="{DynamicResource TacticalSurface0Brush}"
+                                                            BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
+                                                            Margin="0,0,8,0">
+                                                        <Grid>
+                                                            <Image Source="{Binding IconSource}"
+                                                                   Width="24" Height="24"
+                                                                   Stretch="Uniform"/>
+                                                            <!-- Fulfilled checkmark overlay -->
+                                                            <TextBlock Text="&#x2713;" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                                                       Foreground="{DynamicResource TacticalSuccessBrush}"
+                                                                       HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                                       Margin="0,0,1,0"
+                                                                       Visibility="{Binding FulfilledVisibility}"/>
+                                                        </Grid>
+                                                    </Border>
+                                                    <TextBlock Text="{Binding DisplayText}"
+                                                               TextDecorations="{Binding TextDecorations}"
+                                                               FontSize="{DynamicResource FontSizeSmall}"
+                                                               VerticalAlignment="Center">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                                <Setter Property="Foreground" Value="{DynamicResource TacticalTextPrimaryBrush}"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsFulfilled}" Value="True">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource TacticalTextSecondaryBrush}"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                    <!-- FIR Badge -->
+                                                    <Border Padding="5,2" CornerRadius="2" Margin="6,0,0,0"
+                                                            Background="{DynamicResource BadgeFirBgBrush}"
+                                                            BorderBrush="{DynamicResource BadgeFirBorderBrush}" BorderThickness="1"
+                                                            Visibility="{Binding FirVisibility}"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" FontWeight="Bold"
+                                                                   Foreground="{DynamicResource BadgeFirFgBrush}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
         </Grid>
 
         <!-- Loading Overlay -->
-        <Grid x:Name="LoadingOverlay" Visibility="Visible" Background="{StaticResource BackgroundDarkBrush}">
+        <Grid x:Name="LoadingOverlay" Visibility="Visible" Background="{DynamicResource TacticalSurface0Brush}">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                 <ProgressBar Height="4" Width="200" IsIndeterminate="True"
-                             Foreground="{StaticResource AccentBrush}"
-                             Background="{StaticResource BackgroundMediumBrush}"/>
+                             Foreground="{DynamicResource TacticalGoldBrush}"
+                             Background="{DynamicResource TacticalSurface2Brush}" BorderThickness="0"/>
                 <TextBlock x:Name="LoadingStatusText"
                            Text="Loading hideout data..."
                            FontSize="{DynamicResource FontSizeSmall}" Margin="0,16,0,0"
-                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Foreground="{DynamicResource TacticalTextSecondaryBrush}"
                            HorizontalAlignment="Center"/>
             </StackPanel>
         </Grid>

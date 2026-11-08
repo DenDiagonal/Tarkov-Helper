@@ -23,6 +23,8 @@ public sealed class MapTrackerService : IDisposable
     private readonly List<ScreenPosition> _trailPositions = new();
     private ScreenPosition? _currentPosition;
     private string? _currentMapKey;
+    private string? _currentFloorId;
+    private TaskObjectiveWithLocation? _pinnedObjective;
     private bool _isDisposed;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -54,6 +56,16 @@ public sealed class MapTrackerService : IDisposable
     /// 현재 선택된 맵 키
     /// </summary>
     public string? CurrentMapKey => _currentMapKey;
+
+    /// <summary>
+    /// 현재 선택 또는 자동 감지된 층 ID
+    /// </summary>
+    public string? CurrentFloorId => _currentFloorId;
+
+    /// <summary>
+    /// Currently pinned quest objective for minimap and map synchronization.
+    /// </summary>
+    public TaskObjectiveWithLocation? PinnedObjective => _pinnedObjective;
 
     /// <summary>
     /// 마지막 위치
@@ -105,6 +117,16 @@ public sealed class MapTrackerService : IDisposable
     /// </summary>
     public event Action<string>? MapChanged;
 
+    /// <summary>
+    /// 층 변경 이벤트
+    /// </summary>
+    public event Action<string?>? FloorChanged;
+
+    /// <summary>
+    /// 퀘스트 목표 고정(Pin) 변경 이벤트
+    /// </summary>
+    public event Action<TaskObjectiveWithLocation?>? PinnedObjectiveChanged;
+
     private MapTrackerService()
     {
         _settings = LoadSettings();
@@ -123,6 +145,15 @@ public sealed class MapTrackerService : IDisposable
         _watcher.ParsingFailed += OnParsingFailed;
         _watcher.StateChanged += OnWatcherStateChanged;
         _watcher.Error += OnWatcherError;
+
+        // EFT 게임 로그 맵 감지 이벤트 연결
+        LogMapWatcherService.Instance.MapChanged += (s, e) =>
+        {
+            if (!string.IsNullOrEmpty(e.NewMapKey))
+            {
+                SetCurrentMap(e.NewMapKey, force: true);
+            }
+        };
     }
 
     /// <summary>
@@ -182,15 +213,39 @@ public sealed class MapTrackerService : IDisposable
     }
 
     /// <summary>
-    /// 현재 맵을 설정합니다.
+    /// 현재 맵을 설정합니다. force가 true이면 동일한 맵 키여도 MapChanged 이벤트를 강제 발생시킵니다.
     /// </summary>
-    public void SetCurrentMap(string mapKey)
+    public void SetCurrentMap(string mapKey, bool force = false)
     {
-        if (_currentMapKey != mapKey)
+        var canonicalKey = ResolveMapKey(mapKey) ?? mapKey;
+        if (force || !string.Equals(_currentMapKey, canonicalKey, StringComparison.OrdinalIgnoreCase))
         {
-            _currentMapKey = mapKey;
-            MapChanged?.Invoke(mapKey);
+            _currentMapKey = canonicalKey;
+            _currentFloorId = null;
+            MapChanged?.Invoke(canonicalKey);
         }
+    }
+
+    /// <summary>
+    /// 현재 층을 설정하고 변경 사항을 구독자(메인 맵, 오버레이 미니맵)에 전파합니다.
+    /// </summary>
+    public void SetCurrentFloor(string? floorId)
+    {
+        if (!string.Equals(_currentFloorId, floorId, StringComparison.OrdinalIgnoreCase))
+        {
+            _currentFloorId = floorId;
+            FloorChanged?.Invoke(floorId);
+        }
+    }
+
+    /// <summary>
+    /// 퀘스트 목표를 고정(Pin)하거나 해제하고, 구독자(메인 맵, 오버레이 미니맵)에 전파합니다.
+    /// </summary>
+    /// <param name="objective">고정할 퀘스트 목표 또는 null(고정 해제)</param>
+    public void PinObjective(TaskObjectiveWithLocation? objective)
+    {
+        _pinnedObjective = objective;
+        PinnedObjectiveChanged?.Invoke(objective);
     }
 
     /// <summary>

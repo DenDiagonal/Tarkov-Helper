@@ -33,6 +33,7 @@ namespace TarkovHelper.Services
         private FileSystemWatcher? _logWatcher;
         private FileSystemWatcher? _applicationLogWatcher;
         private readonly object _watcherLock = new();
+        private readonly HashSet<string> _processedEventKeys = new(StringComparer.OrdinalIgnoreCase);
         private DateTime _lastEventTime = DateTime.MinValue;
         private DateTime _lastMapEventTime = DateTime.MinValue;
         private string? _lastModifiedFile;
@@ -40,6 +41,11 @@ namespace TarkovHelper.Services
         private bool _isWatching;
         private long _lastApplicationLogPosition;
         private string? _currentMapKey;
+
+        // Trailing debounce timer for push notification logs to prevent dropped events
+        private System.Threading.Timer? _pushLogDebounceTimer;
+        private readonly object _pushDebounceLock = new();
+        private string? _pendingPushLogFile;
 
         /// <summary>
         /// Event fired when a quest event is detected from logs
@@ -192,7 +198,15 @@ namespace TarkovHelper.Services
             return false;
         }
 
-        private LogSyncService() { }
+        private LogSyncService()
+        {
+            // Delegate map change detection to dedicated LogMapWatcherService
+            TarkovHelper.Services.Map.LogMapWatcherService.Instance.MapChanged += (s, e) =>
+            {
+                _currentMapKey = e.NewMapKey;
+                MapDetected?.Invoke(this, new MapDetectedEventArgs(e.NewMapKey, DateTime.Now));
+            };
+        }
 
         #region Log File Monitoring
 
@@ -227,20 +241,8 @@ namespace TarkovHelper.Services
                     _logWatcher.Changed += OnLogFileChanged;
                     _logWatcher.Created += OnLogFileChanged;
 
-                    // Map detection watcher (application logs)
-                    _applicationLogWatcher = new FileSystemWatcher(logFolderPath)
-                    {
-                        NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
-                        Filter = "application*.log",
-                        IncludeSubdirectories = true,
-                        EnableRaisingEvents = true
-                    };
-
-                    _applicationLogWatcher.Changed += OnApplicationLogChanged;
-                    _applicationLogWatcher.Created += OnApplicationLogChanged;
-
-                    // Initialize position for latest application log
-                    InitializeLatestApplicationLogPosition(logFolderPath);
+// Map monitoring is handled by LogMapWatcherService
+                    InitializeLatestPushNotificationEvents(logFolderPath);
 
                     _isWatching = true;
                     MonitoringStatusChanged?.Invoke(this, true);
@@ -260,7 +262,7 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var latestLog = Directory.GetFiles(logFolderPath, "application*.log", SearchOption.AllDirectories)
+                var latestLog = Directory.GetFiles(logFolderPath, "*application*.log", SearchOption.AllDirectories)
                     .OrderByDescending(f => File.GetLastWriteTime(f))
                     .FirstOrDefault();
 
@@ -275,6 +277,63 @@ namespace TarkovHelper.Services
             {
                 _lastApplicationLogPosition = 0;
             }
+        }
+
+        /// <summary>
+        /// Pre-populate processed event keys with existing events from the latest push-notifications log
+        /// so that upon startup we don't re-fire old events
+        /// </summary>
+        private void InitializeLatestPushNotificationEvents(string logFolderPath)
+        {
+            Task.Run(() =>
+            {
+                try
+                {
+                    var latestLog = Directory.GetFiles(logFolderPath, "*push-notifications*.log", SearchOption.AllDirectories)
+                        .OrderByDescending(f => File.GetLastWriteTime(f))
+                        .FirstOrDefault();
+
+                    if (latestLog != null && File.Exists(latestLog))
+                    {
+                        var initialEvents = ParseLogFile(latestLog, tailOnly: false);
+                        var progressService = QuestProgressService.Instance;
+
+                        foreach (var evt in initialEvents)
+                        {
+                            var eventKey = $"{evt.QuestId}_{evt.EventType}_{evt.Timestamp.Ticks}";
+                            bool isNew;
+                            lock (_processedEventKeys)
+                            {
+                                isNew = _processedEventKeys.Add(eventKey);
+                            }
+
+                            // If this is a recent completed event (within last 24h), verify if it is already completed in progress
+                            if (isNew && evt.EventType == QuestEventType.Completed && Math.Abs((DateTime.Now - evt.Timestamp).TotalHours) < 24)
+                            {
+                                var cleanId = evt.QuestId?.Trim() ?? "";
+                                if (cleanId.Contains(' ')) cleanId = cleanId.Split(' ')[0];
+
+                                var task = progressService.GetTask(cleanId) ??
+                                           progressService.AllTasks.FirstOrDefault(t =>
+                                               string.Equals(t.BsgId, cleanId, StringComparison.OrdinalIgnoreCase) ||
+                                               string.Equals(t.Id, cleanId, StringComparison.OrdinalIgnoreCase) ||
+                                               (t.Ids != null && t.Ids.Contains(cleanId, StringComparer.OrdinalIgnoreCase)));
+
+                                if (task != null && progressService.GetStatus(task) != QuestStatus.Done)
+                                {
+                                    DebugLog($"Startup auto-sync: Catching missed completed quest: {task.Name} ({cleanId})");
+                                    QuestEventDetected?.Invoke(this, evt);
+                                }
+                            }
+                        }
+                        DebugLog($"Initialized {_processedEventKeys.Count} existing push-notification events as seen");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugLog($"Error initializing push-notifications events: {ex.Message}");
+                }
+            });
         }
 
         /// <summary>
@@ -293,17 +352,16 @@ namespace TarkovHelper.Services
                     _logWatcher = null;
                 }
 
-                if (_applicationLogWatcher != null)
-                {
-                    _applicationLogWatcher.EnableRaisingEvents = false;
-                    _applicationLogWatcher.Changed -= OnApplicationLogChanged;
-                    _applicationLogWatcher.Created -= OnApplicationLogChanged;
-                    _applicationLogWatcher.Dispose();
-                    _applicationLogWatcher = null;
-                }
 
-                _lastApplicationLogPosition = 0;
                 _currentMapKey = null;
+                lock (_processedEventKeys) { _processedEventKeys.Clear(); }
+
+                lock (_pushDebounceLock)
+                {
+                    _pushLogDebounceTimer?.Dispose();
+                    _pushLogDebounceTimer = null;
+                    _pendingPushLogFile = null;
+                }
 
                 _isWatching = false;
                 MonitoringStatusChanged?.Invoke(this, false);
@@ -312,16 +370,24 @@ namespace TarkovHelper.Services
 
         private void OnLogFileChanged(object sender, FileSystemEventArgs e)
         {
-            // Debounce events (file system can fire multiple events)
-            var now = DateTime.Now;
-            if ((now - _lastEventTime).TotalMilliseconds < 500 && e.FullPath == _lastModifiedFile)
-                return;
+            lock (_pushDebounceLock)
+            {
+                _pendingPushLogFile = e.FullPath;
+                _pushLogDebounceTimer?.Dispose();
+                _pushLogDebounceTimer = new System.Threading.Timer(_ =>
+                {
+                    string? fileToProcess;
+                    lock (_pushDebounceLock)
+                    {
+                        fileToProcess = _pendingPushLogFile;
+                    }
 
-            _lastEventTime = now;
-            _lastModifiedFile = e.FullPath;
-
-            // Process new events from the modified file
-            Task.Run(() => ProcessLatestLogEvents(e.FullPath));
+                    if (!string.IsNullOrEmpty(fileToProcess))
+                    {
+                        _ = ProcessLatestLogEvents(fileToProcess);
+                    }
+                }, null, 300, Timeout.Infinite);
+            }
         }
 
         private void OnApplicationLogChanged(object sender, FileSystemEventArgs e)
@@ -449,7 +515,7 @@ namespace TarkovHelper.Services
             try
             {
                 // Find the most recent application log file
-                var logFiles = Directory.GetFiles(path, "application*.log", SearchOption.AllDirectories)
+                var logFiles = Directory.GetFiles(path, "*application*.log", SearchOption.AllDirectories)
                     .OrderByDescending(f => File.GetLastWriteTime(f))
                     .Take(3)  // Check last 3 log files
                     .ToList();
@@ -519,21 +585,39 @@ namespace TarkovHelper.Services
         {
             try
             {
-                // Read the last portion of the file to get recent events
-                var events = await ParseLogFileAsync(filePath, tailOnly: true);
+                // Wait briefly for OS buffer flush and release
+                await Task.Delay(100);
+
+                // Read full log (push-notification logs are compact, ensures 0 dropped events)
+                var events = await ParseLogFileAsync(filePath, tailOnly: false);
 
                 foreach (var evt in events)
                 {
-                    // Only fire for recent events (within last minute)
-                    if ((DateTime.Now - evt.Timestamp).TotalMinutes < 1)
+                    var eventKey = $"{evt.QuestId}_{evt.EventType}_{evt.Timestamp.Ticks}";
+
+                    lock (_processedEventKeys)
                     {
+                        if (!_processedEventKeys.Add(eventKey))
+                            continue;
+
+                        if (_processedEventKeys.Count > 1000)
+                        {
+                            var toRemove = _processedEventKeys.Take(500).ToList();
+                            foreach (var key in toRemove) _processedEventKeys.Remove(key);
+                        }
+                    }
+
+                    // Process event if within last 24 hours (won't drop due to file buffering delays or minor clock drift)
+                    if (Math.Abs((DateTime.Now - evt.Timestamp).TotalHours) < 24)
+                    {
+                        DebugLog($"Live quest event detected: {evt.QuestId} ({evt.EventType}) at {evt.Timestamp}");
                         QuestEventDetected?.Invoke(this, evt);
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore errors during live monitoring
+                DebugLog($"Error in ProcessLatestLogEvents: {ex.Message}");
             }
         }
 
@@ -579,6 +663,40 @@ namespace TarkovHelper.Services
             allEvents = allEvents.OrderBy(e => e.Timestamp).ToList();
 
             return allEvents;
+        }
+
+        /// <summary>
+        /// Parse a single log file for quest events synchronously
+        /// </summary>
+        public List<QuestLogEvent> ParseLogFile(string filePath, bool tailOnly = false)
+        {
+            var events = new List<QuestLogEvent>();
+
+            if (!File.Exists(filePath))
+                return events;
+
+            try
+            {
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var reader = new StreamReader(stream);
+
+                var fileName = Path.GetFileName(filePath);
+
+                if (tailOnly && stream.Length > 50000)
+                {
+                    stream.Seek(-50000, SeekOrigin.End);
+                    reader.ReadLine();
+                }
+
+                var content = reader.ReadToEnd();
+                var parsedEvents = ParseLogContent(content, fileName);
+                events.AddRange(parsedEvents);
+            }
+            catch
+            {
+            }
+
+            return events;
         }
 
         /// <summary>
@@ -811,8 +929,12 @@ namespace TarkovHelper.Services
                 var task = FindTaskByQuestId(tasksByQuestId, evt.QuestId);
                 if (task == null)
                 {
-                    if (!result.UnmatchedQuestIds.Contains(evt.QuestId))
-                        result.UnmatchedQuestIds.Add(evt.QuestId);
+                    // Ignore procedural daily/operational tasks (starts with 61604)
+                    if (!evt.QuestId.StartsWith("61604", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!result.UnmatchedQuestIds.Contains(evt.QuestId))
+                            result.UnmatchedQuestIds.Add(evt.QuestId);
+                    }
                     continue;
                 }
 
@@ -912,12 +1034,7 @@ namespace TarkovHelper.Services
                     // Skip if this prereq will have a terminal state from logs
                     if (terminalStateQuests.Contains(prereq.NormalizedName)) continue;
 
-                    // Skip if prereq has no event in logs (we cannot determine its state)
-                    // This prevents auto-completing quests that have no log evidence
-                    if (!questFinalStates.ContainsKey(prereq.NormalizedName))
-                        continue;
-
-                    // Skip if prereq is started but not in terminal state (still in progress)
+                    // Skip if prereq is explicitly started but not in terminal state (still in progress)
                     if (startedQuests.Contains(prereq.NormalizedName) && !terminalStateQuests.Contains(prereq.NormalizedName))
                         continue;
 
@@ -931,6 +1048,31 @@ namespace TarkovHelper.Services
                             continue;
                         }
 
+                        // Defensive Guard: Never auto-complete a prerequisite that cannot be legitimately unlocked
+                        if (prereqStatus == QuestStatus.Unavailable)
+                        {
+                            _log.Warning($"Skipping prerequisite auto-complete for {prereq.Name}: Quest is Unavailable for current player/faction/edition.");
+                            continue;
+                        }
+
+                        if (!progressService.IsPoolRequirementMet(prereq))
+                        {
+                            _log.Warning($"Skipping prerequisite auto-complete for {prereq.Name}: Pool requirements not met.");
+                            continue;
+                        }
+
+                        if (!progressService.IsLevelRequirementMet(prereq))
+                        {
+                            _log.Warning($"Skipping prerequisite auto-complete for {prereq.Name}: Level requirement not met.");
+                            continue;
+                        }
+
+                        if (!progressService.IsTraderRequirementMet(prereq))
+                        {
+                            _log.Warning($"Skipping prerequisite auto-complete for {prereq.Name}: Trader loyalty level requirement not met.");
+                            continue;
+                        }
+
                         questsToComplete.Add(new QuestChangeInfo
                         {
                             QuestName = prereq.Name,
@@ -941,6 +1083,50 @@ namespace TarkovHelper.Services
                             Timestamp = timestamp
                         });
                         processedPrereqs.Add(prereq.NormalizedName);
+                        result.PrerequisitesAutoCompleted++;
+                    }
+                }
+            }
+
+            // STEP 3.1: Gated Trader Unlock Reconcile (TarkovTracker parity)
+            // If the logs contain any completed quest for a gated trader,
+            // or the player has reached Loyalty Level >= 2 with them, the unlock quest MUST be completed.
+            var gatedTraders = new (string Trader, string UnlockId, string UnlockNorm, string UnlockTitle)[]
+            {
+                ("Jaeger", "5d2495a886f77425cd51e403", "introduction", "Introduction"),
+                ("Ref", "66058cb22cee99303f1ba067", "easy-money---part-1", "Easy Money - Part 1"),
+                ("Lightkeeper", "625d700cc48e6c62a440fab5", "getting-acquainted", "Getting Acquainted"),
+                ("BTR Driver", "6752f6d83038f7df520c83e8", "a-helping-hand", "A Helping Hand")
+            };
+
+            foreach (var (trader, unlockId, unlockNorm, unlockTitle) in gatedTraders)
+            {
+                bool hasTraderActivity = questFinalStates.Values.Any(v =>
+                    v.EventType == QuestEventType.Completed &&
+                    string.Equals(v.Task.Trader, trader, StringComparison.OrdinalIgnoreCase))
+                    || progressService.GetTraderLoyaltyLevel(trader) >= 2;
+
+                if (hasTraderActivity)
+                {
+                    var unlockTask = progressService.GetTaskById(unlockId) ?? progressService.GetTask(unlockNorm);
+                    var currentUnlockStatus = unlockTask != null ? progressService.GetStatus(unlockTask) : QuestStatus.Locked;
+                    bool alreadyInList = questsToComplete.Any(q =>
+                        string.Equals(q.NormalizedName, unlockNorm, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(q.QuestName, unlockTitle, StringComparison.OrdinalIgnoreCase));
+
+                    if (currentUnlockStatus != QuestStatus.Done && !alreadyInList)
+                    {
+                        var normName = unlockTask?.NormalizedName ?? unlockNorm;
+                        questsToComplete.Add(new QuestChangeInfo
+                        {
+                            QuestName = unlockTask?.Name ?? unlockTitle,
+                            NormalizedName = normName,
+                            Trader = unlockTask?.Trader ?? "Mechanic",
+                            IsPrerequisite = true,
+                            ChangeType = QuestEventType.Completed,
+                            Timestamp = DateTime.UtcNow
+                        });
+                        processedPrereqs.Add(normName);
                         result.PrerequisitesAutoCompleted++;
                     }
                 }

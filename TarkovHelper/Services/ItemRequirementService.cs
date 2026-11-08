@@ -124,15 +124,27 @@ namespace TarkovHelper.Services
                         aggregated.TotalFIRAmount += questItem.Amount;
                     }
 
-                    aggregated.Quests.Add(new QuestItemReference
+                    var existingQ = aggregated.Quests.FirstOrDefault(q =>
+                        string.Equals(q.QuestNormalizedName, task.NormalizedName, StringComparison.OrdinalIgnoreCase) &&
+                        q.DogtagMinLevel == questItem.DogtagMinLevel);
+                    if (existingQ != null)
                     {
-                        QuestNormalizedName = task.NormalizedName ?? "",
-                        QuestName = task.Name,
-                        Amount = questItem.Amount,
-                        Requirement = questItem.Requirement,
-                        FoundInRaid = questItem.FoundInRaid,
-                        DogtagMinLevel = questItem.DogtagMinLevel
-                    });
+                        existingQ.Amount += questItem.Amount;
+                        if (questItem.FoundInRaid)
+                            existingQ.FoundInRaid = true;
+                    }
+                    else
+                    {
+                        aggregated.Quests.Add(new QuestItemReference
+                        {
+                            QuestNormalizedName = task.NormalizedName ?? "",
+                            QuestName = task.Name,
+                            Amount = questItem.Amount,
+                            Requirement = questItem.Requirement,
+                            FoundInRaid = questItem.FoundInRaid,
+                            DogtagMinLevel = questItem.DogtagMinLevel
+                        });
+                    }
                 }
             }
 
@@ -183,15 +195,27 @@ namespace TarkovHelper.Services
 
                 foreach (var qi in matchingItems)
                 {
-                    result.Add(new QuestItemReference
+                    var existing = result.FirstOrDefault(r =>
+                        string.Equals(r.QuestNormalizedName, task.NormalizedName, StringComparison.OrdinalIgnoreCase) &&
+                        r.DogtagMinLevel == qi.DogtagMinLevel);
+                    if (existing != null)
                     {
-                        QuestNormalizedName = task.NormalizedName ?? "",
-                        QuestName = task.Name,
-                        Amount = qi.Amount,
-                        Requirement = qi.Requirement,
-                        FoundInRaid = qi.FoundInRaid,
-                        DogtagMinLevel = qi.DogtagMinLevel
-                    });
+                        existing.Amount += qi.Amount;
+                        if (qi.FoundInRaid)
+                            existing.FoundInRaid = true;
+                    }
+                    else
+                    {
+                        result.Add(new QuestItemReference
+                        {
+                            QuestNormalizedName = task.NormalizedName ?? "",
+                            QuestName = task.Name,
+                            Amount = qi.Amount,
+                            Requirement = qi.Requirement,
+                            FoundInRaid = qi.FoundInRaid,
+                            DogtagMinLevel = qi.DogtagMinLevel
+                        });
+                    }
                 }
             }
 

@@ -15,7 +15,7 @@ public class CustomMapMarker
     public double Z { get; set; }
     public string? FloorId { get; set; }
     public string? Color { get; set; }
-    public double Size { get; set; } = 24.0;
+    public double Size { get; set; } = 12.0;
     public double Opacity { get; set; } = 1.0;
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
@@ -30,7 +30,7 @@ public class CustomMapMarker
         Z = z;
         FloorId = floorId;
         Color = "#FFD700"; // 기본 금색
-        Size = 24.0;
+        Size = 12.0;
         Opacity = 1.0;
     }
 }

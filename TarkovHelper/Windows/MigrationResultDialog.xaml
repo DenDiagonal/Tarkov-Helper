@@ -14,7 +14,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
     </Window.Resources>
 
-    <Border Background="{DynamicResource BackgroundDarkBrush}"
+    <Border Background="{DynamicResource TacticalSurface1Brush}" BorderBrush="{DynamicResource TacticalBorderMediumBrush}" BorderThickness="1"
             CornerRadius="8" Padding="24"
             MinWidth="500" MaxWidth="600">
         <Border.Effect>
@@ -36,16 +36,16 @@
                                VerticalAlignment="Center" Margin="0,0,12,0"/>
                     <TextBlock x:Name="TxtMigrationResultTitle" Text="Migration Complete"
                                FontSize="{DynamicResource FontSizeXLarge}" FontWeight="SemiBold"
-                               Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+                               Foreground="{DynamicResource TacticalGoldBrush}" VerticalAlignment="Center"/>
                 </StackPanel>
-                <Button x:Name="BtnClose" Content="X"
+                <Button x:Name="BtnClose" Content="✕"
                         HorizontalAlignment="Right"
                         Padding="8,4" FontSize="{DynamicResource FontSizeSmall}"
                         Click="BtnClose_Click"/>
             </Grid>
 
             <!-- Summary Stats -->
-            <Border Grid.Row="1" Background="{DynamicResource BackgroundMediumBrush}"
+            <Border Grid.Row="1" Background="{DynamicResource TacticalSurface2Brush}" BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
                     CornerRadius="4" Padding="16" Margin="0,0,0,12">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -61,47 +61,47 @@
                     <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,8,8">
                         <TextBlock x:Name="TxtMigrationQuestLabel" Text="Quest Progress"
                                    FontSize="{DynamicResource FontSizeTiny}"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                   Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
                         <TextBlock x:Name="TxtMigrationQuestCount" Text="0"
                                    FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
-                                   Foreground="{DynamicResource AccentBrush}"/>
+                                   Foreground="{DynamicResource TacticalGoldBrush}"/>
                     </StackPanel>
 
                     <!-- Hideout Progress -->
                     <StackPanel Grid.Row="0" Grid.Column="1" Margin="8,0,0,8">
                         <TextBlock x:Name="TxtMigrationHideoutLabel" Text="Hideout Progress"
                                    FontSize="{DynamicResource FontSizeTiny}"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                   Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
                         <TextBlock x:Name="TxtMigrationHideoutCount" Text="0"
                                    FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
-                                   Foreground="{DynamicResource AccentBrush}"/>
+                                   Foreground="{DynamicResource TacticalGoldBrush}"/>
                     </StackPanel>
 
                     <!-- Item Inventory -->
                     <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,8,8,0">
                         <TextBlock x:Name="TxtMigrationInventoryLabel" Text="Item Inventory"
                                    FontSize="{DynamicResource FontSizeTiny}"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                   Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
                         <TextBlock x:Name="TxtMigrationInventoryCount" Text="0"
                                    FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
-                                   Foreground="{DynamicResource AccentBrush}"/>
+                                   Foreground="{DynamicResource TacticalGoldBrush}"/>
                     </StackPanel>
 
                     <!-- Settings -->
                     <StackPanel Grid.Row="1" Grid.Column="1" Margin="8,8,0,0">
                         <TextBlock x:Name="TxtMigrationSettingsLabel" Text="Settings"
                                    FontSize="{DynamicResource FontSizeTiny}"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                   Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
                         <TextBlock x:Name="TxtMigrationSettingsCount" Text="0"
                                    FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
-                                   Foreground="{DynamicResource AccentBrush}"/>
+                                   Foreground="{DynamicResource TacticalGoldBrush}"/>
                     </StackPanel>
                 </Grid>
             </Border>
 
             <!-- Warnings/Errors Section -->
             <Border x:Name="MigrationWarningsSection" Grid.Row="2"
-                    Background="{DynamicResource BackgroundMediumBrush}"
+                    Background="{DynamicResource TacticalSurface2Brush}" BorderBrush="{DynamicResource TacticalBorderSubtleBrush}" BorderThickness="1"
                     CornerRadius="4" Padding="12" Margin="0,0,0,12"
                     Visibility="Collapsed">
                 <StackPanel>
@@ -114,7 +114,7 @@
                                 <DataTemplate>
                                     <TextBlock Text="{Binding}"
                                                FontSize="{DynamicResource FontSizeTiny}"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TacticalTextSecondaryBrush}"
                                                TextWrapping="Wrap"
                                                Margin="0,2"/>
                                 </DataTemplate>
@@ -128,18 +128,18 @@
             <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,16">
                 <TextBlock x:Name="TxtMigrationTotalLabel" Text="Total imported: "
                            FontSize="{DynamicResource FontSizeSmall}"
-                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                           Foreground="{DynamicResource TacticalTextSecondaryBrush}"/>
                 <TextBlock x:Name="TxtMigrationTotalCount" Text="0 items"
                            FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                           Foreground="{DynamicResource AccentBrush}"/>
+                           Foreground="{DynamicResource TacticalGoldBrush}"/>
             </StackPanel>
 
             <!-- OK Button -->
             <Button Grid.Row="4" x:Name="BtnOk" Content="OK"
                     Padding="24,8" HorizontalAlignment="Center"
                     Click="BtnOk_Click"
-                    Background="{DynamicResource AccentBrush}"
-                    Foreground="{DynamicResource BackgroundDarkBrush}"/>
+                    Background="{DynamicResource TacticalGoldBrush}"
+                    Foreground="{DynamicResource TacticalTextInvertedBrush}"/>
         </Grid>
     </Border>
 </Window>

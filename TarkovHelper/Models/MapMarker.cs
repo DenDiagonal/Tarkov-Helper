@@ -159,20 +159,20 @@ public class MapMarker
     {
         return type switch
         {
-            MarkerType.PmcSpawn => (0xFF, 0x98, 0x00),       // Orange
-            MarkerType.ScavSpawn => (0xFF, 0xC1, 0x07),      // Amber
-            MarkerType.PmcExtraction => (0x4C, 0xAF, 0x50),  // Green
-            MarkerType.ScavExtraction => (0x8B, 0xC3, 0x4A), // Light Green
-            MarkerType.SharedExtraction => (0x00, 0xBC, 0xD4), // Cyan
-            MarkerType.Transit => (0x21, 0x96, 0xF3),        // Blue
-            MarkerType.BossSpawn => (0xF4, 0x43, 0x36),      // Red
-            MarkerType.RaiderSpawn => (0xE9, 0x1E, 0x63),    // Pink
-            MarkerType.Lever => (0x21, 0x96, 0xF3),          // Blue
-            MarkerType.Keys => (0xFF, 0xC1, 0x07),           // Amber
-            MarkerType.CultistSpawn => (0x9C, 0x27, 0xB0),   // Purple
-            MarkerType.SniperScavSpawn => (0x9E, 0x9E, 0x9E), // Gray
-            MarkerType.RogueSpawn => (0xF4, 0x43, 0x36),     // Red
-            _ => (0x9E, 0x9E, 0x9E)                          // Grey
+            MarkerType.PmcSpawn => (0x42, 0xA5, 0xF5),         // Light Blue / Sky Blue (#42A5F5)
+            MarkerType.ScavSpawn => (0xFF, 0xB3, 0x00),        // Amber (#FFB300)
+            MarkerType.PmcExtraction => (0x00, 0xE6, 0x76),    // Vibrant Emerald Green (#00E676)
+            MarkerType.ScavExtraction => (0xFF, 0x98, 0x00),   // Orange (#FF9800)
+            MarkerType.SharedExtraction => (0x00, 0xE5, 0xFF), // Cyan (#00E5FF)
+            MarkerType.Transit => (0xAB, 0x47, 0xBC),          // Purple (#AB47BC)
+            MarkerType.BossSpawn => (0xF4, 0x43, 0x36),        // Red (#F44336)
+            MarkerType.RaiderSpawn => (0xD8, 0x1B, 0x60),      // Pink/Magenta (#D81B60)
+            MarkerType.Lever => (0x00, 0xE5, 0xFF),            // Cyan (#00E5FF)
+            MarkerType.Keys => (0xFF, 0xEB, 0x3B),             // Yellow (#FFEB3B)
+            MarkerType.CultistSpawn => (0x7B, 0x1F, 0xA2),     // Deep Purple (#7B1FA2)
+            MarkerType.SniperScavSpawn => (0x9E, 0x9E, 0x9E),   // Gray (#9E9E9E)
+            MarkerType.RogueSpawn => (0xE5, 0x39, 0x35),       // Crimson Red (#E53935)
+            _ => (0x9E, 0x9E, 0x9E)                            // Grey
         };
     }
 }

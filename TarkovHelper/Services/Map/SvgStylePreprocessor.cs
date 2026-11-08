@@ -12,6 +12,79 @@ namespace TarkovHelper.Services.Map;
 /// </summary>
 public partial class SvgStylePreprocessor
 {
+    private static readonly Dictionary<string, Dictionary<string, string>> CanonicalTarkovDevStyles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["trees"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#144043" },
+        ["cement"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#c6c2c2" },
+        ["land"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#1f5054" },
+        ["rock"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#dcd5b6" },
+        ["water"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#4a6b96" },
+        ["wood"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#593700" },
+        ["tarmac"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#768089" },
+        ["gravel"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#946d3e" },
+        ["building"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#1a2632" },
+        ["floor"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#70777f" },
+        ["locked"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#37414c" },
+        ["map_border"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "none", ["stroke"] = "#000000", ["stroke-width"] = "2" },
+        ["fence"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "none", ["stroke"] = "#c4e3c3", ["stroke-width"] = "1" },
+        ["road_tarmac"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "none", ["stroke"] = "#eedfc5", ["stroke-width"] = "6" },
+        ["road_gravel"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "none", ["stroke"] = "#946d3e", ["stroke-width"] = "5" },
+        ["road_small"] = new(StringComparer.OrdinalIgnoreCase) { ["stroke-width"] = "5" },
+        ["road_medium"] = new(StringComparer.OrdinalIgnoreCase) { ["stroke-width"] = "8" },
+        ["road_large"] = new(StringComparer.OrdinalIgnoreCase) { ["stroke-width"] = "12" },
+        ["railroad"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "none", ["stroke"] = "#914833", ["stroke-dasharray"] = "6", ["stroke-width"] = "3" },
+        ["powerline"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "none", ["stroke"] = "#ffce00", ["stroke-width"] = "2" },
+        ["danger"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#ff0000", ["fill-opacity"] = "0.4", ["stroke"] = "#ff0000" },
+        ["danger_small"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#ff0000", ["fill-opacity"] = "0.4", ["stroke"] = "#ff0000" },
+        ["stairs"] = new(StringComparer.OrdinalIgnoreCase) { ["fill"] = "#FFD700" }
+    };
+
+    private static readonly Dictionary<string, string[]> FloorAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["main"] = new[] { "main", "Ground_Level", "Ground_Floor", "First_Level" },
+        ["ground_level"] = new[] { "main", "Ground_Level", "Ground_Floor", "First_Level" },
+        ["ground_floor"] = new[] { "main", "Ground_Level", "Ground_Floor", "First_Level" },
+        ["first_level"] = new[] { "main", "Ground_Level", "Ground_Floor", "First_Level" },
+
+        ["basement"] = new[] { "basement", "Underground_Level", "Basement", "Technical_Level" },
+        ["underground_level"] = new[] { "basement", "Underground_Level", "Basement", "Technical_Level" },
+        ["technical_level"] = new[] { "basement", "Underground_Level", "Basement", "Technical_Level" },
+
+        ["bunker"] = new[] { "bunker", "Bunkers" },
+        ["bunkers"] = new[] { "bunker", "Bunkers" },
+
+        ["level2"] = new[] { "level2", "First_Floor", "Second_Floor", "Second_Level" },
+        ["first_floor"] = new[] { "level2", "First_Floor", "Second_Floor", "Second_Level" },
+        ["second_level"] = new[] { "level2", "First_Floor", "Second_Floor", "Second_Level" },
+
+        ["level3"] = new[] { "level3", "Second_Floor", "Third_Floor" },
+        ["second_floor"] = new[] { "level2", "level3", "Second_Floor", "First_Floor" },
+        ["third_floor"] = new[] { "level3", "level4", "Third_Floor" },
+
+        ["level4"] = new[] { "level4", "Third_Floor", "Fourth_Floor" },
+        ["fourth_floor"] = new[] { "level4", "level5", "Fourth_Floor" },
+
+        ["level5"] = new[] { "level5", "Fourth_Floor", "Fifth_Floor" },
+        ["fifth_floor"] = new[] { "level5", "level6", "Fifth_Floor" },
+        ["level6"] = new[] { "level6", "Fifth_Floor" },
+    };
+
+    private static HashSet<string>? ExpandFloorIds(IEnumerable<string>? floorIds)
+    {
+        if (floorIds == null) return null;
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in floorIds)
+        {
+            if (string.IsNullOrWhiteSpace(id)) continue;
+            set.Add(id);
+            if (FloorAliases.TryGetValue(id, out var aliases))
+            {
+                foreach (var alias in aliases)
+                    set.Add(alias);
+            }
+        }
+        return set;
+    }
     /// <summary>
     /// SVG 파일을 읽어서 CSS 클래스를 인라인 스타일로 변환합니다.
     /// </summary>
@@ -78,6 +151,10 @@ public partial class SvgStylePreprocessor
     private Dictionary<string, Dictionary<string, string>> ExtractAndParseCssStyles(string svgContent)
     {
         var rules = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kvp in CanonicalTarkovDevStyles)
+        {
+            rules[kvp.Key] = new Dictionary<string, string>(kvp.Value, StringComparer.OrdinalIgnoreCase);
+        }
 
         // <style> 태그 내용 추출
         var styleMatch = StyleTagRegex().Match(svgContent);
@@ -154,14 +231,15 @@ public partial class SvgStylePreprocessor
         nsmgr.AddNamespace("svg", "http://www.w3.org/2000/svg");
 
         // 층 필터링을 위한 HashSet 생성
-        HashSet<string>? visibleFloors = visibleFloorIds?.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        HashSet<string>? allFloors = allFloorIds?.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        HashSet<string>? visibleFloors = ExpandFloorIds(visibleFloorIds);
+        HashSet<string>? allFloors = ExpandFloorIds(allFloorIds);
+        HashSet<string>? backgroundFloors = !string.IsNullOrEmpty(backgroundFloorId) ? ExpandFloorIds(new[] { backgroundFloorId }) : null;
 
         // wrapper rect의 fill:none을 fill:transparent로 변경 (bounding box 문제 해결)
         FixWrapperRect(doc.DocumentElement!);
 
         // class 속성이 있는 모든 요소 처리 + 층 필터링
-        ProcessElementsWithClass(doc.DocumentElement!, styleRules, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity, dimAllOtherFloors);
+        ProcessElementsWithClass(doc.DocumentElement!, styleRules, null, visibleFloors, allFloors, backgroundFloors, backgroundFloorId, backgroundOpacity, dimAllOtherFloors);
 
         // <style> 태그 제거 (선택적 - 이미 인라인으로 변환됨)
         RemoveStyleTags(doc);
@@ -191,49 +269,46 @@ public partial class SvgStylePreprocessor
     private void ProcessElementsWithClass(
         XmlElement element,
         Dictionary<string, Dictionary<string, string>> styleRules,
+        Dictionary<string, string>? inheritedStyles = null,
         HashSet<string>? visibleFloors = null,
         HashSet<string>? allFloors = null,
+        HashSet<string>? backgroundFloors = null,
         string? backgroundFloorId = null,
         double backgroundOpacity = 0.3,
         bool dimAllOtherFloors = false)
     {
+        var currentStyles = inheritedStyles != null
+            ? new Dictionary<string, string>(inheritedStyles, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         // 층 필터링: <g id="..."> 요소에 대해 display/opacity 스타일 적용
         if (visibleFloors != null && allFloors != null && element.Name == "g")
         {
             var elementId = element.GetAttribute("id");
             if (!string.IsNullOrEmpty(elementId) && allFloors.Contains(elementId))
             {
-                // 이 요소가 층 레이어인 경우
                 var isVisible = visibleFloors.Contains(elementId);
-
-                // dimAllOtherFloors가 true이면 모든 비가시 층을 배경으로 표시
-                // 그렇지 않으면 지정된 backgroundFloorId만 배경으로 표시
                 var isBackgroundLayer = !isVisible && (dimAllOtherFloors ||
-                    (!string.IsNullOrEmpty(backgroundFloorId) &&
-                     string.Equals(elementId, backgroundFloorId, StringComparison.OrdinalIgnoreCase)));
+                    ((backgroundFloors != null && backgroundFloors.Contains(elementId)) || (!string.IsNullOrEmpty(backgroundFloorId) && string.Equals(elementId, backgroundFloorId, StringComparison.OrdinalIgnoreCase))));
 
                 var existingStyle = element.GetAttribute("style");
 
                 string newStyle;
                 if (isVisible)
                 {
-                    // 선택된 층: display:block, opacity:1
                     newStyle = "display:block;opacity:1";
                 }
                 else if (isBackgroundLayer)
                 {
-                    // 배경 층: display:block, opacity 적용
                     newStyle = $"display:block;opacity:{backgroundOpacity.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
                 }
                 else
                 {
-                    // 숨길 층: display:none
                     newStyle = "display:none";
                 }
 
                 if (!string.IsNullOrEmpty(existingStyle))
                 {
-                    // 기존 스타일에서 display, opacity 속성 제거 후 새로 추가
                     existingStyle = RemoveStyleProperty(existingStyle, "display");
                     existingStyle = RemoveStyleProperty(existingStyle, "opacity");
                     element.SetAttribute("style", string.IsNullOrEmpty(existingStyle)
@@ -247,14 +322,25 @@ public partial class SvgStylePreprocessor
             }
         }
 
-        // 현재 요소의 class 속성 처리
+        // 현재 요소의 class 속성 처리 및 상속 스타일 누적
         var classAttr = element.GetAttribute("class");
         if (!string.IsNullOrWhiteSpace(classAttr))
         {
+            var classes = classAttr.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var c in classes)
+            {
+                if (styleRules.TryGetValue(c, out var props))
+                {
+                    foreach (var kvp in props)
+                    {
+                        currentStyles[kvp.Key] = kvp.Value;
+                    }
+                }
+            }
+
             var inlineStyle = BuildInlineStyle(classAttr, styleRules);
             if (!string.IsNullOrEmpty(inlineStyle))
             {
-                // 기존 style 속성이 있으면 병합
                 var existingStyle = element.GetAttribute("style");
                 if (!string.IsNullOrEmpty(existingStyle))
                 {
@@ -263,9 +349,48 @@ public partial class SvgStylePreprocessor
 
                 element.SetAttribute("style", inlineStyle);
             }
+        }
 
-            // class 속성 제거 (선택적)
-            // element.RemoveAttribute("class");
+        // 구버전 다크모드 (#3a3e48) 하드코딩 배경을 TarkovDev 정규 land(#1f5054) 색상으로 교정
+        var elemId = element.GetAttribute("id");
+        if (string.Equals(elemId, "inner", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(elemId, "map-bg-2", StringComparison.OrdinalIgnoreCase) ||
+            (string.Equals(elemId, "bg", StringComparison.OrdinalIgnoreCase) && !string.Equals(element.ParentNode?.Name, "defs", StringComparison.OrdinalIgnoreCase)))
+        {
+            var st = element.GetAttribute("style");
+            if (!string.IsNullOrEmpty(st) && (st.Contains("#3a3e48") || st.Contains("#58595b")))
+            {
+                element.SetAttribute("style", st.Replace("#3a3e48", "#1f5054").Replace("#58595b", "#1f5054"));
+            }
+            if (string.Equals(element.GetAttribute("fill"), "#3a3e48", StringComparison.OrdinalIgnoreCase))
+            {
+                element.SetAttribute("fill", "#1f5054");
+            }
+        }
+
+        // 그리기 요소 (path, rect, polygon, circle, ellipse, line, polyline)에 상속된 스타일 속성 직접 주입
+        // SharpVectors가 그룹 레벨의 fill/stroke 상속을 누락하는 문제를 해결
+        if (element.Name is "path" or "polygon" or "polyline" or "circle" or "ellipse" or "rect")
+        {
+            foreach (var kvp in currentStyles)
+            {
+                if (kvp.Key is "fill" or "stroke" or "stroke-width" or "stroke-dasharray" or "opacity" or "fill-opacity")
+                {
+                    if (!element.HasAttribute(kvp.Key))
+                    {
+                        element.SetAttribute(kvp.Key, kvp.Value);
+                    }
+                }
+            }
+
+            var curStyle = element.GetAttribute("style");
+            var inheritedStyleStr = string.Join(";", currentStyles.Select(p => $"{p.Key}:{p.Value}"));
+            if (!string.IsNullOrEmpty(inheritedStyleStr))
+            {
+                element.SetAttribute("style", string.IsNullOrEmpty(curStyle)
+                    ? inheritedStyleStr
+                    : MergeStyles(inheritedStyleStr, curStyle));
+            }
         }
 
         // 자식 요소들 재귀 처리
@@ -273,7 +398,7 @@ public partial class SvgStylePreprocessor
         {
             if (child is XmlElement childElement)
             {
-                ProcessElementsWithClass(childElement, styleRules, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity, dimAllOtherFloors);
+                ProcessElementsWithClass(childElement, styleRules, currentStyles, visibleFloors, allFloors, backgroundFloors, backgroundFloorId, backgroundOpacity, dimAllOtherFloors);
             }
         }
     }

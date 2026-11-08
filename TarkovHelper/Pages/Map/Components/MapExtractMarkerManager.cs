@@ -77,6 +77,7 @@ public class MapExtractMarkerManager
     public void SetShowPmcExtracts(bool show)
     {
         _showPmcExtracts = show;
+        _showTransitExtracts = show; // User requirement: transit zones toggle with PMC extracts
     }
 
     public void SetShowScavExtracts(bool show)
@@ -160,8 +161,7 @@ public class MapExtractMarkerManager
 
     public void ClearMarkers()
     {
-        _extractMarkerElements.Clear();
-        _markersContainer.Children.Clear();
+        MarkerRefreshHelper.SafeClear(_markersContainer, _extractMarkerElements);
     }
 
     public void UpdateMarkerScales()
@@ -171,6 +171,14 @@ public class MapExtractMarkerManager
         foreach (var marker in _extractMarkerElements)
         {
             if (marker is Canvas canvas)
+            {
+                canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
+            }
+        }
+
+        foreach (var child in _markersContainer.Children)
+        {
+            if (child is Canvas canvas && MarkerRefreshHelper.GetIsRetained(canvas))
             {
                 canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
             }
@@ -189,18 +197,17 @@ public class MapExtractMarkerManager
 
         var baseSize = 20.0;
         var markerSize = baseSize * mapScale;
+        var dotSize = 8.0 * mapScale;
 
         // 진영 결정 (오버라이드 또는 기본)
         var faction = overrideFaction ?? extract.Faction;
 
-        // 진영별 색상 설정
+        // 진영별 색상 설정 (언제나 선명한 100% 불투명 색상 유지)
         var (fillColor, strokeColor) = GetExtractStyle(faction);
 
-        // 다른 층의 마커는 색상을 흐리게 처리
         if (!isOnCurrentFloor)
         {
-            fillColor = Color.FromArgb(100, fillColor.R, fillColor.G, fillColor.B);
-            strokeColor = Color.FromArgb(150, strokeColor.R, strokeColor.G, strokeColor.B);
+            strokeColor = Color.FromArgb(200, strokeColor.R, strokeColor.G, strokeColor.B);
         }
 
         var canvas = new Canvas
@@ -224,17 +231,19 @@ public class MapExtractMarkerManager
             HorizontalAlignment = HorizontalAlignment.Center
         };
 
-        // 이름 라벨
+        // 이름 라벨 - 고대비 다크 뱃지와 굵은 텍스트로 가독성 극대화
         var nameLabel = new Border
         { 
-            Background = new SolidColorBrush(Color.FromArgb(200, 30, 30, 30)),
+            Background = new SolidColorBrush(Color.FromArgb(240, 18, 18, 24)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(200, 60, 60, 75)),
+            BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(3 * mapScale),
-            Padding = new Thickness(4 * mapScale, 2 * mapScale, 4 * mapScale, 2 * mapScale),
+            Padding = new Thickness(5 * mapScale, 2 * mapScale, 5 * mapScale, 2 * mapScale),
             Child = new TextBlock
             { 
                 Text = displayName,
-                FontSize = textSize,
-                FontWeight = FontWeights.SemiBold,
+                FontSize = Math.Max(10.5, textSize),
+                FontWeight = FontWeights.Bold,
                 Foreground = new SolidColorBrush(fillColor),
                 TextAlignment = TextAlignment.Center
             }
@@ -270,40 +279,21 @@ public class MapExtractMarkerManager
         var labelWidth = labelStackPanel.DesiredSize.Width;
         var labelHeight = labelStackPanel.DesiredSize.Height;
         Canvas.SetLeft(labelStackPanel, -labelWidth / 2);
-        Canvas.SetTop(labelStackPanel, -markerSize - labelHeight - 4 * mapScale);
+        Canvas.SetTop(labelStackPanel, (dotSize / 2) + (2 * mapScale));
         canvas.Children.Add(labelStackPanel);
 
-        // 배경 원 (글로우 효과)
-        var glowSize = markerSize * 1.5;
-        var glow = new Ellipse
+        // TarkovTracker 스타일 마커: 깔끔한 원형 도트(Point)와 라벨
+        var dot = new Ellipse
         { 
-            Width = glowSize,
-            Height = glowSize,
-            Fill = new SolidColorBrush(Color.FromArgb(80, fillColor.R, fillColor.G, fillColor.B))
-        };
-        Canvas.SetLeft(glow, -glowSize / 2);
-        Canvas.SetTop(glow, -glowSize / 2);
-        canvas.Children.Add(glow);
-
-        // 메인 원
-        var mainCircle = new Ellipse
-        { 
-            Width = markerSize,
-            Height = markerSize,
+            Width = dotSize,
+            Height = dotSize,
             Fill = new SolidColorBrush(fillColor),
-            Stroke = new SolidColorBrush(strokeColor),
-            StrokeThickness = 2 * mapScale
+            Stroke = Brushes.White,
+            StrokeThickness = 1.2 * mapScale
         };
-        Canvas.SetLeft(mainCircle, -markerSize / 2);
-        Canvas.SetTop(mainCircle, -markerSize / 2);
-        canvas.Children.Add(mainCircle);
-
-        // 탈출구 아이콘 (비상대피 아이콘)
-        var iconSize = markerSize * 0.7;
-        var iconPath = CreateExtractIcon(iconSize, strokeColor);
-        Canvas.SetLeft(iconPath, -iconSize / 2);
-        Canvas.SetTop(iconPath, -iconSize / 2);
-        canvas.Children.Add(iconPath);
+        Canvas.SetLeft(dot, -dotSize / 2);
+        Canvas.SetTop(dot, -dotSize / 2);
+        canvas.Children.Add(dot);
 
         // 위치 설정
         Canvas.SetLeft(canvas, screenPos.X);
@@ -314,10 +304,10 @@ public class MapExtractMarkerManager
         canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
         canvas.RenderTransformOrigin = new Point(0, 0);
 
-        // 다른 층의 마커는 반투명 처리
+        // 다른 층 마커도 최소 0.85 불투명도를 유지하여 텍스트 판독성 보장
         if (!isOnCurrentFloor)
         { 
-            canvas.Opacity = 0.5;
+            canvas.Opacity = 0.85;
         }
 
         // 마우스 이벤트 무시 (Mouse Through) - 탈출구 마커는 클릭/호버 불필요
@@ -329,21 +319,21 @@ public class MapExtractMarkerManager
         return canvas;
     }
 
-    private static (Color fill, Color stroke) GetExtractStyle(ExtractFaction faction)
+    public static (Color fill, Color stroke) GetExtractStyle(ExtractFaction faction)
     {
         return faction switch
         { 
             ExtractFaction.Pmc => (
-                Color.FromRgb(76, 175, 80),    // Green
+                Color.FromRgb(0, 230, 118),    // Vibrant Exit Green (#00E676) - PMC
                 Colors.White),
             ExtractFaction.Scav => (
-                Color.FromRgb(158, 158, 158),  // Gray (회색)
+                Color.FromRgb(255, 152, 0),    // Orange (#FF9800) - Scav
                 Colors.White),
             ExtractFaction.Shared => (
-                Color.FromRgb(76, 175, 80),    // Green (Shared도 PMC로 처리)
+                Color.FromRgb(0, 229, 255),    // Cyan (#00E5FF) - Co-op / Shared (distinct color)
                 Colors.White),
             ExtractFaction.Transit => (
-                Color.FromRgb(255, 152, 0),    // Orange (주황색)
+                Color.FromRgb(171, 71, 188),   // Purple (#AB47BC) - Transit
                 Colors.White),
             _ => (
                 Color.FromRgb(158, 158, 158),  // Gray
@@ -424,27 +414,26 @@ public class MapExtractMarkerManager
     { 
         if (group.Count == 1)
         { 
-            // Shared 탈출구는 PMC로 처리
-            var faction = group[0].Faction == ExtractFaction.Shared ? ExtractFaction.Pmc : group[0].Faction;
-            return (group[0], faction);
+            return (group[0], group[0].Faction);
         }
 
-        // PMC와 Scav 둘 다 있으면 PMC로 표시 (Shared도 PMC로 처리)
-        var hasPmc = group.Any(e => e.Faction == ExtractFaction.Pmc || e.Faction == ExtractFaction.Shared);
+        // Both PMC and Scav or explicit Shared means Co-op / Shared extraction
+        var hasPmc = group.Any(e => e.Faction == ExtractFaction.Pmc);
         var hasScav = group.Any(e => e.Faction == ExtractFaction.Scav);
+        var hasShared = group.Any(e => e.Faction == ExtractFaction.Shared);
 
-        if (hasPmc && hasScav)
+        if (hasShared || (hasPmc && hasScav))
         { 
-            // PMC 탈출구 정보를 기준으로, PMC로 표시
-            var representative = group.FirstOrDefault(e => e.Faction == ExtractFaction.Pmc)
-                ?? group.FirstOrDefault(e => e.Faction == ExtractFaction.Shared)
+            var representative = group.FirstOrDefault(e => e.Faction == ExtractFaction.Shared)
+                ?? group.FirstOrDefault(e => e.Faction == ExtractFaction.Pmc)
                 ?? group[0];
-            return (representative, ExtractFaction.Pmc);
+            return (representative, ExtractFaction.Shared);
         }
 
-        // Shared는 PMC로 처리
-        var resultFaction = group[0].Faction == ExtractFaction.Shared ? ExtractFaction.Pmc : group[0].Faction;
-        return (group[0], resultFaction);
+        var lead = group.FirstOrDefault(e => e.Faction == ExtractFaction.Pmc)
+            ?? group.FirstOrDefault(e => e.Faction == ExtractFaction.Scav)
+            ?? group[0];
+        return (lead, lead.Faction);
     }
 #pragma warning restore IDE0051
 
@@ -458,30 +447,19 @@ public class MapExtractMarkerManager
         { 
             ExtractFaction.Pmc => _showPmcExtracts,
             ExtractFaction.Scav => _showScavExtracts,
-            ExtractFaction.Shared => _showPmcExtracts || _showScavExtracts, // Shared는 어느 한쪽만 켜져있어도 표시
-            ExtractFaction.Transit => _showTransitExtracts,
+            ExtractFaction.Shared => _showPmcExtracts || _showScavExtracts,
+            ExtractFaction.Transit => _showPmcExtracts, // User requirement: Transit zones controlled by PMC extractions button
             _ => true
         };
     }
 
     private bool IsMarkerOnCurrentFloor(string? markerFloorId)
     {
-        // 단일 층 맵이거나 층 선택이 없는 경우: 모든 마커를 현재 층으로 간주
-        if (string.IsNullOrEmpty(_currentFloorId))
+        // Extracts with no floor restriction belong to the map generally and are always valid on current floor
+        if (string.IsNullOrEmpty(markerFloorId))
             return true;
 
-        // 마커에 층 정보가 없는 경우: 기본 층(main)으로 간주
-        if (string.IsNullOrEmpty(markerFloorId))
-        { 
-            // 층 정보가 없는 마커는 기본적으로 모든 층에서 표시 (지하 맵 제외)
-            if (string.IsNullOrEmpty(_currentFloorId)) return true;
-            
-            // 현재 맵에 층이 정의되어 있는데 마커에 층이 없으면, main 층일 때만 강조 표시
-            return string.Equals(_currentFloorId, "main", StringComparison.OrdinalIgnoreCase);
-        }
-
-        // 층 ID 비교 (대소문자 무시)
-        return string.Equals(_currentFloorId, markerFloorId, StringComparison.OrdinalIgnoreCase);
+        return MapFloorHelper.IsMarkerOnCurrentFloor(_currentFloorId, markerFloorId);
     }
 
     private (string arrow, string floorText, Color color)? GetFloorIndicator(string? markerFloorId)
@@ -490,49 +468,7 @@ public class MapExtractMarkerManager
             return null;
 
         var config = _trackerService.GetMapConfig(_currentMapKey);
-        if (config?.Floors == null || config.Floors.Count == 0)
-            return null;
-
-        // 현재 층의 Order 가져오기
-        var currentFloor = config.Floors.FirstOrDefault(f =>
-            string.Equals(f.LayerId, _currentFloorId, StringComparison.OrdinalIgnoreCase));
-        var currentOrder = currentFloor?.Order ?? 0;
-
-        // 마커 층의 Order 가져오기 (FloorId가 없으면 main으로 간주)
-        var effectiveFloorId = string.IsNullOrEmpty(markerFloorId) ? "main" : markerFloorId;
-        var markerFloor = config.Floors.FirstOrDefault(f =>
-            string.Equals(f.LayerId, effectiveFloorId, StringComparison.OrdinalIgnoreCase));
-        var markerOrder = markerFloor?.Order ?? 0;
-
-        // 같은 층이면 표시 안함
-        if (currentOrder == markerOrder)
-            return null;
-
-        // 화살표 방향 결정 (마커가 현재 층보다 위에 있으면 ↑, 아래면 ↓)
-        var isAbove = markerOrder > currentOrder;
-        var arrow = isAbove ? "↑" : "↓";
-
-        // 색상 결정 (위: 하늘색, 아래: 주황색)
-        var color = isAbove
-            ? Color.FromRgb(100, 181, 246)  // Light Blue
-            : Color.FromRgb(255, 167, 38);  // Orange
-
-        // 층 표시 문자 결정 (B: 지하, G: 기본층, 2/3: 2층/3층)
-        string floorText;
-        if (markerOrder < 0)
-        { 
-            floorText = "B";
-        }
-        else if (markerOrder == 0)
-        { 
-            floorText = "G";
-        }
-        else
-        { 
-            floorText = $"{markerOrder + 1}F"; // Order 1 = 2층
-        }
-
-        return (arrow, floorText, color);
+        return MapFloorHelper.GetFloorIndicator(config, _currentFloorId, markerFloorId);
     }
 
     #endregion
