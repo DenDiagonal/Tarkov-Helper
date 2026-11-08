@@ -87,8 +87,26 @@ namespace TarkovHelper.Services
                 }
                 else
                 {
-                    lock (_cacheLock) { _missingLocalIcons.Add(itemId); }
-                    return null;
+                    // If itemId was a normalized name, try looking up its ID via ItemDbService
+                    try
+                    {
+                        var dbItem = ItemDbService.Instance.GetItemByNormalizedName(itemId);
+                        if (dbItem != null && !string.IsNullOrEmpty(dbItem.Id))
+                        {
+                            var mappedPath = Path.Combine(_localIconsPath, $"{dbItem.Id}.png");
+                            if (File.Exists(mappedPath))
+                            {
+                                localPath = mappedPath;
+                            }
+                        }
+                    }
+                    catch { }
+
+                    if (!File.Exists(localPath))
+                    {
+                        lock (_cacheLock) { _missingLocalIcons.Add(itemId); }
+                        return null;
+                    }
                 }
             }
 
@@ -119,6 +137,17 @@ namespace TarkovHelper.Services
         {
             if (string.IsNullOrEmpty(url))
                 return null;
+
+            // Check if this URL contains a 24-character Tarkov Item ID and can be served from local icons
+            var itemMatch = System.Text.RegularExpressions.Regex.Match(url, @"([a-f0-9]{24})", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (itemMatch.Success && (category == "items" || url.Contains("assets.tarkov.dev")))
+            {
+                var localIcon = GetLocalItemIcon(itemMatch.Groups[1].Value);
+                if (localIcon != null)
+                {
+                    return localIcon;
+                }
+            }
 
             // Check memory cache first
             lock (_cacheLock)

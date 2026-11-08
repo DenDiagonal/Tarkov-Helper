@@ -448,6 +448,10 @@ namespace TarkovHelper.Pages
                             itemReq.ItemNormalizedName, itemReq.Count, requiredFir);
                         var isFulfilled = fulfillmentInfo.Status == Models.ItemFulfillmentStatus.Fulfilled;
 
+                        var localIcon = !string.IsNullOrEmpty(itemReq.ItemId)
+                            ? _imageCache.GetLocalItemIcon(itemReq.ItemId)
+                            : (!string.IsNullOrEmpty(itemReq.ItemNormalizedName) ? _imageCache.GetLocalItemIcon(itemReq.ItemNormalizedName) : null);
+
                         var vm = new RequirementViewModel
                         {
                             DisplayText = $"{itemName} x{itemReq.Count}",
@@ -455,6 +459,7 @@ namespace TarkovHelper.Pages
                             ItemId = itemReq.ItemId,
                             ItemNormalizedName = itemReq.ItemNormalizedName,
                             IconLink = itemReq.IconLink,
+                            IconSource = localIcon,
                             IsFulfilled = isFulfilled
                         };
 
@@ -542,6 +547,10 @@ namespace TarkovHelper.Pages
                         kvp.Value.Item.ItemNormalizedName, totalCount, firCount);
                     var isFulfilled = fulfillmentInfo.Status == Models.ItemFulfillmentStatus.Fulfilled;
 
+                    var localIcon = !string.IsNullOrEmpty(kvp.Value.Item.ItemId)
+                        ? _imageCache.GetLocalItemIcon(kvp.Value.Item.ItemId)
+                        : (!string.IsNullOrEmpty(kvp.Value.Item.ItemNormalizedName) ? _imageCache.GetLocalItemIcon(kvp.Value.Item.ItemNormalizedName) : null);
+
                     var vm = new RequirementViewModel
                     {
                         DisplayText = RequirementViewModel.FormatCountDisplay(itemName, totalCount, firCount),
@@ -552,6 +561,7 @@ namespace TarkovHelper.Pages
                         ItemId = kvp.Value.Item.ItemId,
                         ItemNormalizedName = kvp.Value.Item.ItemNormalizedName,
                         IconLink = kvp.Value.Item.IconLink,
+                        IconSource = localIcon,
                         IsFulfilled = isFulfilled
                     };
 
@@ -573,7 +583,7 @@ namespace TarkovHelper.Pages
         private async Task LoadRequirementIconsAsync(List<RequirementViewModel> items)
         {
             var itemsNeedingIcons = items
-                .Where(vm => !string.IsNullOrEmpty(vm.IconLink) && vm.IconSource == null)
+                .Where(vm => vm.IconSource == null && (!string.IsNullOrEmpty(vm.ItemId) || !string.IsNullOrEmpty(vm.IconLink) || !string.IsNullOrEmpty(vm.ItemNormalizedName)))
                 .ToList();
 
             if (itemsNeedingIcons.Count == 0)
@@ -583,7 +593,20 @@ namespace TarkovHelper.Pages
             {
                 if (_isUnloaded) return;
 
-                var icon = await _imageCache.GetImageAsync(vm.IconLink!, "items");
+                BitmapImage? icon = null;
+                if (!string.IsNullOrEmpty(vm.ItemId))
+                {
+                    icon = _imageCache.GetLocalItemIcon(vm.ItemId);
+                }
+                if (icon == null && !string.IsNullOrEmpty(vm.ItemNormalizedName))
+                {
+                    icon = _imageCache.GetLocalItemIcon(vm.ItemNormalizedName);
+                }
+                if (icon == null && !string.IsNullOrEmpty(vm.IconLink))
+                {
+                    icon = await _imageCache.GetImageAsync(vm.IconLink, "items");
+                }
+
                 if (icon != null && !_isUnloaded)
                 {
                     await Dispatcher.InvokeAsync(() =>

@@ -122,8 +122,8 @@ public class Program
             SaveVisualToPng(mainWindow, mapPath);
             Log($"Saved map.png: {File.Exists(mapPath)} (size: {new FileInfo(mapPath).Length})");
 
-            // 3. Hideout with Generator module selected
-            mainWindow.NavigateToHideout("5d3b396e33c48f02b81cd9f3");
+            // 3. Hideout with Booze Generator module selected
+            mainWindow.NavigateToHideout("5d494a3f5b56502f18c98a0e");
             DoEvents(2500);
             string hideoutPath = Path.Combine(screenshotsDir, "hideout.png");
             SaveVisualToPng(mainWindow, hideoutPath);
