@@ -19,7 +19,7 @@
              UseLayoutRounding="True">
     <UserControl.Resources>
         <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
-        <!-- Tactical Palette Surfaces & Borders -->
+        <!-- Tactical Palette Surfaces &amp; Borders -->
         <SolidColorBrush x:Key="TacticalSurface0Brush" Color="#0D0E11"/>
         <SolidColorBrush x:Key="TacticalSurface1Brush" Color="#131519"/>
         <SolidColorBrush x:Key="TacticalSurface2Brush" Color="#1A1D23"/>
@@ -166,8 +166,8 @@
                             Margin="0,0,8,0" Click="BtnClearTrail_Click"/>
                     <Button x:Name="BtnFullScreen" Content="Full Screen" Padding="12,6"
                             Margin="0,0,8,0" Click="BtnFullScreen_Click"/>
-                    <Button x:Name="BtnOpenRelocationManager" Content="📍 Reubicar Objetivos" Padding="12,6" Visibility="Collapsed"
-                            Margin="0,0,8,0" ToolTip="Abrir el Gestor de Reubicación de Objetivos e Historial"
+                    <Button x:Name="BtnOpenRelocationManager" Content="📍 Relocate Objectives" Padding="12,6" Visibility="Collapsed"
+                            Margin="0,0,8,0" ToolTip="Open Objective Relocation &amp; History Manager"
                             Click="BtnOpenRelocationManager_Click"/>
                     <Button x:Name="BtnSettings" Content="Settings" Padding="12,6"
                             Click="BtnSettings_Click"/>
@@ -337,7 +337,7 @@
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="🎯 " FontSize="14" VerticalAlignment="Center"/>
                             <TextBlock x:Name="TxtPlacementBanner"
-                                       Text="Modo de asignación: Haz clic en el mapa para ubicar el objetivo: "
+                                       Text="Placement Mode: Click on map to place objective: "
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        FontSize="13" FontWeight="SemiBold"
                                        VerticalAlignment="Center"/>
@@ -460,7 +460,7 @@
                                           Click="MapSettingItem_Changed"/>
 
                                 <!-- Task Titles on Map Toggle -->
-                                <CheckBox x:Name="ChkSettingTaskTitles" Content="Mostrar nombres de misiones"
+                                <CheckBox x:Name="ChkSettingTaskTitles" Content="Show task titles"
                                           IsChecked="False" Margin="0,3"
                                           Click="ChkSettingTaskTitles_Click"/>
 
@@ -475,7 +475,7 @@
                         </Border>
                     </Popup>
 
-                    <!-- Bottom-right Controls: Compact Floor Selector stacked on top of Zoom & View Controls -->
+                    <!-- Bottom-right Controls: Compact Floor Selector stacked on top of Zoom &amp; View Controls -->
                     <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                 Margin="0,0,16,16" Panel.ZIndex="100"
                                 Orientation="Vertical">
@@ -509,7 +509,7 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- Vertical Zoom & View Controls (TarkovTracker style) -->
+                        <!-- Vertical Zoom &amp; View Controls (TarkovTracker style) -->
                         <Border Background="#E6131519" BorderBrush="{StaticResource TacticalBorderSubtleBrush}" BorderThickness="1"
                                 CornerRadius="6" Padding="3">
                             <StackPanel Orientation="Vertical">
@@ -660,7 +660,7 @@
 
                                                         <!-- 마커 토글 목록 -->
                             <StackPanel x:Name="MapMarkersContent">
-                                <!-- Extracts: PMC & Scav -->
+                                <!-- Extracts: PMC &amp; Scav -->
                                 <StackPanel Orientation="Horizontal" Margin="0,2">
                                     <CheckBox x:Name="ChkShowPmcExtracts" IsChecked="True"
                                               Checked="ChkExtractFilter_Changed" Unchecked="ChkExtractFilter_Changed"

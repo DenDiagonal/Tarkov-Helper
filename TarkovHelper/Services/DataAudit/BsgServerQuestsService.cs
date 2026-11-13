@@ -74,7 +74,7 @@ namespace TarkovHelper.Services.DataAudit
             IProgress<string>? progress = null, 
             CancellationToken ct = default)
         {
-            progress?.Report("Verificando servidor de misiones BSG...");
+            progress?.Report("Checking BSG quest server...");
             _log.Info("Starting BSG server quests retrieval...");
 
             string? failureReason = null;
@@ -97,7 +97,7 @@ namespace TarkovHelper.Services.DataAudit
                     request.Headers.IfNoneMatch.TryParseAdd(etag);
                 }
 
-                progress?.Report("Descargando volcado oficial de misiones BSG...");
+                progress?.Report("Downloading official BSG quest dump...");
                 using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
 
                 if (response.StatusCode == System.Net.HttpStatusCode.NotModified)
@@ -118,7 +118,7 @@ namespace TarkovHelper.Services.DataAudit
                         SettingsService.Instance.SetValue("bsg_server.etag", newEtag);
                     }
 
-                    progress?.Report("Parseando datos de misiones oficiales...");
+                    progress?.Report("Parsing official quest data...");
                     await using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
                     var quests = await JsonSerializer.DeserializeAsync<Dictionary<string, BsgServerQuest>>(stream, cancellationToken: cts.Token);
 
@@ -166,8 +166,8 @@ namespace TarkovHelper.Services.DataAudit
 
             // 2. Resilient fallback to local cache
             isOffline = true;
-            sourceUsed = "Caché Local de Respaldo";
-            progress?.Report("Usando copia local de misiones oficiales BSG...");
+            sourceUsed = "Local Backup Cache";
+            progress?.Report("Using local copy of official BSG quests...");
             _log.Info($"Falling back to local cache due to: {failureReason}");
 
             var fallbackPath = GetLocalCachePath();

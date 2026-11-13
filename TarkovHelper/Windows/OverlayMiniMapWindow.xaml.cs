@@ -906,7 +906,7 @@ public partial class OverlayMiniMapWindow : Window
 
 			{
 
-				AppLanguage.ES => "Abrir Tarkov Helper (Llamar a la aplicación)",
+				AppLanguage.ES => "Open Tarkov Helper (Bring app to front)",
 
 				AppLanguage.KO => "Tarkov Helper 열기 (앱 호출)",
 

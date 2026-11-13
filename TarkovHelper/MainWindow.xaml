@@ -852,19 +852,19 @@
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
 
                                             <Button x:Name="BtnUpdateApiData" Content="Update API Data"
-                                                    ToolTip="Consultar y sincronizar requisitos y misiones desde Tarkov Tracker"
+                                                    ToolTip="Check and sync requirements and tasks from Tarkov Tracker"
 
                                                     Padding="12,8" Margin="0,0,8,0"
 
                                                     Click="BtnUpdateApiData_Click"/>
 
-                                            <Button x:Name="BtnRollbackBackup" Content="Restaurar Respaldo"
+                                            <Button x:Name="BtnRollbackBackup" Content="Restore Backup"
 
                                                     Padding="12,8" Margin="0,0,12,0"
 
                                                     Click="BtnRollbackBackup_Click"
 
-                                                    ToolTip="Ver y restaurar copias de seguridad anteriores de la base de datos (.bak)"/>
+                                                    ToolTip="View and restore previous database backups (.bak)"/>
 
                                             <TextBlock x:Name="TxtApiUpdateStatus"
 

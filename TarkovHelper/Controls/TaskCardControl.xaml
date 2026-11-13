@@ -184,9 +184,9 @@ Margin="0,0,0,8">
 <Grid.ColumnDefinitions>
 <!-- Col 0: Trader Avatar Badge -->
 <ColumnDefinition Width="Auto"/>
-<!-- Col 1: Task Title & Badges WrapPanel -->
+<!-- Col 1: Task Title &amp; Badges WrapPanel -->
 <ColumnDefinition Width="*"/>
-<!-- Col 2: Actions & Collapse Toggle -->
+<!-- Col 2: Actions &amp; Collapse Toggle -->
 <ColumnDefinition Width="Auto"/>
 </Grid.ColumnDefinitions>
 <!-- 0. Quest Lock/Unlock Manual Override Button (28x28) -->
@@ -200,10 +200,10 @@ Margin="0,0,0,8">
         ToolTip="{Binding LockToggleToolTip}">
     <Border.ContextMenu>
         <ContextMenu>
-            <MenuItem Header="🔓 Forzar Desbloqueo (Activa)" Click="MenuForceUnlock_Click"/>
-            <MenuItem Header="🔒 Forzar Bloqueo (Bloqueada)" Click="MenuForceLock_Click"/>
+            <MenuItem Header="🔓 Force Unlock (Active)" Click="MenuForceUnlock_Click"/>
+            <MenuItem Header="🔒 Force Lock (Locked)" Click="MenuForceLock_Click"/>
             <Separator/>
-            <MenuItem Header="↺ Restablecer Automático" Click="MenuResetOverride_Click"/>
+            <MenuItem Header="↺ Reset Automatic" Click="MenuResetOverride_Click"/>
         </ContextMenu>
     </Border.ContextMenu>
     <Grid>
@@ -214,7 +214,7 @@ Margin="0,0,0,8">
         <Ellipse Width="6" Height="6" Fill="{DynamicResource TacticalGoldBrush}"
                  HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,2,2,0"
                  Visibility="{Binding ManualOverrideDotVisibility}"
-                 ToolTip="Modificada manualmente"/>
+                 ToolTip="Manually modified"/>
     </Grid>
 </Border>
 <!-- Single-Line Header: Title + Trader + Map (no icon) + Required Keys -->
@@ -298,7 +298,7 @@ TextTrimming="CharacterEllipsis" MaxWidth="220" VerticalAlignment="Center"/>
 </ItemsControl.ItemTemplate>
 </ItemsControl>
 </WrapPanel>
-<!-- Action Buttons (Right side, left-to-right: Hide, Mapa, Wiki, Completar, Shrink) -->
+<!-- Action Buttons (Right side, left-to-right: Hide, Map, Wiki, Complete, Shrink) -->
 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
 <!-- 1. Hide / Unhide Button -->
 <Button Click="BtnHide_Click"
@@ -323,7 +323,7 @@ HorizontalAlignment="Center" VerticalAlignment="Center"/>
 </Button>
 <!-- 2. Show on Map Button (Text only: Mapa) -->
 <Button Click="BtnMap_Click"
-ToolTip="Ver objetivos en el mapa"
+ToolTip="View objectives on map"
 Visibility="{Binding MapActionVisibility}"
 Height="28" Padding="8,2" Margin="0,0,5,0"
 Background="{DynamicResource TacticalSurface3Brush}"
@@ -343,7 +343,7 @@ Foreground="{DynamicResource TacticalGoldBrush}" VerticalAlignment="Center"/>
 </Button>
 <!-- 3. Wiki Button (Text only: Wiki) -->
 <Button Click="BtnWiki_Click"
-ToolTip="Abrir página wiki"
+ToolTip="Open wiki page"
 Visibility="{Binding WikiVisibility}"
 Height="28" Padding="8,2" Margin="0,0,5,0"
 Background="{DynamicResource TacticalSurface3Brush}"
@@ -363,7 +363,7 @@ Foreground="{DynamicResource TacticalTextPrimaryBrush}" VerticalAlignment="Cente
 </Button>
 <!-- 4. Complete Button -->
 <Button Click="BtnComplete_Click"
-ToolTip="Marcar misión completa"
+ToolTip="Mark task completed"
 Height="28" Padding="8,2" Margin="0,0,5,0"
 Background="{Binding CompleteButtonBackground}"
 BorderBrush="{Binding CompleteButtonBorder}"
@@ -388,7 +388,7 @@ Foreground="{Binding CompleteButtonForeground}"/>
 <!-- 5. Collapse / Expand Toggle Button -->
 <Button Click="BtnToggleExpand_Click"
 Width="28" Height="28"
-ToolTip="Plegar / Desplegar detalles"
+ToolTip="Collapse / Expand details"
 Background="{DynamicResource TacticalSurface3Brush}"
 BorderBrush="{DynamicResource TacticalBorderMediumBrush}"
 BorderThickness="1" Cursor="Hand">
@@ -467,7 +467,7 @@ Padding="6,2.5" Margin="0,1.5">
 <ColumnDefinition Width="*"/>
 <ColumnDefinition Width="Auto"/>
 </Grid.ColumnDefinitions>
-<!-- Item Name & Alternative Selector (Dropdown when alternatives exist, static text otherwise) -->
+<!-- Item Name &amp; Alternative Selector (Dropdown when alternatives exist, static text otherwise) -->
                                             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
                                                 <TextBlock Text="📦 " FontSize="10" VerticalAlignment="Center"/>
 
@@ -526,11 +526,11 @@ Foreground="{Binding ProgressForeground}">
 <!-- Increment Button -->
 <Button Content="+" Style="{StaticResource StepperButtonStyle}"
 Click="BtnStepperIncrement_Click" Tag="{Binding}"
-ToolTip="Aumentar"/>
+ToolTip="Increase"/>
 <!-- Set Max (Check) Button -->
 <Button Content="✓" Style="{StaticResource StepperButtonStyle}"
 Click="BtnStepperMax_Click" Tag="{Binding}"
-Margin="3,0,0,0" ToolTip="Completar todo"
+Margin="3,0,0,0" ToolTip="Complete all"
 Background="{Binding MaxCheckBackground}"
 Foreground="{Binding MaxCheckForeground}"/>
 </StackPanel>
@@ -548,13 +548,13 @@ BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"
 BorderThickness="1"
 Margin="0,4,0,4" Padding="6,4">
 <Expander.Header>
-<TextBlock Text="📖 Guía y notas de la wiki" FontSize="11" FontWeight="SemiBold"
+<TextBlock Text="📖 Wiki Guide &amp; Notes" FontSize="11" FontWeight="SemiBold"
 Foreground="{DynamicResource TacticalGoldBrush}"/>
 </Expander.Header>
 <TextBlock Text="{Binding GuideText}" TextWrapping="Wrap" FontSize="11"
 Foreground="{DynamicResource TacticalTextSecondaryBrush}" Margin="4,6,4,4"/>
 </Expander>
-<!-- 4. Footer: Single-Line Rewards & Impact + Expandable TarkovTracker Drawer -->
+<!-- 4. Footer: Single-Line Rewards &amp; Impact + Expandable TarkovTracker Drawer -->
 <Border x:Name="RewardsFooterBorder"
 Visibility="{Binding RewardsFooterVisibility}"
 Background="{DynamicResource TacticalSurface1Brush}"
@@ -605,7 +605,7 @@ FontWeight="SemiBold" Foreground="{Binding TextBrush}"/>
 <Button Click="BtnToggleRewardsDrawer_Click"
 Visibility="{Binding ItemRewardsPillVisibility}"
 Cursor="Hand" Margin="0,0,6,0" VerticalAlignment="Center"
-ToolTip="Pincha para ver los objetos de recompensa y misiones conectadas">
+ToolTip="Click to view reward items and connected tasks">
 <Button.Template>
 <ControlTemplate TargetType="Button">
 <Border Background="#12352B"
@@ -638,12 +638,12 @@ Foreground="{DynamicResource BadgeActiveFgBrush}" VerticalAlignment="Center"/>
 <!-- Hidden contract item rewards for C1_05 -->
 <ItemsControl ItemsSource="{Binding ItemRewards}" Visibility="Collapsed"/>
 </WrapPanel>
-<!-- Right Side: Unlocks next & Impact + Drawer Toggle Chevron (Same Line) -->
+<!-- Right Side: Unlocks next &amp; Impact + Drawer Toggle Chevron (Same Line) -->
 <Button Grid.Column="1"
 Click="BtnToggleRewardsDrawer_Click"
 Cursor="Hand" VerticalAlignment="Center"
 Background="Transparent" BorderThickness="0"
-ToolTip="Desplegar / ocultar detalles de recompensas y misiones">
+ToolTip="Expand / collapse reward &amp; task details">
 <Button.Template>
 <ControlTemplate TargetType="Button">
 <Border Background="Transparent" Padding="4,2">
@@ -662,7 +662,7 @@ VerticalAlignment="Center"/>
 </Button.Template>
 </Button>
 </Grid>
-<!-- Expandable Rewards & Task Links Drawer (Photo 2 Parity) -->
+<!-- Expandable Rewards &amp; Task Links Drawer (Photo 2 Parity) -->
 <Border Grid.Row="1"
 Visibility="{Binding RewardsDrawerVisibility}"
 BorderBrush="{DynamicResource TacticalBorderSubtleBrush}"

@@ -24,7 +24,7 @@
         <SolidColorBrush x:Key="StatusActiveBrush" Color="#4CAF50"/>
         <SolidColorBrush x:Key="StatusDoneBrush" Color="#2196F3"/>
 
-        <!-- Tactical Palette Surfaces & Borders (EFT / TarkovTracker Dark Scheme) -->
+        <!-- Tactical Palette Surfaces &amp; Borders (EFT / TarkovTracker Dark Scheme) -->
         <SolidColorBrush x:Key="TacticalSurface0Brush" Color="#0D0E11"/>
         <SolidColorBrush x:Key="TacticalSurface1Brush" Color="#131519"/>
         <SolidColorBrush x:Key="TacticalSurface2Brush" Color="#1A1D23"/>
@@ -73,7 +73,7 @@
             </Setter>
         </Style>
 
-        <!-- Pill Segment Button Style for Popups & Settings -->
+        <!-- Pill Segment Button Style for Popups &amp; Settings -->
         <Style x:Key="PillTabButtonStyle" TargetType="RadioButton">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
@@ -259,7 +259,7 @@
                         <ColumnDefinition Width="26"/>
                         <!-- 1: Trader Avatar/Initial -->
                         <ColumnDefinition Width="26"/>
-                        <!-- 2: Quest Title & Level Badge -->
+                        <!-- 2: Quest Title &amp; Level Badge -->
                         <ColumnDefinition Width="*"/>
                         <!-- 3: Badges Strip -->
                         <ColumnDefinition Width="Auto"/>
@@ -270,10 +270,10 @@
                     <!-- 0: 1-Click Done/Active CheckBox -->
                     <CheckBox Grid.Column="0" IsChecked="{Binding IsDone, Mode=OneWay}"
                               VerticalAlignment="Center" HorizontalAlignment="Left"
-                              Cursor="Hand" ToolTip="Marcar como completada / pendiente"
+                              Cursor="Hand" ToolTip="Mark as completed / pending"
                               Click="ChkQuestDone_Click" Tag="{Binding}"/>
 
-                    <!-- 1: Status & Manual Lock/Unlock Toggle Button (20x20) -->
+                    <!-- 1: Status &amp; Manual Lock/Unlock Toggle Button (20x20) -->
                     <Border Grid.Column="1" Width="20" Height="20" CornerRadius="3"
                             Background="{Binding LockToggleBackground}"
                             BorderBrush="{Binding LockToggleBorder}"
@@ -285,10 +285,10 @@
                             Tag="{Binding}">
                         <Border.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="🔓 Forzar Desbloqueo (Activa)" Click="MenuListRowForceUnlock_Click"/>
-                                <MenuItem Header="🔒 Forzar Bloqueo (Bloqueada)" Click="MenuListRowForceLock_Click"/>
+                                <MenuItem Header="🔓 Force Unlock (Active)" Click="MenuListRowForceUnlock_Click"/>
+                                <MenuItem Header="🔒 Force Lock (Locked)" Click="MenuListRowForceLock_Click"/>
                                 <Separator/>
-                                <MenuItem Header="↺ Restablecer Automático" Click="MenuListRowResetOverride_Click"/>
+                                <MenuItem Header="↺ Reset Automatic" Click="MenuListRowResetOverride_Click"/>
                             </ContextMenu>
                         </Border.ContextMenu>
                         <Grid>
@@ -321,7 +321,7 @@
                     <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
                         <!-- Story Chapter Badge -->
                         <Border Visibility="{Binding StoryBadgeVisibility}" Padding="4,1" CornerRadius="2"
-                                Background="#3F51B5" Margin="0,0,4,0" ToolTip="Misión de Historia">
+                                Background="#3F51B5" Margin="0,0,4,0" ToolTip="Story Quest">
                             <TextBlock Text="Story" FontSize="9" Foreground="White" FontWeight="Bold"/>
                         </Border>
 
@@ -333,13 +333,13 @@
 
                         <!-- Seasonal Badge -->
                         <Border Visibility="{Binding SeasonalBadgeVisibility}" Padding="3,1" CornerRadius="2"
-                                Background="#E06D28" Margin="0,0,4,0" ToolTip="Misión de Temporada (Seasonal)">
+                                Background="#E06D28" Margin="0,0,4,0" ToolTip="Seasonal Quest">
                             <TextBlock Text="SEASON" FontSize="8.5" Foreground="White" FontWeight="Bold"/>
                         </Border>
 
                         <!-- Kappa Badge -->
                         <Border Visibility="{Binding KappaBadgeVisibility}" Padding="4,1" CornerRadius="2"
-                                Background="#9C27B0" Margin="0,0,4,0" ToolTip="Requerido para Kappa">
+                                Background="#9C27B0" Margin="0,0,4,0" ToolTip="Required for Kappa">
                             <TextBlock Text="κ" FontSize="9.5" Foreground="White" FontWeight="Bold"/>
                         </Border>
 
@@ -366,13 +366,13 @@
                         <!-- Show on Map Action -->
                         <Button Style="{StaticResource CompactIconButton}" Content="Map"
                                 Visibility="{Binding MapActionVisibility}"
-                                ToolTip="Ver objetivos en el mapa"
+                                ToolTip="View objectives on map"
                                 Click="BtnCardMap_Click" Tag="{Binding}" Margin="0,0,4,0"/>
 
                         <!-- Open in Wiki Action -->
                         <Button Style="{StaticResource CompactIconButton}" Content="Wiki"
                                 Visibility="{Binding WikiActionVisibility}"
-                                ToolTip="Abrir en Tarkov Wiki"
+                                ToolTip="Open on Tarkov Wiki"
                                 Click="BtnCardWiki_Click" Tag="{Binding}"/>
                     </StackPanel>
                 </Grid>
@@ -500,7 +500,7 @@
                                         Click="BtnReset_Click"/>
                             </StackPanel>
 
-                            <!-- Trader & Status -->
+                            <!-- Trader &amp; Status -->
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                 <TextBlock Text="Trader: " FontSize="{DynamicResource FontSizeXSmall}"
                                            Foreground="{StaticResource TextSecondaryBrush}"/>
@@ -668,7 +668,7 @@
                                                                        Visibility="{Binding IconVisibility}"/>
                                                             </Grid>
 
-                                                            <!-- Key Name & Map / Objective Info -->
+                                                            <!-- Key Name &amp; Map / Objective Info -->
                                                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="8,0,8,0">
                                                                 <TextBlock Text="{Binding Name}" FontSize="{DynamicResource FontSizeXSmall}"
                                                                            FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
@@ -873,7 +873,7 @@
                                                    VerticalAlignment="Center"/>
                                         <!-- Manual Override Button (Feature 10) -->
                                         <Button x:Name="BtnOverridePrereq" Grid.Column="1"
-                                                Content="Ignorar prerequisito / Marcar disponible"
+                                                Content="Ignore prerequisite / Mark available"
                                                 Padding="8,3" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                                 Click="BtnOverridePrereq_Click"
                                                 Visibility="Collapsed"/>
@@ -887,7 +887,7 @@
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="⚠️" FontSize="{DynamicResource FontSizeSmall}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                             <TextBlock x:Name="TxtUnresolvedWarning"
-                                                       Text="Prerequisito no resuelto o enlace wiki roto detectado"
+                                                       Text="Unresolved prerequisite or broken wiki link detected"
                                                        FontSize="{DynamicResource FontSizeTiny}" Foreground="#FFB74D"
                                                        VerticalAlignment="Center" TextWrapping="Wrap"/>
                                         </StackPanel>
@@ -901,7 +901,7 @@
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="⚡" FontSize="{DynamicResource FontSizeSmall}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                             <TextBlock x:Name="TxtOverrideActiveNotice"
-                                                       Text="Anulación activa (Restaurar)"
+                                                       Text="Manual Override Active (Reset)"
                                                        FontSize="{DynamicResource FontSizeTiny}" Foreground="#81C784"
                                                        VerticalAlignment="Center" TextWrapping="Wrap"/>
                                         </StackPanel>
@@ -1271,7 +1271,7 @@
                     <DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.5"/>
                 </Border.Effect>
                 <StackPanel>
-                    <!-- Header: Filter tasks & Reset button -->
+                    <!-- Header: Filter tasks &amp; Reset button -->
                     <Grid Margin="0,0,0,12">
                         <TextBlock Text="Filter tasks" FontSize="13.5" FontWeight="Bold"
                                    Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
@@ -1649,11 +1649,11 @@
                             <StackPanel x:Name="TxtSelectQuestWrapper" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
                                 <TextBlock Text="📋" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,10" Opacity="0.55"/>
                                 <TextBlock x:Name="TxtSelectQuest"
-                                           Text="Selecciona una misión para ver los detalles"
+                                           Text="Select a task to view details"
                                            FontSize="13.5" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextSecondaryBrush}"
                                            HorizontalAlignment="Center" TextAlignment="Center"/>
-                                <TextBlock Text="Comerciante, objetivos, objetos a entregar y recompensas"
+                                <TextBlock Text="Trader, objectives, handover items and rewards"
                                            FontSize="11.5"
                                            Foreground="{DynamicResource TacticalTextMutedBrush}"
                                            HorizontalAlignment="Center" TextAlignment="Center" Margin="0,4,0,0"/>
@@ -1688,7 +1688,7 @@
 
                 <!-- Col 0: Main Interactive Graph Viewport -->
                 <Grid Grid.Column="0">
-                    <!-- Background / Interactive Pan & Zoom Viewport -->
+                    <!-- Background / Interactive Pan &amp; Zoom Viewport -->
                     <Border x:Name="GraphViewport" Background="#0C0D11" BorderBrush="{StaticResource TacticalBorderSubtleBrush}"
                             BorderThickness="1" CornerRadius="6" ClipToBounds="True"
                             Focusable="True"
@@ -1698,7 +1698,7 @@
                             MouseLeave="GraphViewport_MouseLeave"
                             MouseWheel="GraphViewport_MouseWheel">
 
-                        <!-- Pan & Zoom Canvas -->
+                        <!-- Pan &amp; Zoom Canvas -->
                         <Canvas x:Name="GraphCanvas" HorizontalAlignment="Left" VerticalAlignment="Top"
                                 Width="6000" Height="4000" Background="Transparent">
                             <Canvas.RenderTransform>
@@ -1730,7 +1730,7 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Top-Right Floating Controls (Zoom & Navigation) -->
+                    <!-- Top-Right Floating Controls (Zoom &amp; Navigation) -->
                     <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,14,14,0"
                             Background="#E6111318" BorderBrush="#2C2F3C" BorderThickness="1"
                             CornerRadius="6" Padding="6">

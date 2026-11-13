@@ -184,14 +184,14 @@ namespace TarkovHelper.Pages
         {
             get
             {
-                if (Task == null) return "Estado";
+                if (Task == null) return "Status";
                 string taskId = Task.Ids?.FirstOrDefault() ?? Task.NormalizedName ?? string.Empty;
                 var qps = QuestProgressService.Instance;
-                if (qps.IsQuestForceUnlocked(taskId)) return "Desbloqueada MANUALMENTE (Forzada activa).\nClic: restablecer automático.\nClic derecho: menú.";
-                if (qps.IsQuestForceLocked(taskId)) return "Bloqueada MANUALMENTE (Forzada bloqueada).\nClic: restablecer automático.\nClic derecho: menú.";
-                if (Status == QuestStatus.Done) return "Estado: Completada.\nClic derecho: menú.";
-                if (Status == QuestStatus.Active) return "Estado: Activa (Automático según requisitos).\nClic: forzar bloqueo.\nClic derecho: menú.";
-                return $"Estado: {Status} (Automático según requisitos).\nClic: forzar desbloqueo.\nClic derecho: menú.";
+                if (qps.IsQuestForceUnlocked(taskId)) return "MANUALLY Unlocked (Forced active).\nClick: reset to automatic.\nRight-click: options.";
+                if (qps.IsQuestForceLocked(taskId)) return "MANUALLY Locked (Forced locked).\nClick: reset to automatic.\nRight-click: options.";
+                if (Status == QuestStatus.Done) return "Status: Completed.\nRight-click: menu.";
+                if (Status == QuestStatus.Active) return "Status: Active (Automatic from requirements).\nClick: force lock.\nRight-click: menu.";
+                return $"Status: {Status} (Automatic from requirements).\nClick: force unlock.\nRight-click: menu.";
             }
         }
 

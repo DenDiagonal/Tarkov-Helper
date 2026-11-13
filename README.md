@@ -1,122 +1,117 @@
 # Tarkov Helper
 
-[![Español](https://img.shields.io/badge/lang-Español-yellow.svg)](README.md)
-[![English](https://img.shields.io/badge/lang-English-blue.svg)](README_EN.md)
+[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
+[![Español](https://img.shields.io/badge/lang-Español-yellow.svg)](README_ES.md)
 [![한국어](https://img.shields.io/badge/lang-한국어-red.svg)](README_KR.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078d7.svg)](https://microsoft.com/windows)
 [![.NET](https://img.shields.io/badge/.NET-8.0%20WPF-512bd4.svg)](https://dotnet.microsoft.com/download/dotnet/8.0)
+[![Version](https://img.shields.io/badge/release-v1.5.8-brightgreen.svg)](https://github.com/DenDiagonal/Tarkov-Helper/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-success.svg)](LICENSE)
 
-**Tarkov Helper** es una aplicación de escritorio moderna y táctica para Windows diseñada para optimizar y acompañar tus incursiones en **Escape from Tarkov**. Permite gestionar el progreso de misiones, módulos del refugio (Hideout), requisitos de objetos (FIR), llaves necesarias y mapas interactivos con posicionamiento en tiempo real sin interferir con el juego.
+**Tarkov Helper** is a modern, high-performance, offline-first tactical desktop companion for **Escape from Tarkov** on Windows. It streamlines your raids by tracking quest objectives, Hideout upgrades, Found-in-Raid (FIR) items, key requirements, and interactive vector maps with real-time player positioning—all without injecting into game memory or violating BattlEye terms of service.
 
 ---
 
-## 📸 Capturas de Pantalla
+## 📸 Screenshots
 
-| Gestión de Misiones | Mapas Interactivos y Niveles | Refugio y Módulos |
+| Task & Quest Management | Interactive Vector Maps & Floors | Hideout & Module Upgrades |
 | :---: | :---: | :---: |
-| ![Misiones](screenshots/quest.png) | ![Mapa](screenshots/map.png) | ![Refugio](screenshots/hideout.png) |
+| ![Tasks](screenshots/quest.png) | ![Maps](screenshots/map.png) | ![Hideout](screenshots/hideout.png) |
 
 ---
 
-## ✨ Características Principales
+## ✨ Key Features
 
-### 🎯 Gestión Avanzada de Misiones
-- **Feed Táctico de Misiones:** Interfaz intuitiva y moderna inspirada en la paleta táctica de EFT y TarkovTracker.
-- **Badges Multi-Mapa Dinámicos:** Las misiones que abarcan múltiples escenarios (como *Power of Persuasion*, *Capturing Outposts* o *A Shooter Born in Heaven*) indican de forma dinámica todos los mapas válidos (`Multi-Map`).
-- **Árbol de Requisitos:** Visualización clara de misiones previas y misiones que desbloquea al completarse.
-- **Soporte Kappa y Estacionales:** Filtros y distintivos dedicados para misiones requeridas para el contenedor Kappa y eventos de wipe / temporadas.
-- **Acceso Rápido a la Wiki:** Enlace directo de cada misión a la wiki oficial de Escape from Tarkov.
+### 🎯 Comprehensive Task & Quest Management
+- **Tactical Quest Feed:** Modern interface inspired by the tactical EFT palette, featuring search, multi-trader filtering, and real-time status tracking.
+- **586+ Quests & 2,018+ Objectives:** Full coverage of all traders (Prapor, Therapist, Skier, Peacekeeper, Mechanic, Ragman, Jaeger, Fence, Lightkeeper, and BTR Driver).
+- **Dynamic Multi-Map Badges:** Quests spanning multiple locations (e.g., *Power of Persuasion*, *Capturing Outposts*, *A Shooter Born in Heaven*) display interactive multi-map badges.
+- **Prerequisite Dependency Tree:** Clear visualization of prerequisite quests and unlocked follow-up tasks.
+- **Kappa & Storyline Indicators:** Dedicated filters and badges for Kappa Container prerequisites, Lightkeeper milestones, and wipe/seasonal event tasks.
+- **Direct Tarkov Wiki Integration:** Instant one-click access to official Escape from Tarkov Wiki articles for every quest and item.
 
-### 🗺️ Mapas Vectoriales Interactivos SVG y Posicionamiento
-- **Mapas de Alta Fidelidad:** Mapas vectoriales renderizados en tiempo real con marcadores de extracciones (PMC, Scav, Tránsito), misiones activas y llaves requeridas.
-- **Soporte Multicapa y Subterráneo:** Gestión de elevación y pisos independientes para mapas complejos (Reserva/Búnker, The Lab, plantas de Interchange, dormitorios de Customs, etc.).
-- **Detección Automática de Altura:** Cambio inteligente de piso según la coordenada de elevación (Y) del jugador.
-- **Seguimiento por Captura (`PrintScreen`):** Detecta las coordenadas del jugador pulsando `PrintScreen` dentro de EFT de forma 100% pasiva y segura (sin inyección en memoria, compatible con BattleEye).
-- **Modo Mini-Mapa (Overlay):** Ventana superpuesta y transparente para consultar el mapa en una segunda pantalla o encima del juego.
+### 🗺️ Interactive Multi-Layer Vector Maps (SVG) & Positioning
+- **High-Fidelity Vector Maps:** Scalable vector maps for all EFT raids: Ground Zero, Customs, Streets of Tarkov, Woods, Factory, Reserve, Shoreline, Interchange, Lighthouse, and The Lab.
+- **Subterranean & Multi-Floor Support:** Independent elevation layers and floor selectors for complex underground environments (Reserve Bunker, The Lab levels, Interchange floors, Customs dormitories).
+- **Automated Elevation Floor Detection:** Automatically switches visible map floors based on the player's vertical elevation (Y-axis coordinate).
+- **Passive Player Tracking (`PrintScreen`):** Pressing `PrintScreen` in-game records your position passively from EFT's official screenshot metadata—100% memory-safe and fully BattlEye compliant.
+- **Transparent Overlay Minimap:** Borderless, click-through capable overlay window to display maps on a secondary monitor or directly on top of the game screen.
+- **Interactive Objective Relocation:** Interactively adjust or fine-tune quest marker coordinates directly on the map, with a built-in history manager and one-click factory reset.
 
-### 🔄 Perfiles Independientes PVE y PVP
-- **Separación Total de Datos:** Alterna entre tus partidas de **PVP** y **PVE** con un solo clic.
-- **Persistencia Segura:** Las misiones completadas, llaves marcadas, nivel del refugio y notas de cada modo se almacenan por separado en la base de datos local `user_data.db`.
+### 🔄 Independent PVP and PVE Game Modes
+- **Zero Cross-Contamination:** Switch between **PVP** and **PVE** PMC profiles with a single click.
+- **Isolated State Persistence:** Completed quests, key status, Hideout construction levels, inventory handovers, and user notes are stored separately for each mode in `user_data.db`.
 
-### 📦 Refugio (Hideout) y Objetos Necesarios
-- **Constructor de Módulos:** Seguimiento de niveles actuales y futuros de cada estación del refugio.
-- **Objetos FIR vs Estándar:** Identifica qué objetos debes conservar con el estado *Found in Raid* (FIR) para misiones o entrega en el refugio.
-- **Seguimiento para *Collector*:** Monitoriza el estado de los objetos raros necesarios para la misión final de Fence.
+### 📦 Hideout Planner & Material Tracking
+- **Station Module Progression:** Track current and target construction levels for all Hideout stations (Booze Generator, Bitcoin Farm, Intelligence Center, Solar Power, etc.).
+- **FIR vs. Standard Requirements:** Accurately distinguishes between Found-in-Raid (FIR) items and general barter/crafting materials.
+- **The Collector Tracker:** Live monitoring of rare streamer items required for Fence's final quest.
 
-### ⚡ Motor de Sincronización en Vivo (Live Diff Engine)
-- **Conexión con APIs Vivas:** Integración y reconciliación de datos en tiempo real con **TarkovTracker** y **Tarkov.dev**.
-- **Auditoría de Cambios (Diff Viewer):** Al actualizarse parches del juego, la app compara las misiones oficiales y muestra los cambios antes de aplicarlos, respetando siempre el progreso y notas del usuario.
+### ⚡ Live Data Reconciliation Engine (Diff Viewer)
+- **Live Remote API Synchronization:** Directly sync and reconcile task requirements with live upstream data from **TarkovTracker** and **Tarkov.dev**.
+- **Visual Diff Viewer:** Inspect all additions, modifications, and deletions side-by-side before applying changes to your local database.
+- **Automated Backup & Rollback:** Automatically creates timestamped `.bak` snapshots prior to any database update, with one-click restoration.
 
----
-
-## 🚀 Instalación y Uso
-
-### Requisitos del Sistema
-- **Sistema Operativo:** Windows 10 o Windows 11 (64-bit).
-- **Autónomo (Self-Contained):** No es necesario tener instalado .NET Runtime; la versión publicada incluye todas sus dependencias.
-
-### Descarga Rápida
-1. Ve a la sección de [Releases](../../releases).
-2. Descarga el archivo comprimido `TarkovHelper-vX.X.X-win-x64.zip`.
-3. Descomprime la carpeta en la ubicación que prefieras y ejecuta `TarkovHelper.exe`.
+### 🔒 100% Offline-Capable & Memory-Safe
+- **Offline-First:** All game data, icons, maps, and metadata reside locally in SQLite (`tarkov_data.db`). No mandatory internet connection required.
+- **Non-Invasive:** Does not read or write EFT memory, hook DirectX/Vulkan APIs, or inject DLLs. Uses only file monitoring and standard Windows APIs.
 
 ---
 
-## 🛠️ Compilación y Desarrollo
+## 🛠️ Architecture & Technology Stack
 
-Si deseas compilar o contribuir al proyecto desde el código fuente:
+- **Framework:** .NET 8.0 (C# 12, WPF)
+- **Architecture:** MVVM Pattern (Model-View-ViewModel) with responsive async task scheduling
+- **Database:** SQLite via `Microsoft.Data.Sqlite` with transactional ACID updates
+- **Vector Rendering:** `SharpVectors` for real-time SVG parsing and GPU-accelerated canvas rendering
+- **Log Watcher:** Passive `FileSystemWatcher` streaming player coordinates and raid transitions
+- **Deployment:** Self-contained single-folder application targeting `win-x64`
 
-### Requisitos Previos
+---
+
+## 🚀 Download & Installation
+
+### Option 1: Pre-built Binary (Recommended)
+1. Download the latest release (`TarkovHelper-v1.5.8-win-x64.zip`) from [Releases](https://github.com/DenDiagonal/Tarkov-Helper/releases).
+2. Extract the archive to any folder (e.g., `C:\Games\TarkovHelper`).
+3. Run `TarkovHelper.exe`.
+   - *Note:* The application is fully self-contained. You do **not** need to install any .NET runtime.
+
+---
+
+## 💻 Building from Source
+
+### Prerequisites
+- [Windows 10 / 11 (64-bit)](https://www.microsoft.com/windows)
 - [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- Visual Studio 2022 o Visual Studio Code con el SDK de C# / .NET.
+- Visual Studio 2022 (with .NET desktop development workload) or Visual Studio Code
 
-### Comandos de Compilación
+### Build Instructions
+```powershell
+# 1. Clone the repository
+git clone https://github.com/DenDiagonal/Tarkov-Helper.git
+cd Tarkov-Helper
 
-1. **Clonar el repositorio:**
-   ```powershell
-   git clone https://github.com/DenDiagonal/Tarkov-Helper.git
-   cd Tarkov-Helper
-   ```
+# 2. Build in Release mode
+dotnet build TarkovHelper\TarkovHelper.csproj -c Release
 
-2. **Restaurar dependencias y compilar:**
-   ```powershell
-   dotnet build TarkovHelper\TarkovHelper.csproj -c Release
-   ```
+# 3. Publish self-contained executable to publish/ folder
+dotnet publish TarkovHelper\TarkovHelper.csproj -c Release -r win-x64 --self-contained true -o publish
+```
 
-3. **Publicar versión autónoma para Windows (win-x64):**
-   ```powershell
-   dotnet publish TarkovHelper\TarkovHelper.csproj -c Release -r win-x64 --self-contained true -o publish
-   ```
-   > [!IMPORTANT]
-   > El flag `--self-contained true` es fundamental para que el ejecutable no dependa de librerías del sistema y arranque en cualquier instalación de Windows.
+> [!IMPORTANT]
+> Always publish using `--self-contained true` for `win-x64`. Verify that `publish\TarkovHelper.runtimeconfig.json` contains `"includedFrameworks"`.
 
 ---
 
-## 🗄️ Estructura de Datos Local
+## 🤝 Contributing
 
-La aplicación almacena el estado local en archivos independientes para proteger tus datos de cualquier actualización:
-- `user_data.db` — Base de datos SQLite local que guarda tu progreso de misiones (PVE/PVP), objetos recolectados y notas.
-- `tarkov_data.db` — Base de datos con el catálogo oficial de misiones, requisitos, llaves, extracciones y estaciones del refugio.
-- `app_settings.json` — Configuraciones de visualización, idioma seleccionado, nivel del jugador y rutas de detección de logs.
+Contributions from the developer and Tarkov community are warmly welcomed! Whether you want to improve UI/UX, add new map overlays, enhance log parsing, or translate documentation, please check out [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
 ---
 
-## 🤝 Contribuciones
+## 📜 License & Legal Disclaimer
 
-¡Las contribuciones, sugerencias y reportes de errores son bienvenidos!
-1. Haz un **Fork** del proyecto.
-2. Crea una rama para tu funcionalidad (`git checkout -b feature/NuevaMejora`).
-3. Realiza tus cambios y haz commit (`git commit -m "feat: añadir nueva mejora"`).
-4. Sube la rama a tu repositorio (`git push origin feature/NuevaMejora`).
-5. Abre una **Pull Request**.
-
----
-
-## 📜 Licencia y Aviso Legal
-
-Este proyecto está distribuido bajo la licencia [MIT](LICENSE).
-
-**Aviso Legal:**
-- Los datos del juego son cortesía de las comunidades de [tarkov.dev](https://tarkov.dev) y [TarkovTracker](https://tarkovtracker.io).
-- *Escape from Tarkov* y todos los activos relacionados son marcas comerciales y derechos reservados de **Battlestate Games**. Esta herramienta es una aplicación no oficial creada por y para la comunidad.
+- This project is licensed under the [MIT License](LICENSE).
+- **Escape from Tarkov** and all related assets, logos, and trademarks are property of **Battlestate Games Limited**.
+- This application is an unofficial, community-developed companion tool and is neither affiliated with nor endorsed by Battlestate Games.

@@ -63,7 +63,7 @@ namespace TarkovHelper.Services.DataAudit
             }
 
             // 2. Step 1: Enforce BSG Server Official Data
-            progress?.Report("Aplicando requisitos oficiales de BSG Server...");
+            progress?.Report("Applying official BSG server requirements...");
             foreach (var q in data.Quests)
             {
                 BsgServerQuest? bsgMatch = null;
@@ -103,7 +103,7 @@ namespace TarkovHelper.Services.DataAudit
                         OriginalMinLevel = q.MinLevel,
                         ReconciledMinLevel = q.MinLevel,
                         Source = ReconciliationSource.CommunityPreserved,
-                        Reason = "Misión comunitaria/evento",
+                        Reason = "Community quest / event",
                         Details = "No encontrada en la base base de BSG; datos preservados de TarkovTracker"
                     });
                 }
@@ -153,7 +153,7 @@ namespace TarkovHelper.Services.DataAudit
             }
 
             // 4. Step 3: Cascade Level Inheritance (Fixpoint loop)
-            progress?.Report("Propagando requisitos de nivel en cascada...");
+            progress?.Report("Cascading level requirements...");
             bool changed = true;
             int iteration = 0;
             const int maxIterations = 20;
@@ -223,7 +223,7 @@ namespace TarkovHelper.Services.DataAudit
                             ReconciledMinLevel = 20,
                             Source = ReconciliationSource.BtrDriverGating,
                             Reason = "Gating de cadena BTR",
-                            Details = "Misión cruzada vinculada a la cadena del BTR (requiere nivel 20)"
+                            Details = "Cross-task linked to BTR chain (requires level 20)"
                         });
 
                         q.MinLevel = 20;

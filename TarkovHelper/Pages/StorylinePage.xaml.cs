@@ -324,7 +324,7 @@ namespace TarkovHelper.Pages
         }
 
         public string GlobalChaptersSummary => $"{CompletedChaptersCount}/{TotalChaptersCount} Capítulos";
-        public string GlobalObjectivesSummary => $"{CompletedObjectivesCount}/{TotalObjectivesCount} Objetivos ({GlobalProgressPercent:0}%)";
+        public string GlobalObjectivesSummary => $"{CompletedObjectivesCount}/{TotalObjectivesCount} Objectives ({GlobalProgressPercent:0}%)";
 
         public StorylinePage()
         {

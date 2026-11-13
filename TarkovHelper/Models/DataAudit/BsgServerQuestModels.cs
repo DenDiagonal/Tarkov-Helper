@@ -59,11 +59,11 @@ namespace TarkovHelper.Models.DataAudit
             {
                 sb.AppendLine($"⚠️ Modo contingencia (Caché local): {FailureReason}");
             }
-            sb.AppendLine($"Misiones oficiales en servidor BSG: {ServerQuestsLoaded}");
-            sb.AppendLine($"Misiones totales auditadas: {TotalQuestsAudited}");
+            sb.AppendLine($"Official quests on BSG server: {ServerQuestsLoaded}");
+            sb.AppendLine($"Total audited quests: {TotalQuestsAudited}");
             sb.AppendLine($"Niveles corregidos por servidor BSG: {LevelsCorrectedCount}");
             sb.AppendLine($"Niveles propagados por herencia en cascada: {CascadeInheritedCount}");
-            sb.AppendLine($"Misiones de comerciantes puente aseguradas: {SpecialTraderGatedCount}");
+            sb.AppendLine($"Special trader gated quests secured: {SpecialTraderGatedCount}");
 
             if (Records.Count > 0)
             {

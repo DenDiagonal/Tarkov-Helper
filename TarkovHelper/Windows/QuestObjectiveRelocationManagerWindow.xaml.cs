@@ -60,7 +60,7 @@ public partial class QuestObjectiveRelocationManagerWindow : Window
 	{
 		try
 		{
-			TxtStatusMessage.Text = "Buscando objetivos...";
+			TxtStatusMessage.Text = "Searching objectives...";
 			string query = TxtSearchQuery.Text?.Trim();
 			string trader = CmbTraderFilter.SelectedItem as string;
 			string map = CmbMapFilter.SelectedItem as string;
@@ -68,15 +68,15 @@ public partial class QuestObjectiveRelocationManagerWindow : Window
 			bool missingOnly = ChkWithoutCoordsOnly.IsChecked == true;
 			List<RelocationSearchItem> results = await _relocationService.SearchObjectivesAsync(query, trader, map, geoOnly, missingOnly);
 			GridSearchResults.ItemsSource = results;
-			TxtSearchResultCount.Text = $"{results.Count} objetivos encontrados";
-			TxtStatusMessage.Text = "Búsqueda completada";
+			TxtSearchResultCount.Text = $"{results.Count} objectives found";
+			TxtStatusMessage.Text = "Search completed";
 			_selectedSearchItem = null;
 			UpdateSearchSelectionBar();
 		}
 		catch (Exception ex)
 		{
 			Exception ex2 = ex;
-			TxtStatusMessage.Text = "Error en búsqueda: " + ex2.Message;
+			TxtStatusMessage.Text = "Search error: " + ex2.Message;
 		}
 	}
 
@@ -86,14 +86,14 @@ public partial class QuestObjectiveRelocationManagerWindow : Window
 		{
 			List<CustomizedObjectiveItem> customized = await _relocationService.GetCustomizedObjectivesAsync();
 			GridHistoryResults.ItemsSource = customized;
-			TxtCustomizedCountHeader.Text = $"Objetivos personalizados por el usuario: {customized.Count}";
+			TxtCustomizedCountHeader.Text = $"User-customized objectives: {customized.Count}";
 			_selectedHistoryItem = null;
 			UpdateHistorySelectionBar();
 		}
 		catch (Exception ex)
 		{
 			Exception ex2 = ex;
-			TxtStatusMessage.Text = "Error cargando historial: " + ex2.Message;
+			TxtStatusMessage.Text = "Error loading history: " + ex2.Message;
 		}
 	}
 
@@ -134,7 +134,7 @@ public partial class QuestObjectiveRelocationManagerWindow : Window
 		}
 		else
 		{
-			TxtSelectedObjectiveInfo.Text = "Selecciona un objetivo para reubicarlo o consultar sus coordenadas.";
+			TxtSelectedObjectiveInfo.Text = "Select an objective to relocate or view its coordinates.";
 			BtnRelocateSelected.IsEnabled = false;
 			BtnRestoreSingle.IsEnabled = false;
 		}
@@ -153,10 +153,10 @@ public partial class QuestObjectiveRelocationManagerWindow : Window
 	{
 		if (_selectedSearchItem != null)
 		{
-			MessageBoxResult confirmed = MessageBox.Show("¿Deseas restaurar la ubicación de fábrica de '" + _selectedSearchItem.Description + "'?", "Restaurar Ubicación", MessageBoxButton.YesNo, MessageBoxImage.Question);
+			MessageBoxResult confirmed = MessageBox.Show("Do you want to restore the factory location for '" + _selectedSearchItem.Description + "'?", "Restore Location", MessageBoxButton.YesNo, MessageBoxImage.Question);
 			if (confirmed == MessageBoxResult.Yes && await _relocationService.RestoreObjectiveToFactoryAsync(_selectedSearchItem.ObjectiveId))
 			{
-				TxtStatusMessage.Text = "Objetivo restaurado a valores de fábrica.";
+				TxtStatusMessage.Text = "Objective restored to factory defaults.";
 				await RefreshAllAsync();
 			}
 		}
@@ -178,7 +178,7 @@ public partial class QuestObjectiveRelocationManagerWindow : Window
 		}
 		else
 		{
-			TxtSelectedHistoryInfo.Text = "Selecciona un objetivo del historial para restaurarlo.";
+			TxtSelectedHistoryInfo.Text = "Select an objective from history to restore.";
 			BtnHistoryRelocate.IsEnabled = false;
 			BtnHistoryRestore.IsEnabled = false;
 		}
@@ -197,10 +197,10 @@ public partial class QuestObjectiveRelocationManagerWindow : Window
 	{
 		if (_selectedHistoryItem != null)
 		{
-			MessageBoxResult confirmed = MessageBox.Show("¿Deseas restaurar '" + _selectedHistoryItem.Description + "' a su valor original de fábrica?", "Restaurar Ubicación", MessageBoxButton.YesNo, MessageBoxImage.Question);
+			MessageBoxResult confirmed = MessageBox.Show("Do you want to restore '" + _selectedHistoryItem.Description + "' to its original factory location?", "Restore Location", MessageBoxButton.YesNo, MessageBoxImage.Question);
 			if (confirmed == MessageBoxResult.Yes && await _relocationService.RestoreObjectiveToFactoryAsync(_selectedHistoryItem.ObjectiveId))
 			{
-				TxtStatusMessage.Text = "Objetivo restaurado a valores de fábrica.";
+				TxtStatusMessage.Text = "Objective restored to factory defaults.";
 				await RefreshAllAsync();
 			}
 		}
@@ -208,11 +208,11 @@ public partial class QuestObjectiveRelocationManagerWindow : Window
 
 	private async void BtnRestoreAll_Click(object sender, RoutedEventArgs e)
 	{
-		MessageBoxResult confirmed = MessageBox.Show("¿Estás seguro de que deseas restaurar TODOS los objetivos personalizados a sus coordenadas originales de fábrica?\n\nEsta acción restablecerá todas tus modificaciones de objetivos en el mapa.", "Restaurar Todo a Fábrica", MessageBoxButton.YesNo, MessageBoxImage.Exclamation);
+		MessageBoxResult confirmed = MessageBox.Show("Are you sure you want to restore ALL customized objectives to their original factory coordinates?\n\nThis will reset all your map objective adjustments.", "Restore All to Default", MessageBoxButton.YesNo, MessageBoxImage.Exclamation);
 		if (confirmed == MessageBoxResult.Yes)
 		{
 			int count = await _relocationService.RestoreAllObjectivesToFactoryAsync();
-			MessageBox.Show($"Se restauraron exitosamente {count} objetivos a sus valores originales de fábrica.", "Restauración Completada", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+			MessageBox.Show($"Successfully restored {count} objectives to their original factory coordinates.", "Restore Completed", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 			await RefreshAllAsync();
 		}
 	}

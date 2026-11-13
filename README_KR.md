@@ -1,7 +1,7 @@
 # TarkovHelper
 
-[![Español](https://img.shields.io/badge/lang-Español-yellow.svg)](README.md)
-[![English](https://img.shields.io/badge/lang-English-blue.svg)](README_EN.md)
+[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
+[![Español](https://img.shields.io/badge/lang-Español-yellow.svg)](README_ES.md)
 [![한국어](https://img.shields.io/badge/lang-한국어-red.svg)](README_KR.md)
 
 Escape from Tarkov 퀘스트 및 은신처 진행 상황을 추적하는 Windows 데스크톱 애플리케이션입니다.

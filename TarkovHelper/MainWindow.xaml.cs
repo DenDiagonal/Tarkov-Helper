@@ -4333,7 +4333,7 @@ public partial class MainWindow : Window
 
             _log.Error($"Error opening rollback dialog: {ex.Message}");
 
-            MessageBox.Show($"Error al abrir el gestor de respaldos: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error opening backup manager: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
 
         }
 
@@ -4401,7 +4401,7 @@ public partial class MainWindow : Window
 
             {
 
-                TxtApiUpdateStatus.Text = "Base de datos al día con Tarkov Tracker.";
+                TxtApiUpdateStatus.Text = "Database up to date with Tarkov Tracker.";
 
                 TxtApiUpdateStatus.Foreground = (TryFindResource("SuccessBrush") as Brush) ?? (TryFindResource("TacticalSuccessBrush") as Brush) ?? System.Windows.Media.Brushes.MediumSeaGreen;
 
@@ -4431,7 +4431,7 @@ public partial class MainWindow : Window
 
             {
 
-                TxtApiUpdateStatus.Text = $"Actualización completada: {result.DiffReport.TotalChanges} cambios aplicados.";
+                TxtApiUpdateStatus.Text = $"Update completed: {result.DiffReport.TotalChanges} changes applied.";
 
                 TxtApiUpdateStatus.Foreground = (TryFindResource("SuccessBrush") as Brush) ?? (TryFindResource("TacticalSuccessBrush") as Brush) ?? System.Windows.Media.Brushes.MediumSeaGreen;
 
@@ -4443,7 +4443,7 @@ public partial class MainWindow : Window
 
             {
 
-                TxtApiUpdateStatus.Text = "Actualización cancelada por el usuario.";
+                TxtApiUpdateStatus.Text = "Update cancelled by user.";
 
                 TxtApiUpdateStatus.Foreground = (TryFindResource("TextSecondaryBrush") as Brush) ?? (TryFindResource("TacticalTextSecondaryBrush") as Brush) ?? System.Windows.Media.Brushes.Gray;
 

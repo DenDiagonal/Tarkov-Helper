@@ -1235,7 +1235,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			return;
 		}
 		string targetObjectiveId = service.TargetObjectiveId;
-		string targetDesc = service.TargetObjectiveDescription ?? service.TargetQuestName ?? "Objetivo";
+		string targetDesc = service.TargetObjectiveDescription ?? service.TargetQuestName ?? "Objective";
 		if (string.IsNullOrEmpty(_currentMapKey) || string.IsNullOrEmpty(targetObjectiveId))
 		{
 			service.CancelPlacement();
@@ -2676,7 +2676,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 				MapCanvas.Cursor = System.Windows.Input.Cursors.Arrow;
 				MapViewerGrid.Cursor = System.Windows.Input.Cursors.Arrow;
 			}
-			if (System.Windows.MessageBox.Show("¿Deseas restaurar la ubicación de fábrica de este objetivo (" + objectiveVmFromSender.Description + ")?", "Restaurar ubicación", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+			if (System.Windows.MessageBox.Show("Do you want to restore the factory location for this objective (" + objectiveVmFromSender.Description + ")?", "Restore Location", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
 			{
 				await instance.RestoreObjectiveToFactoryAsync(objectiveVmFromSender.ObjectiveId);
 			}
@@ -3215,7 +3215,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 				MapCanvas.Cursor = System.Windows.Input.Cursors.Arrow;
 				MapViewerGrid.Cursor = System.Windows.Input.Cursors.Arrow;
 			}
-			if (System.Windows.MessageBox.Show("¿Deseas eliminar la ubicación asignada a este objetivo (" + tag.Description + ") y restablecer su estado original?", "Restablecer ubicación", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+			if (System.Windows.MessageBox.Show("Do you want to remove the assigned location for this objective (" + tag.Description + ") and restore its original default?", "Reset Location", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
 			{
 				await instance.ClearObjectiveLocationAsync(tag.ObjectiveId);
 			}

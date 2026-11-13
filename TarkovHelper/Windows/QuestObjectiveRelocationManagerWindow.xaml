@@ -1,4 +1,4 @@
-<Window x:Class="TarkovHelper.Windows.QuestObjectiveRelocationManagerWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Gestor de Reubicación de Objetivos" Width="960" Height="680" MinWidth="850" MinHeight="550" WindowStartupLocation="CenterOwner" Background="#0D0E11" Foreground="#EDEDED" xmlns:windows="clr-namespace:TarkovHelper.Windows;assembly=TarkovHelper">
+<Window x:Class="TarkovHelper.Windows.QuestObjectiveRelocationManagerWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Objective Relocation &amp; History Manager" Width="960" Height="680" MinWidth="850" MinHeight="550" WindowStartupLocation="CenterOwner" Background="#0D0E11" Foreground="#EDEDED" xmlns:windows="clr-namespace:TarkovHelper.Windows;assembly=TarkovHelper">
   <FrameworkElement.Resources>
     <ResourceDictionary>
       <SolidColorBrush x:Key="AccentGoldBrush" Color="#C5A84A" />
@@ -102,14 +102,14 @@
           <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
         <StackPanel Grid.Column="0">
-          <TextBlock Text="🎯 Gestor de Reubicación de Objetivos e Historial" FontSize="17" FontWeight="Bold" Foreground="#C5A84A" />
-          <TextBlock Text="Localiza, reubica interactivamente o restaura las coordenadas de misiones a sus valores originales de fábrica." FontSize="12" Foreground="#A0A0A5" Margin="0,3,0,0" />
+          <TextBlock Text="🎯 Objective Relocation Manager &amp; History" FontSize="17" FontWeight="Bold" Foreground="#C5A84A" />
+          <TextBlock Text="Locate, interactively relocate, or restore quest objective coordinates to factory defaults." FontSize="12" Foreground="#A0A0A5" Margin="0,3,0,0" />
         </StackPanel>
-        <Button Grid.Column="1" Content="Cerrar" Padding="14,6" VerticalAlignment="Center" Click="BtnClose_Click" />
+        <Button Grid.Column="1" Content="Close" Padding="14,6" VerticalAlignment="Center" Click="BtnClose_Click" />
       </Grid>
     </Border>
     <TabControl Grid.Row="1" Background="#202026" BorderBrush="#33FFFFFF">
-      <TabItem Header="🔍 Buscador y Reubicación">
+      <TabItem Header="🔍 Search &amp; Relocate">
         <Grid Margin="12">
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -128,25 +128,25 @@
                 <ColumnDefinition Width="150" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <TextBox Name="TxtSearchQuery" Grid.Row="0" Grid.Column="0" Margin="0,0,8,0" ToolTip="Buscar por nombre de misión, descripción u objetivo..." KeyDown="TxtSearchQuery_KeyDown" />
+              <TextBox Name="TxtSearchQuery" Grid.Row="0" Grid.Column="0" Margin="0,0,8,0" ToolTip="Search by task name, description, or objective..." KeyDown="TxtSearchQuery_KeyDown" />
               <ComboBox Name="CmbTraderFilter" Grid.Row="0" Grid.Column="1" Margin="0,0,8,0" SelectionChanged="FilterChanged" />
               <ComboBox Name="CmbMapFilter" Grid.Row="0" Grid.Column="2" Margin="0,0,8,0" SelectionChanged="FilterChanged" />
-              <Button Name="BtnSearch" Grid.Row="0" Grid.Column="3" Content="Buscar" Padding="16,4" Click="BtnSearch_Click" />
+              <Button Name="BtnSearch" Grid.Row="0" Grid.Column="3" Content="Search" Padding="16,4" Click="BtnSearch_Click" />
               <StackPanel Grid.Row="1" Grid.ColumnSpan="4" Orientation="Horizontal" Margin="0,8,0,0">
-                <CheckBox Name="ChkGeographicOnly" Content="Solo objetivos con significado geográfico" IsChecked="True" Foreground="#E0E0E0" VerticalAlignment="Center" Margin="0,0,20,0" Checked="FilterChanged" Unchecked="FilterChanged" />
-                <CheckBox Name="ChkWithoutCoordsOnly" Content="Solo objetivos sin coordenadas" IsChecked="False" Foreground="#E0E0E0" VerticalAlignment="Center" Checked="FilterChanged" Unchecked="FilterChanged" />
-                <TextBlock Name="TxtSearchResultCount" Text="0 objetivos encontrados" Foreground="#A0A0A5" VerticalAlignment="Center" Margin="20,0,0,0" />
+                <CheckBox Name="ChkGeographicOnly" Content="Only objectives with geographic significance" IsChecked="True" Foreground="#E0E0E0" VerticalAlignment="Center" Margin="0,0,20,0" Checked="FilterChanged" Unchecked="FilterChanged" />
+                <CheckBox Name="ChkWithoutCoordsOnly" Content="Only objectives without coordinates" IsChecked="False" Foreground="#E0E0E0" VerticalAlignment="Center" Checked="FilterChanged" Unchecked="FilterChanged" />
+                <TextBlock Name="TxtSearchResultCount" Text="0 objectives found" Foreground="#A0A0A5" VerticalAlignment="Center" Margin="20,0,0,0" />
               </StackPanel>
             </Grid>
           </Border>
           <DataGrid Name="GridSearchResults" Grid.Row="1" SelectionChanged="GridSearchResults_SelectionChanged">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="Misión" Width="160" Binding="{Binding QuestName}" />
+              <DataGridTextColumn Header="Task" Width="160" Binding="{Binding QuestName}" />
               <DataGridTextColumn Header="Comerciante" Width="100" Binding="{Binding Trader}" />
               <DataGridTextColumn Header="Mapa" Width="100" Binding="{Binding MapName}" />
               <DataGridTextColumn Header="Tipo" Width="75" Binding="{Binding Type}" />
-              <DataGridTextColumn Header="Descripción" Width="*" Binding="{Binding Description}" />
-              <DataGridTextColumn Header="Estado" Width="105" Binding="{Binding StatusDisplay}" />
+              <DataGridTextColumn Header="Description" Width="*" Binding="{Binding Description}" />
+              <DataGridTextColumn Header="Status" Width="105" Binding="{Binding StatusDisplay}" />
             </DataGrid.Columns>
           </DataGrid>
           <Border Grid.Row="2" Background="#26262E" CornerRadius="4" Padding="12,8" Margin="0,10,0,0" BorderBrush="#2AFFFFFF" BorderThickness="1">
@@ -156,17 +156,17 @@
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                <TextBlock Name="TxtSelectedObjectiveInfo" Text="Selecciona un objetivo para reubicarlo o consultar sus coordenadas." FontSize="12" Foreground="#D0D0D0" TextTrimming="CharacterEllipsis" />
+                <TextBlock Name="TxtSelectedObjectiveInfo" Text="Select an objective to relocate or view its coordinates." FontSize="12" Foreground="#D0D0D0" TextTrimming="CharacterEllipsis" />
               </StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal">
-                <Button Name="BtnRelocateSelected" Content="📍 Reubicar en el Mapa" Padding="14,6" Margin="0,0,8,0" IsEnabled="False" Background="#1E3A20" Foreground="#66BB6A" BorderBrush="#4466BB6A" Click="BtnRelocateSelected_Click" />
-                <Button Name="BtnRestoreSingle" Content="↩ Restaurar Original" Padding="14,6" IsEnabled="False" Background="#3A2A1A" Foreground="#FFA726" BorderBrush="#44FFA726" Click="BtnRestoreSingle_Click" />
+                <Button Name="BtnRelocateSelected" Content="📍 Relocate on Map" Padding="14,6" Margin="0,0,8,0" IsEnabled="False" Background="#1E3A20" Foreground="#66BB6A" BorderBrush="#4466BB6A" Click="BtnRelocateSelected_Click" />
+                <Button Name="BtnRestoreSingle" Content="↩ Restore Original" Padding="14,6" IsEnabled="False" Background="#3A2A1A" Foreground="#FFA726" BorderBrush="#44FFA726" Click="BtnRestoreSingle_Click" />
               </StackPanel>
             </Grid>
           </Border>
         </Grid>
       </TabItem>
-      <TabItem Header="📋 Historial de Modificaciones">
+      <TabItem Header="📋 Modification History">
         <Grid Margin="12">
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -180,20 +180,20 @@
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                <TextBlock Name="TxtCustomizedCountHeader" Text="Objetivos personalizados por el usuario: 0" FontSize="14" FontWeight="SemiBold" Foreground="#C5A84A" />
-                <TextBlock Text="Los objetivos restaurados recuperan fielmente sus coordenadas de fábrica sin perderse." FontSize="11" Foreground="#A0A0A5" Margin="0,2,0,0" />
+                <TextBlock Name="TxtCustomizedCountHeader" Text="User-customized objectives: 0" FontSize="14" FontWeight="SemiBold" Foreground="#C5A84A" />
+                <TextBlock Text="Restored objectives faithfully recover their factory coordinates." FontSize="11" Foreground="#A0A0A5" Margin="0,2,0,0" />
               </StackPanel>
-              <Button Name="BtnRestoreAll" Grid.Column="1" Content="🔄 Restaurar Todo a Fábrica" Padding="14,6" Background="#3A1A1A" Foreground="#EF5350" BorderBrush="#66EF5350" Click="BtnRestoreAll_Click" />
+              <Button Name="BtnRestoreAll" Grid.Column="1" Content="🔄 Restore All to Default" Padding="14,6" Background="#3A1A1A" Foreground="#EF5350" BorderBrush="#66EF5350" Click="BtnRestoreAll_Click" />
             </Grid>
           </Border>
           <DataGrid Name="GridHistoryResults" Grid.Row="1" SelectionChanged="GridHistoryResults_SelectionChanged">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="Misión" Width="150" Binding="{Binding QuestName}" />
+              <DataGridTextColumn Header="Task" Width="150" Binding="{Binding QuestName}" />
               <DataGridTextColumn Header="Comerciante" Width="90" Binding="{Binding Trader}" />
               <DataGridTextColumn Header="Mapa" Width="90" Binding="{Binding MapName}" />
-              <DataGridTextColumn Header="Descripción" Width="*" Binding="{Binding Description}" />
-              <DataGridTextColumn Header="Coords. Actuales" Width="150" Binding="{Binding CurrentCoordinatesDisplay}" />
-              <DataGridTextColumn Header="Coords. Fábrica" Width="150" Binding="{Binding OriginalCoordinatesDisplay}" />
+              <DataGridTextColumn Header="Description" Width="*" Binding="{Binding Description}" />
+              <DataGridTextColumn Header="Current Coords" Width="150" Binding="{Binding CurrentCoordinatesDisplay}" />
+              <DataGridTextColumn Header="Default Coords" Width="150" Binding="{Binding OriginalCoordinatesDisplay}" />
             </DataGrid.Columns>
           </DataGrid>
           <Border Grid.Row="2" Background="#26262E" CornerRadius="4" Padding="12,8" Margin="0,10,0,0" BorderBrush="#2AFFFFFF" BorderThickness="1">
@@ -202,10 +202,10 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <TextBlock Name="TxtSelectedHistoryInfo" Text="Selecciona un objetivo del historial para restaurarlo." VerticalAlignment="Center" FontSize="12" Foreground="#D0D0D0" />
+              <TextBlock Name="TxtSelectedHistoryInfo" Text="Select an objective from history to restore." VerticalAlignment="Center" FontSize="12" Foreground="#D0D0D0" />
               <StackPanel Grid.Column="1" Orientation="Horizontal">
                 <Button Name="BtnHistoryRelocate" Content="📍 Reubicar de Nuevo" Padding="14,6" Margin="0,0,8,0" IsEnabled="False" Background="#1E3A20" Foreground="#66BB6A" BorderBrush="#4466BB6A" Click="BtnHistoryRelocate_Click" />
-                <Button Name="BtnHistoryRestore" Content="↩ Restaurar a Original" Padding="14,6" IsEnabled="False" Background="#3A2A1A" Foreground="#FFA726" BorderBrush="#44FFA726" Click="BtnHistoryRestore_Click" />
+                <Button Name="BtnHistoryRestore" Content="↩ Restore to Original" Padding="14,6" IsEnabled="False" Background="#3A2A1A" Foreground="#FFA726" BorderBrush="#44FFA726" Click="BtnHistoryRestore_Click" />
               </StackPanel>
             </Grid>
           </Border>

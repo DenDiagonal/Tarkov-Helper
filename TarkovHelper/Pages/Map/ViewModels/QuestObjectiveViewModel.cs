@@ -77,8 +77,8 @@ public class QuestObjectiveViewModel
 
     public string RelocateButtonText => HasLocation ? "📍 Reubicar" : "📍 Ubicar";
     public string RelocateToolTip => HasLocation
-        ? "Reubicar este objetivo en el mapa"
-        : "Ubicar este objetivo en el mapa";
+        ? "Relocate this objective on map"
+        : "Place this objective on map";
 
     public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, bool isSelected = false)
         : this(objective, loc, null, isSelected, null, null, null)

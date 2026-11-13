@@ -146,10 +146,10 @@ namespace TarkovHelper.ViewModels
         public bool IsSpecialTraderWithoutToggle => HasNoLoyaltyLevels && !IsBtrDriver;
 
         public string BtrToggleIcon => IsLocked ? "🔓" : "✓";
-        public string BtrToggleText => IsLocked ? "Desbloquear BTR" : "✓ Activo (Pausar)";
+        public string BtrToggleText => IsLocked ? "Unlock BTR" : "✓ Active (Pause)";
         public string BtrToggleToolTip => IsLocked
-            ? "Haz clic para desbloquear manualmente al Conductor del BTR (o entrega 'A Helping Hand')"
-            : "Conductor del BTR activo. Haz clic para bloquearlo o pausarlo.";
+            ? "Click to manually unlock BTR Driver (or complete 'A Helping Hand')"
+            : "BTR Driver active. Click to lock or pause.";
 
         private static readonly Brush BtrLockedBg = new SolidColorBrush(Color.FromArgb(0x55, 0x5E, 0x2A, 0x2A));
         private static readonly Brush BtrLockedBorder = new SolidColorBrush(Color.FromRgb(0x8E, 0x3A, 0x3A));

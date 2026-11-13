@@ -557,7 +557,7 @@ public sealed class QuestObjectiveRelocationService
 							string locJson = (reader.IsDBNull(7) ? null : reader.GetString(7));
 							bool isCustomized = !reader.IsDBNull(8) && reader.GetInt32(8) == 1;
 							bool hasLocation = !string.IsNullOrWhiteSpace(locJson);
-							string status = (isCustomized ? "Personalizado" : ((!hasLocation) ? "Sin ubicación" : "Fábrica"));
+							string status = (isCustomized ? "Custom" : ((!hasLocation) ? "No Location" : "Default"));
 							list.Add(new RelocationSearchItem
 							{
 								ObjectiveId = reader.GetString(0),

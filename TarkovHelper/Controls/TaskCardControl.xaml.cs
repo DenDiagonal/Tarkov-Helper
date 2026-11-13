@@ -106,7 +106,7 @@ namespace TarkovHelper.Controls
             {
                 if (Alternatives.Count <= 1) return ItemName;
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine($"Alternativas válidas ({_currentAlternativeIndex + 1} de {Alternatives.Count}) - Selecciona en el menú desplegable:");
+                sb.AppendLine($"Valid alternatives ({_currentAlternativeIndex + 1} of {Alternatives.Count}) - Select from dropdown:");
                 for (int i = 0; i < Alternatives.Count; i++)
                 {
                     string marker = i == _currentAlternativeIndex ? " ▶ " : "   • ";
@@ -756,7 +756,7 @@ namespace TarkovHelper.Controls
             set { _lockToggleIcon = value; OnPropertyChanged(); }
         }
 
-        private string _lockToggleToolTip = "Estado de misión";
+        private string _lockToggleToolTip = "Task status";
         public string LockToggleToolTip
         {
             get => _lockToggleToolTip;
@@ -805,7 +805,7 @@ namespace TarkovHelper.Controls
             if (isForceUnlocked)
             {
                 LockToggleIcon = "🔓";
-                LockToggleToolTip = "Desbloqueada MANUALMENTE (Forzada activa).\nClic: restablecer automático.\nClic derecho: menú.";
+                LockToggleToolTip = "MANUALLY Unlocked (Forced active).\nClick: reset to automatic.\nRight-click: options.";
                 LockToggleBackground = TacticalBrushes.ActiveBg;
                 LockToggleBorder = TacticalBrushes.BorderGold;
                 LockToggleForeground = TacticalBrushes.ActiveFg;
@@ -813,7 +813,7 @@ namespace TarkovHelper.Controls
             else if (isForceLocked)
             {
                 LockToggleIcon = "🔒";
-                LockToggleToolTip = "Bloqueada MANUALMENTE (Forzada bloqueada).\nClic: restablecer automático.\nClic derecho: menú.";
+                LockToggleToolTip = "MANUALLY Locked (Forced locked).\nClick: reset to automatic.\nRight-click: options.";
                 LockToggleBackground = TacticalBrushes.LockedBg;
                 LockToggleBorder = TacticalBrushes.BorderGold;
                 LockToggleForeground = TacticalBrushes.LockedFg;
@@ -821,7 +821,7 @@ namespace TarkovHelper.Controls
             else if (currentStatus == QuestStatus.Active)
             {
                 LockToggleIcon = "🔓";
-                LockToggleToolTip = "Estado: Activa (Automático según requisitos).\nClic: forzar bloqueo.\nClic derecho: menú.";
+                LockToggleToolTip = "Status: Active (Automatic from requirements).\nClick: force lock.\nRight-click: options.";
                 LockToggleBackground = TacticalBrushes.Surface3;
                 LockToggleBorder = TacticalBrushes.BorderMedium;
                 LockToggleForeground = TacticalBrushes.ActiveFg;
@@ -829,7 +829,7 @@ namespace TarkovHelper.Controls
             else if (currentStatus == QuestStatus.Done)
             {
                 LockToggleIcon = "✓";
-                LockToggleToolTip = "Estado: Completada.\nClic derecho: opciones de estado.";
+                LockToggleToolTip = "Status: Completed.\nRight-click: status options.";
                 LockToggleBackground = TacticalBrushes.DoneBg;
                 LockToggleBorder = TacticalBrushes.DoneBorder;
                 LockToggleForeground = TacticalBrushes.DoneFg;
@@ -837,7 +837,7 @@ namespace TarkovHelper.Controls
             else
             {
                 LockToggleIcon = "🔒";
-                LockToggleToolTip = $"Estado: {currentStatus} (Automático según requisitos).\nClic: forzar desbloqueo.\nClic derecho: menú.";
+                LockToggleToolTip = $"Status: {currentStatus} (Automatic from requirements).\nClick: force unlock.\nRight-click: options.";
                 LockToggleBackground = TacticalBrushes.LockedBg;
                 LockToggleBorder = TacticalBrushes.LockedBorder;
                 LockToggleForeground = TacticalBrushes.LockedFg;
@@ -961,7 +961,7 @@ namespace TarkovHelper.Controls
 
             : TacticalBrushes.TextSecondary;
 
-        public string CompleteButtonText => IsCompleted ? "Completada" : "Completar";
+        public string CompleteButtonText => IsCompleted ? "Completed" : "Complete";
 
         public int TotalRequirements
         {
