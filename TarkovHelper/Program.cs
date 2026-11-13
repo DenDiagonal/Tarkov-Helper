@@ -18,18 +18,30 @@ public class Program
     {
         try
         {
+            if (args.Contains("--capture-screenshots"))
+            {
+                MigrationService.RunMigrationIfNeeded();
+
+                var screenshotApp = new App();
+                screenshotApp.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
+                screenshotApp.InitializeComponent();
+                CaptureScreenshotsRoutine(screenshotApp);
+                return;
+            }
+
+            // Enforce single instance: if another instance is already running,
+            // signal it to restore/focus and exit immediately.
+            if (!SingleInstanceService.Instance.Start())
+            {
+                return;
+            }
+
             // Run migration before anything else
             MigrationService.RunMigrationIfNeeded();
 
             var app = new App();
             app.ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown;
             app.InitializeComponent();
-
-            if (args.Contains("--capture-screenshots"))
-            {
-                CaptureScreenshotsRoutine(app);
-                return;
-            }
 
             var mainWindow = new MainWindow();
 
@@ -54,6 +66,10 @@ public class Program
             var logPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "startup_crash.log");
             System.IO.File.WriteAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Fatal Main Exception:\n{ex}\n\nStack:\n{ex.StackTrace}");
             throw;
+        }
+        finally
+        {
+            SingleInstanceService.Instance.Dispose();
         }
     }
 

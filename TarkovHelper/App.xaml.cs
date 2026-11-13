@@ -119,6 +119,16 @@ namespace TarkovHelper
 
             try
             {
+                // Dispose single instance mutex and event handle
+                SingleInstanceService.Instance.Dispose();
+            }
+            catch
+            {
+                // Ignore errors during shutdown
+            }
+
+            try
+            {
                 // Flush and dispose logging service
                 LoggingService.Instance.Dispose();
             }
