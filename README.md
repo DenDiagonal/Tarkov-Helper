@@ -3,12 +3,25 @@
 [![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
 [![Español](https://img.shields.io/badge/lang-Español-yellow.svg)](README_ES.md)
 [![한국어](https://img.shields.io/badge/lang-한국어-red.svg)](README_KR.md)
+[![日本語](https://img.shields.io/badge/lang-日本語-lightgrey.svg)](README_JA.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078d7.svg)](https://microsoft.com/windows)
 [![.NET](https://img.shields.io/badge/.NET-8.0%20WPF-512bd4.svg)](https://dotnet.microsoft.com/download/dotnet/8.0)
 [![Version](https://img.shields.io/badge/release-v1.5.8-brightgreen.svg)](https://github.com/DenDiagonal/Tarkov-Helper/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-success.svg)](LICENSE)
 
 **Tarkov Helper** is a modern, high-performance, offline-first tactical desktop companion for **Escape from Tarkov** on Windows. It streamlines your raids by tracking quest objectives, Hideout upgrades, Found-in-Raid (FIR) items, key requirements, and interactive vector maps with real-time player positioning—all without injecting into game memory or violating BattlEye terms of service.
+
+---
+
+## 🌐 Multilingual Support (Multi-idioma)
+
+Tarkov Helper natively supports 4 languages with full in-game quest, item, trader, map, and UI translation with zero application restarts:
+- **English** (EN)
+- **Español** (ES)
+- **한국어** (Korean - KO)
+- **日本語** (Japanese - JA)
+
+Switch languages at any time from **Settings (⚙) -> Language**.
 
 ---
 
@@ -37,6 +50,13 @@
 - **Passive Player Tracking (`PrintScreen`):** Pressing `PrintScreen` in-game records your position passively from EFT's official screenshot metadata—100% memory-safe and fully BattlEye compliant.
 - **Transparent Overlay Minimap:** Borderless, click-through capable overlay window to display maps on a secondary monitor or directly on top of the game screen.
 - **Interactive Objective Relocation:** Interactively adjust or fine-tune quest marker coordinates directly on the map, with a built-in history manager and one-click factory reset.
+
+### ⌨️ Global Shortcuts & Minimap Quick Access
+- **Top Header Shortcut:** Dedicated **🗺️** button in the main header to open or toggle the Minimap with a single click from any tab (illuminates blue when active).
+- **`Ctrl + 1` (or `Ctrl + NumPad 1`):** Global hotkey to toggle the Minimap Overlay on/off anywhere (in-game, desktop, or app).
+- **`Ctrl + 7` (or `Ctrl + NumPad 7`):** Open Minimap Overlay Settings dialog.
+- **`Ctrl + 9` (or `Ctrl + NumPad 9`):** Toggle Click-Through mode (allows clicking directly through the minimap to your game).
+- **`NumPad 0 - 5`:** Instantly switch between map elevation floors.
 
 ### 🔄 Independent PVP and PVE Game Modes
 - **Zero Cross-Contamination:** Switch between **PVP** and **PVE** PMC profiles with a single click.

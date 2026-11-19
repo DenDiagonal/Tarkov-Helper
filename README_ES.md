@@ -3,11 +3,24 @@
 [![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md)
 [![Español](https://img.shields.io/badge/lang-Español-yellow.svg)](README_ES.md)
 [![한국어](https://img.shields.io/badge/lang-한국어-red.svg)](README_KR.md)
+[![日本語](https://img.shields.io/badge/lang-日本語-lightgrey.svg)](README_JA.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078d7.svg)](https://microsoft.com/windows)
 [![.NET](https://img.shields.io/badge/.NET-8.0%20WPF-512bd4.svg)](https://dotnet.microsoft.com/download/dotnet/8.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-success.svg)](LICENSE)
 
 **Tarkov Helper** es una aplicación de escritorio moderna y táctica para Windows diseñada para optimizar y acompañar tus incursiones en **Escape from Tarkov**. Permite gestionar el progreso de misiones, módulos del refugio (Hideout), requisitos de objetos (FIR), llaves necesarias y mapas interactivos con posicionamiento en tiempo real sin interferir con el juego.
+
+---
+
+## 🌐 Soporte Multi-idioma (4 Idiomas)
+
+Tarkov Helper cuenta con soporte nativo e internacional completo (misiones, objetos, comerciantes, mapas e interfaz) sin necesidad de reiniciar la app:
+- **Español** (ES)
+- **English** (EN)
+- **한국어** (Coreano - KO)
+- **日本語** (Japonés - JA)
+
+Puedes cambiar de idioma en cualquier momento desde **Ajustes (⚙) -> Idioma**.
 
 ---
 
@@ -34,6 +47,13 @@
 - **Detección Automática de Altura:** Cambio inteligente de piso según la coordenada de elevación (Y) del jugador.
 - **Seguimiento por Captura (`PrintScreen`):** Detecta las coordenadas del jugador pulsando `PrintScreen` dentro de EFT de forma 100% pasiva y segura (sin inyección en memoria, compatible con BattleEye).
 - **Modo Mini-Mapa (Overlay):** Ventana superpuesta y transparente para consultar el mapa en una segunda pantalla o encima del juego.
+
+### ⌨️ Atajos Globales y Acceso Rápido al Minimapa
+- **Botón en Cabecera:** Acceso directo con el botón **🗺️** en la barra superior para abrir/cerrar el minimapa con 1 clic desde cualquier pestaña (se ilumina en azul cuando está activo).
+- **`Ctrl + 1` (o `Ctrl + NumPad 1`):** Atajo global para abrir o cerrar el Minimapa Overlay en cualquier momento (incluso jugando a pantalla completa o en el escritorio).
+- **`Ctrl + 7` (o `Ctrl + NumPad 7`):** Abrir ventana de configuración del overlay.
+- **`Ctrl + 9` (o `Ctrl + NumPad 9`):** Alternar modo Click-Through (para hacer clic a través del mapa hacia el juego).
+- **`NumPad 0 - 5`:** Cambiar de piso/elevación en el mapa de forma inmediata.
 
 ### 🔄 Perfiles Independientes PVE y PVP
 - **Separación Total de Datos:** Alterna entre tus partidas de **PVP** y **PVE** con un solo clic.
