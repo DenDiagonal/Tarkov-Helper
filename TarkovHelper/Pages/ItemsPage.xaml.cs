@@ -110,7 +110,17 @@ namespace TarkovHelper.Pages
 
         private void OnLanguageChanged(object? sender, AppLanguage e)
         {
-            Dispatcher.InvokeAsync(async () => await ViewModel.LoadCardsAsync());
+            Dispatcher.InvokeAsync(async () =>
+            {
+                try
+                {
+                    await ViewModel.LoadCardsAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ItemsPage OnLanguageChanged error: {ex.Message}");
+                }
+            });
         }
 
         private void CardsScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)

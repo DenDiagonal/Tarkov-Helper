@@ -36,6 +36,9 @@ namespace TarkovHelper.Pages
             SettingsService.Instance.ScavRepChanged -= OnScavRepChanged;
             SettingsService.Instance.ScavRepChanged += OnScavRepChanged;
 
+            LocalizationService.Instance.LanguageChanged -= OnLanguageChanged;
+            LocalizationService.Instance.LanguageChanged += OnLanguageChanged;
+
             Refresh();
         }
 
@@ -44,6 +47,22 @@ namespace TarkovHelper.Pages
             QuestProgressService.Instance.ProgressChanged -= OnProgressChanged;
             SettingsService.Instance.PlayerLevelChanged -= OnPlayerLevelChanged;
             SettingsService.Instance.ScavRepChanged -= OnScavRepChanged;
+            LocalizationService.Instance.LanguageChanged -= OnLanguageChanged;
+        }
+
+        private void OnLanguageChanged(object? sender, AppLanguage e)
+        {
+            Dispatcher.InvokeAsync(() =>
+            {
+                try
+                {
+                    Refresh();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"DashboardPage OnLanguageChanged error: {ex.Message}");
+                }
+            });
         }
 
         private void OnProgressChanged(object? sender, EventArgs e)
@@ -288,16 +307,6 @@ namespace TarkovHelper.Pages
         }
 
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => throw new NotImplementedException();
-    }
-
-    public class BoolToVisibilityConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            return value is true ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => Binding.DoNothing;
     }
 
     public class InverseBoolToVisibilityConverter : IValueConverter

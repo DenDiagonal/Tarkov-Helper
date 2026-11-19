@@ -152,6 +152,9 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
     /// <param name="gameY">게임 position.y 좌표 (높이)</param>
     /// <param name="gameZ">게임 position.z 좌표</param>
     /// <param name="angle">플레이어 방향 각도 (선택)</param>
+    private static bool IsValidCoordinatePair(double x, double y) =>
+        double.IsFinite(x) && double.IsFinite(y) && Math.Abs(x) < 1e7 && Math.Abs(y) < 1e7;
+
     /// <param name="screenPosition">변환된 화면 좌표</param>
     /// <returns>변환 성공 여부</returns>
     private bool TryTransformGameCoordinate(string mapKey, double gameX, double gameY, double? gameZ, double? angle, out ScreenPosition? screenPosition)
@@ -184,7 +187,7 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
             // 3. 우선순위 3: 4개 요소를 가진 Leaflet 스타일 변환 (Transform)
             else if (config.Transform != null && config.Transform.Length >= 4)
             {
-                if (config.SvgBounds == null || config.SvgBounds.Length < 2)
+                if (config.SvgBounds == null || config.SvgBounds.Length < 4 || config.ImageWidth <= 0 || config.ImageHeight <= 0)
                     return false;
 
                 // 1. 게임 좌표 → Leaflet 좌표 (lat=z, lng=x)
@@ -200,6 +203,9 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
                 var scaleY = config.Transform[2] * -1;
                 var marginY = config.Transform[3];
 
+                if (Math.Abs(scaleX) < 1e-9 || Math.Abs(scaleY) < 1e-9)
+                    return false;
+
                 var markerPixelX = scaleX * rotatedLng + marginX;
                 var markerPixelY = scaleY * rotatedLat + marginY;
 
@@ -207,9 +213,14 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
                 var (svgPixelXMin, svgPixelXMax, svgPixelYMin, svgPixelYMax) =
                     CalculateSvgPixelBounds(config, scaleX, marginX, scaleY, marginY);
 
+                double spanX = svgPixelXMax - svgPixelXMin;
+                double spanY = svgPixelYMax - svgPixelYMin;
+                if (Math.Abs(spanX) < 1e-9 || Math.Abs(spanY) < 1e-9)
+                    return false;
+
                 // 5. ViewBox 좌표로 정규화
-                var normalizedX = (markerPixelX - svgPixelXMin) / (svgPixelXMax - svgPixelXMin);
-                var normalizedY = (markerPixelY - svgPixelYMin) / (svgPixelYMax - svgPixelYMin);
+                var normalizedX = (markerPixelX - svgPixelXMin) / spanX;
+                var normalizedY = (markerPixelY - svgPixelYMin) / spanY;
 
                 finalX = normalizedX * config.ImageWidth;
                 finalY = normalizedY * config.ImageHeight;
@@ -218,6 +229,9 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
             {
                 return false;
             }
+
+            if (!IsValidCoordinatePair(finalX, finalY))
+                return false;
 
             screenPosition = new ScreenPosition
             {
@@ -489,6 +503,8 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
     public bool TryTransformToWorld(string mapKey, double screenX, double screenY, out EftPosition? worldPosition)
     {
         worldPosition = null;
+        if (!IsValidCoordinatePair(screenX, screenY))
+            return false;
 
         var config = GetMapConfig(mapKey);
         if (config == null)
@@ -496,63 +512,79 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
 
         try
         {
-            // 1. 우선순위 1: 6개 요소를 가진 Affine 변환 (PlayerMarkerTransform 또는 CalibratedTransform)
-            var affineTransform = config.PlayerMarkerTransform ?? config.CalibratedTransform;
-            if (affineTransform != null && affineTransform.Length >= 6)
+            // 1. Si usa CalibratedTransform (+ IDW), invertir la misma función exacta mediante refinamiento fijo de 3 pasos
+            if (config.CalibratedTransform is { Length: >= 6 })
             {
-                var (gameX, gameZ) = config.ScreenToGameForPlayer(screenX, screenY);
-                
-                worldPosition = new EftPosition
+                if (!config.TryScreenToGameAffine(config.CalibratedTransform, screenX, screenY, out double gx, out double gz))
+                    return false;
+
+                if (config.CalibrationPoints is { Count: > 0 })
                 {
-                    MapName = mapKey,
-                    X = gameX,
-                    Y = 0, // 높이는 평면 클릭으로 알 수 없음
-                    Z = gameZ,
-                    Timestamp = DateTime.Now
-                };
-                
+                    var cal = MapCalibrationService.Instance;
+                    for (int iter = 0; iter < 3; iter++)
+                    {
+                        var (estX, estY) = cal.ApplyCalibratedTransformWithIDW(
+                            config.CalibratedTransform, config.CalibrationPoints, gx, gz);
+                        double errX = screenX - estX;
+                        double errY = screenY - estY;
+                        if (errX * errX + errY * errY < 1e-4) break;
+
+                        double a = config.CalibratedTransform[0], b = config.CalibratedTransform[1];
+                        double c = config.CalibratedTransform[2], d = config.CalibratedTransform[3];
+                        double det = a * d - b * c;
+                        if (Math.Abs(det) < 1e-9) break;
+                        gx += (d * errX - b * errY) / det;
+                        gz += (-c * errX + a * errY) / det;
+                    }
+                }
+
+                if (!IsValidCoordinatePair(gx, gz)) return false;
+                worldPosition = new EftPosition { MapName = config.Key, X = gx, Y = 0, Z = gz, Timestamp = DateTime.Now };
                 return true;
             }
 
-            // 2. 우선순위 2: 4개 요소를 가진 Leaflet 스타일 변환 (Transform)
-            if (config.Transform != null && config.Transform.Length >= 4)
+            // 2. Si usa PlayerMarkerTransform
+            if (config.PlayerMarkerTransform is { Length: >= 6 })
             {
-                // 역정규화 (ViewBox → SVG Pixel)
-                var normalizedX = screenX / config.ImageWidth;
-                var normalizedY = screenY / config.ImageHeight;
+                if (!config.TryScreenToGameAffine(config.PlayerMarkerTransform, screenX, screenY, out double gx, out double gz))
+                    return false;
 
-                var scaleX = config.Transform[0];
-                var marginX = config.Transform[1];
-                var scaleY = config.Transform[2] * -1;
-                var marginY = config.Transform[3];
+                worldPosition = new EftPosition { MapName = config.Key, X = gx, Y = 0, Z = gz, Timestamp = DateTime.Now };
+                return true;
+            }
+
+            // 3. Fallback Leaflet con guardias contra división por cero
+            if (config.Transform is { Length: >= 4 } &&
+                config.SvgBounds is { Length: >= 4 } &&
+                config.ImageWidth > 0 && config.ImageHeight > 0)
+            {
+                double scaleX = config.Transform[0];
+                double marginX = config.Transform[1];
+                double scaleY = -config.Transform[2];
+                double marginY = config.Transform[3];
+                if (Math.Abs(scaleX) < 1e-9 || Math.Abs(scaleY) < 1e-9) return false;
 
                 var (svgPixelXMin, svgPixelXMax, svgPixelYMin, svgPixelYMax) =
                     CalculateSvgPixelBounds(config, scaleX, marginX, scaleY, marginY);
+                double spanX = svgPixelXMax - svgPixelXMin;
+                double spanY = svgPixelYMax - svgPixelYMin;
+                if (Math.Abs(spanX) < 1e-9 || Math.Abs(spanY) < 1e-9) return false;
 
-                var markerPixelX = normalizedX * (svgPixelXMax - svgPixelXMin) + svgPixelXMin;
-                var markerPixelY = normalizedY * (svgPixelYMax - svgPixelYMin) + svgPixelYMin;
+                double normalizedX = screenX / config.ImageWidth;
+                double normalizedY = screenY / config.ImageHeight;
+                double markerPixelX = normalizedX * spanX + svgPixelXMin;
+                double markerPixelY = normalizedY * spanY + svgPixelYMin;
 
-                // 역 CRS Transform (SVG Pixel → Rotated Coord)
-                var rotatedLng = (markerPixelX - marginX) / scaleX;
-                var rotatedLat = (markerPixelY - marginY) / scaleY;
+                double rotatedLng = (markerPixelX - marginX) / scaleX;
+                double rotatedLat = (markerPixelY - marginY) / scaleY;
 
-                // 역 회전 적용 (Rotated Coord → Game Coord)
-                var angleInRadians = config.CoordinateRotation * Math.PI / 180.0;
-                var cosAngle = Math.Cos(angleInRadians);
-                var sinAngle = Math.Sin(angleInRadians);
+                double rad = config.CoordinateRotation * Math.PI / 180.0;
+                double cos = Math.Cos(rad), sin = Math.Sin(rad);
+                double lng = rotatedLng * cos + rotatedLat * sin;
+                double lat = -rotatedLng * sin + rotatedLat * cos;
 
-                var lng = rotatedLng * cosAngle + rotatedLat * sinAngle;
-                var lat = -rotatedLng * sinAngle + rotatedLat * cosAngle;
-
-                worldPosition = new EftPosition
-                {
-                    MapName = mapKey,
-                    X = lng,
-                    Y = 0,
-                    Z = lat,
-                    Timestamp = DateTime.Now
-                };
-
+                if (!IsValidCoordinatePair(lng, lat)) return false;
+                worldPosition = new EftPosition { MapName = config.Key, X = lng, Y = 0, Z = lat, Timestamp = DateTime.Now };
                 return true;
             }
 

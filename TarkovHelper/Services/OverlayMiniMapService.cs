@@ -117,7 +117,7 @@ public class OverlayMiniMapService : IDisposable
             }
 
             _overlayWindow?.Show();
-            _overlayWindow?.Activate();
+            // _overlayWindow?.Activate(); // Desactivado para no robar foco ni minimizar Tarkov en pantalla completa exclusiva
             _settings.Enabled = true;
             OverlayVisibilityChanged?.Invoke(true);
 
@@ -146,6 +146,18 @@ public class OverlayMiniMapService : IDisposable
         {
             _log.Error("Failed to hide overlay", ex);
         }
+    }
+
+    /// <summary>
+    /// 프로필 전환 시 오버레이 미니맵 재바인딩
+    /// </summary>
+    public void OnProfileSwitched()
+    {
+        if (_overlayWindow == null) return;
+        _overlayWindow.Dispatcher.BeginInvoke(() =>
+        {
+            _overlayWindow.RebindProfileServices();
+        });
     }
 
     private DateTime _lastToggleTime = DateTime.MinValue;

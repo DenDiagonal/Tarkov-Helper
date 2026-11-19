@@ -10,7 +10,7 @@ namespace TarkovHelper.Windows.Dialogs;
 public partial class CustomMarkerEditorWindow : Window
 {
     private CustomMapMarker _marker;
-    public CustomMapMarker ResultMarker { get; private set; }
+    public CustomMapMarker? ResultMarker { get; private set; }
 
     public CustomMarkerEditorWindow(CustomMapMarker marker)
     {

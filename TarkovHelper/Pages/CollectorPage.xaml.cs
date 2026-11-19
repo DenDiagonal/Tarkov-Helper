@@ -12,7 +12,6 @@ namespace TarkovHelper.Pages
     {
         private readonly LocalizationService _loc = LocalizationService.Instance;
         private readonly QuestProgressService _questProgressService = QuestProgressService.Instance;
-        private readonly QuestGraphService _questGraphService = QuestGraphService.Instance;
         private readonly ItemInventoryService _inventoryService = ItemInventoryService.Instance;
         private readonly ImageCacheService _imageCache = ImageCacheService.Instance;
         private readonly ItemsDataService _itemsDataService = ItemsDataService.Instance;
@@ -154,22 +153,40 @@ namespace TarkovHelper.Pages
 
         private void OnLanguageChanged(object? sender, AppLanguage e)
         {
-            Dispatcher.Invoke(async () =>
+            _ = Dispatcher.InvokeAsync(async () =>
             {
-                await LoadItemsAsync();
-                ApplyFilters();
-                UpdateDetailPanel();
-                _ = LoadImagesInBackgroundAsync();
+                if (_isUnloaded || !_isDataLoaded) return;
+                try
+                {
+                    await LoadItemsAsync();
+                    if (_isUnloaded) return;
+                    ApplyFilters();
+                    UpdateDetailPanel();
+                    _ = LoadImagesInBackgroundAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error on language change in CollectorPage: {ex.Message}");
+                }
             });
         }
 
         private void OnProgressChanged(object? sender, EventArgs e)
         {
-            Dispatcher.Invoke(async () =>
+            _ = Dispatcher.InvokeAsync(async () =>
             {
-                await LoadItemsAsync();
-                ApplyFilters();
-                _ = LoadImagesInBackgroundAsync();
+                if (_isUnloaded || !_isDataLoaded) return;
+                try
+                {
+                    await LoadItemsAsync();
+                    if (_isUnloaded) return;
+                    ApplyFilters();
+                    _ = LoadImagesInBackgroundAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error on progress change in CollectorPage: {ex.Message}");
+                }
             });
         }
 

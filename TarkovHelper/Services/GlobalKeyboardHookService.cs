@@ -17,6 +17,7 @@ public class GlobalKeyboardHookService : IDisposable
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_SYSKEYDOWN = 0x0104;
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
@@ -36,6 +37,17 @@ public class GlobalKeyboardHookService : IDisposable
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, uint dwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageNameW(IntPtr hProcess, uint dwFlags, System.Text.StringBuilder lpExeName, ref uint lpdwSize);
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -61,20 +73,9 @@ public class GlobalKeyboardHookService : IDisposable
     private const int VK_D = 0x44;  // D = Forward
     private const int VK_O = 0x4F;  // O = 오른손
 
-    private static readonly string LogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "TarkovHelper", "keyboard_hook.log");
-
+    [System.Diagnostics.Conditional("DEBUG")]
     private static void Log(string message)
     {
-        try
-        {
-            var dir = Path.GetDirectoryName(LogPath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
-            File.AppendAllText(LogPath, $"[{DateTime.Now:HH:mm:ss.fff}] {message}\n");
-        }
-        catch { }
     }
 
     /// <summary>
@@ -219,8 +220,8 @@ public class GlobalKeyboardHookService : IDisposable
             }
 
             // Global numeric overlay shortcuts (Ctrl+1, Ctrl+7, Ctrl+9)
-            // Active when EFT/TarkovHelper is foreground, or when overlay is currently visible on screen (enables unlocking click-through)
-            if (IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed() && (IsTarkovOrHelperForeground() || IsOverlayVisible))
+            // Active when EFT/TarkovHelper is foreground, overlay is visible, or whenever a browser is not foreground
+            if (IsCtrlPressed() && !IsAltPressed() && !IsShiftPressed() && (IsTarkovOrHelperForeground() || IsOverlayVisible || !IsBrowserForeground()))
             {
                 const int VK_1 = 0x31;
                 const int VK_NUMPAD1 = 0x61;
@@ -452,13 +453,16 @@ public class GlobalKeyboardHookService : IDisposable
         return null;
     }
 
+    private static readonly uint CurrentProcessId = (uint)Environment.ProcessId;
     private static IntPtr _lastForegroundHwnd = IntPtr.Zero;
-    private static bool _lastForegroundResult = false;
-    private static DateTime _lastForegroundCheck = DateTime.MinValue;
+    private static uint _lastForegroundPid;
+    private static bool _lastForegroundResult;
+    private static long _lastForegroundTick64;
 
     /// <summary>
     /// Checks if EscapeFromTarkov.exe or TarkovHelper is the foreground window.
     /// Uses HWND caching for 500ms to avoid querying process information repeatedly.
+    /// Fast Win32 query without allocating System.Diagnostics.Process objects.
     /// </summary>
     private static bool IsTarkovOrHelperForeground()
     {
@@ -467,31 +471,98 @@ public class GlobalKeyboardHookService : IDisposable
             IntPtr hwnd = GetForegroundWindow();
             if (hwnd == IntPtr.Zero) return false;
 
-            var now = DateTime.UtcNow;
-            if (hwnd == _lastForegroundHwnd && (now - _lastForegroundCheck).TotalMilliseconds < 500)
-            {
+            long nowTick = Environment.TickCount64;
+            if (hwnd == _lastForegroundHwnd && (nowTick - _lastForegroundTick64) < 500)
                 return _lastForegroundResult;
+
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == 0) return false;
+
+            if (pid == CurrentProcessId)
+            {
+                CacheForeground(hwnd, pid, true, nowTick);
+                return true;
             }
 
-            GetWindowThreadProcessId(hwnd, out uint processId);
-            if (processId == 0) return false;
+            if (pid == _lastForegroundPid && (nowTick - _lastForegroundTick64) < 2000)
+                return _lastForegroundResult;
 
-            using var process = SysDiag.Process.GetProcessById((int)processId);
-            var processName = process.ProcessName;
+            bool isMatch = false;
+            IntPtr hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (hProc != IntPtr.Zero)
+            {
+                try
+                {
+                    var sb = new System.Text.StringBuilder(260);
+                    uint capacity = (uint)sb.Capacity;
+                    if (QueryFullProcessImageNameW(hProc, 0, sb, ref capacity))
+                    {
+                        ReadOnlySpan<char> path = sb.ToString().AsSpan(0, (int)capacity);
+                        int lastSlash = path.LastIndexOfAny('\\', '/');
+                        ReadOnlySpan<char> exe = lastSlash >= 0 ? path[(lastSlash + 1)..] : path;
 
-            // Allow Tarkov game and TarkovHelper app (including when running via dotnet)
-            var isTarkov = processName.Contains("Tarkov", StringComparison.OrdinalIgnoreCase)
-                || processName.Contains("EFT", StringComparison.OrdinalIgnoreCase)
-                || processName.Equals("TarkovHelper", StringComparison.OrdinalIgnoreCase)
-                || processName.Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+                        isMatch = exe.Contains("EscapeFromTarkov", StringComparison.OrdinalIgnoreCase) ||
+                                  exe.Contains("Tarkov", StringComparison.OrdinalIgnoreCase) ||
+                                  exe.Contains("dotnet", StringComparison.OrdinalIgnoreCase);
+                    }
+                }
+                finally
+                {
+                    CloseHandle(hProc);
+                }
+            }
 
-            _lastForegroundHwnd = hwnd;
-            _lastForegroundResult = isTarkov;
-            _lastForegroundCheck = now;
-
-            return isTarkov;
+            CacheForeground(hwnd, pid, isMatch, nowTick);
+            return isMatch;
         }
-        catch (Exception)
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void CacheForeground(IntPtr hwnd, uint pid, bool result, long tick)
+    {
+        _lastForegroundHwnd = hwnd;
+        _lastForegroundPid = pid;
+        _lastForegroundResult = result;
+        _lastForegroundTick64 = tick;
+    }
+
+    private static bool IsBrowserForeground()
+    {
+        try
+        {
+            IntPtr hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero) return false;
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == 0 || pid == CurrentProcessId) return false;
+
+            IntPtr hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (hProc != IntPtr.Zero)
+            {
+                try
+                {
+                    var sb = new System.Text.StringBuilder(260);
+                    uint capacity = (uint)sb.Capacity;
+                    if (QueryFullProcessImageNameW(hProc, 0, sb, ref capacity))
+                    {
+                        var name = sb.ToString();
+                        return name.Contains("chrome", StringComparison.OrdinalIgnoreCase) ||
+                               name.Contains("msedge", StringComparison.OrdinalIgnoreCase) ||
+                               name.Contains("firefox", StringComparison.OrdinalIgnoreCase) ||
+                               name.Contains("brave", StringComparison.OrdinalIgnoreCase) ||
+                               name.Contains("opera", StringComparison.OrdinalIgnoreCase);
+                    }
+                }
+                finally
+                {
+                    CloseHandle(hProc);
+                }
+            }
+            return false;
+        }
+        catch
         {
             return false;
         }

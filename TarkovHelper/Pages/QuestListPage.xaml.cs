@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using TarkovHelper.Models;
 using TarkovHelper.Models.Map;
 using TarkovHelper.Services;
@@ -19,9 +20,14 @@ namespace TarkovHelper.Pages
     public partial class QuestListPage : UserControl, IQuestMapIntegrationHost
     {
         private readonly LocalizationService _loc = LocalizationService.Instance;
-        private readonly QuestProgressService _progressService = QuestProgressService.Instance;
+        private QuestProgressService _progressService => QuestProgressService.Instance;
         private readonly ImageCacheService _imageCache = ImageCacheService.Instance;
-        private readonly ItemInventoryService _inventoryService = ItemInventoryService.Instance;
+        private ItemInventoryService _inventoryService => ItemInventoryService.Instance;
+        private QuestProgressService? _subscribedProgressService;
+        private ItemInventoryService? _subscribedInventoryService;
+        private DispatcherTimer? _searchDebounceTimer;
+        private CancellationTokenSource? _imageCancellationTokenSource;
+        private int _isRefreshPending = 0;
         private List<QuestViewModel> _allQuestViewModels = new();
         private List<string> _traders = new();
         private List<string> _maps = new();
@@ -57,20 +63,59 @@ namespace TarkovHelper.Pages
         private bool _isUpdatingSecondaryDropdown = false;
 
         // Status brushes
-        private static readonly Brush LockedBrush = new SolidColorBrush(Color.FromRgb(102, 102, 102));
-        private static readonly Brush ActiveBrush = new SolidColorBrush(Color.FromRgb(76, 175, 80));
-        private static readonly Brush DoneBrush = new SolidColorBrush(Color.FromRgb(33, 150, 243));
-        private static readonly Brush FailedBrush = new SolidColorBrush(Color.FromRgb(244, 67, 54));
-        private static readonly Brush LevelLockedBrush = new SolidColorBrush(Color.FromRgb(255, 152, 0)); // Orange for Level Locked
-        private static readonly Brush UnavailableBrush = new SolidColorBrush(Color.FromRgb(158, 158, 158)); // Gray for Unavailable
+        private static readonly Brush LockedBrush = CreateFrozenBrush(Color.FromRgb(102, 102, 102));
+        private static readonly Brush ActiveBrush = CreateFrozenBrush(Color.FromRgb(76, 175, 80));
+        private static readonly Brush DoneBrush = CreateFrozenBrush(Color.FromRgb(33, 150, 243));
+        private static readonly Brush FailedBrush = CreateFrozenBrush(Color.FromRgb(244, 67, 54));
+        private static readonly Brush LevelLockedBrush = CreateFrozenBrush(Color.FromRgb(255, 152, 0)); // Orange for Level Locked
+        private static readonly Brush UnavailableBrush = CreateFrozenBrush(Color.FromRgb(158, 158, 158)); // Gray for Unavailable
+
+        private static SolidColorBrush CreateFrozenBrush(Color color)
+        {
+            var brush = new SolidColorBrush(color);
+            brush.Freeze();
+            return brush;
+        }
 
         public QuestListPage()
         {
             InitializeComponent();
             AddHandler(TarkovHelper.Controls.TaskCardControl.HideTaskClickedEvent, new RoutedEventHandler(OnTaskCardHideClicked));
+            InitSearchDebounceTimer();
+            SubscribeSingletonEvents();
+
+            Loaded += QuestListPage_Loaded;
+            Unloaded += QuestListPage_Unloaded;
+        }
+
+        private void InitSearchDebounceTimer()
+        {
+            _searchDebounceTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(130)
+            };
+            _searchDebounceTimer.Tick += (s, e) =>
+            {
+                _searchDebounceTimer.Stop();
+                if (_isUnloaded) return;
+                if (_viewMode == TasksViewMode.Graph)
+                {
+                    FilterGraphNodes(TxtSearch?.Text);
+                }
+                ApplyFilters();
+            };
+        }
+
+        private void SubscribeSingletonEvents()
+        {
+            UnsubscribeSingletonEvents();
+
+            _subscribedProgressService = QuestProgressService.Instance;
+            _subscribedInventoryService = ItemInventoryService.Instance;
+
             _loc.LanguageChanged += OnLanguageChanged;
-            _progressService.ProgressChanged += OnProgressChanged;
-            _inventoryService.InventoryChanged += OnInventoryChanged;
+            if (_subscribedProgressService != null) _subscribedProgressService.ProgressChanged += OnProgressChanged;
+            if (_subscribedInventoryService != null) _subscribedInventoryService.InventoryChanged += OnInventoryChanged;
             NeededKeysService.Instance.DataChanged += OnNeededKeysDataChanged;
             SettingsService.Instance.HasEodEditionChanged += OnProfileSettingChanged;
             SettingsService.Instance.HasUnheardEditionChanged += OnProfileSettingChanged;
@@ -79,18 +124,21 @@ namespace TarkovHelper.Pages
             SettingsService.Instance.PlayerFactionChanged += OnPlayerFactionChanged;
             SettingsService.Instance.PlayerLevelChanged += OnPlayerLevelChanged;
             QuestDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
-
-            Loaded += QuestListPage_Loaded;
-            Unloaded += QuestListPage_Unloaded;
         }
 
-        private void QuestListPage_Unloaded(object sender, RoutedEventArgs e)
+        private void UnsubscribeSingletonEvents()
         {
-            _isUnloaded = true;
-            // Unsubscribe from events to prevent memory leaks
             _loc.LanguageChanged -= OnLanguageChanged;
-            _progressService.ProgressChanged -= OnProgressChanged;
-            _inventoryService.InventoryChanged -= OnInventoryChanged;
+            if (_subscribedProgressService != null)
+            {
+                _subscribedProgressService.ProgressChanged -= OnProgressChanged;
+                _subscribedProgressService = null;
+            }
+            if (_subscribedInventoryService != null)
+            {
+                _subscribedInventoryService.InventoryChanged -= OnInventoryChanged;
+                _subscribedInventoryService = null;
+            }
             NeededKeysService.Instance.DataChanged -= OnNeededKeysDataChanged;
             SettingsService.Instance.HasEodEditionChanged -= OnProfileSettingChanged;
             SettingsService.Instance.HasUnheardEditionChanged -= OnProfileSettingChanged;
@@ -101,40 +149,66 @@ namespace TarkovHelper.Pages
             QuestDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
         }
 
-        private void OnPlayerLevelChanged(object? sender, int e)
+        private void QuestListPage_Unloaded(object sender, RoutedEventArgs e)
         {
-            Dispatcher.Invoke(() =>
+            _isUnloaded = true;
+            _searchDebounceTimer?.Stop();
+            _imageCancellationTokenSource?.Cancel();
+            UnsubscribeSingletonEvents();
+
+            if (_embeddedMapPage != null)
             {
-                foreach (var vm in _allQuestViewModels)
-                {
-                    vm.NotifyMetricsChanged();
-                }
-                RefreshQuestStatuses();
-                ApplyFilters();
-                UpdateDetailPanel();
-                UpdateRecommendations();
-            });
+                _embeddedMapPage.ObjectiveSelected -= OnEmbeddedMapObjectiveSelected;
+            }
+            ClearGraphVisuals();
         }
+
+        private void ScheduleFullUiRefresh()
+        {
+            if (Interlocked.Exchange(ref _isRefreshPending, 1) == 1) return;
+
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    if (_isUnloaded) return;
+                    if (_viewMode == TasksViewMode.Graph)
+                    {
+                        UpdateGraphNodeStatuses();
+                    }
+                    foreach (var vm in _allQuestViewModels)
+                    {
+                        vm.NotifyMetricsChanged();
+                    }
+                    RefreshQuestStatuses();
+                    ApplyFilters();
+                    UpdateDetailPanel();
+                    TraderPanel.RefreshAllTraders();
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _isRefreshPending, 0);
+                }
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        private void OnPlayerLevelChanged(object? sender, int e) => ScheduleFullUiRefresh();
+        private void OnProgressChanged(object? sender, EventArgs e) => ScheduleFullUiRefresh();
+        private void OnProfileSettingChanged(object? sender, bool e) => ScheduleFullUiRefresh();
+        private void OnPrestigeLevelChanged(object? sender, int e) => ScheduleFullUiRefresh();
+        private void OnDspDecodeCountChanged(object? sender, int e) => ScheduleFullUiRefresh();
 
         private void OnInventoryChanged(object? sender, EventArgs e) => RefreshDetailInventoryAndKeys();
         private void OnNeededKeysDataChanged() => RefreshDetailInventoryAndKeys();
 
         private void RefreshDetailInventoryAndKeys()
         {
-            Dispatcher.Invoke(() =>
+            Dispatcher.BeginInvoke(new Action(() =>
             {
                 if (_isUnloaded || _currentDetailTask == null) return;
-                LoadNeededKeys(_currentDetailTask);
-                if (_currentDetailTask.RequiredItems != null && _currentDetailTask.RequiredItems.Count > 0)
-                {
-                    LoadRequiredItems(_currentDetailTask.RequiredItems, _currentDetailTask);
-                }
-                else
-                {
-                    RequiredItemsList.ItemsSource = null;
-                    RequiredItemsSectionWrapper.Visibility = Visibility.Collapsed;
-                }
-            });
+                var status = _progressService.GetStatus(_currentDetailTask);
+                DetailTaskCard?.LoadFromTask(_currentDetailTask, status);
+            }));
         }
 
         private async void QuestListPage_Loaded(object sender, RoutedEventArgs e)
@@ -143,23 +217,14 @@ namespace TarkovHelper.Pages
             if (_isUnloaded)
             {
                 _isUnloaded = false;
-                _loc.LanguageChanged += OnLanguageChanged;
-                _progressService.ProgressChanged += OnProgressChanged;
-                _inventoryService.InventoryChanged += OnInventoryChanged;
-                NeededKeysService.Instance.DataChanged += OnNeededKeysDataChanged;
-                SettingsService.Instance.HasEodEditionChanged += OnProfileSettingChanged;
-                SettingsService.Instance.HasUnheardEditionChanged += OnProfileSettingChanged;
-                SettingsService.Instance.PrestigeLevelChanged += OnPrestigeLevelChanged;
-                SettingsService.Instance.DspDecodeCountChanged += OnDspDecodeCountChanged;
-                SettingsService.Instance.PlayerFactionChanged += OnPlayerFactionChanged;
-                SettingsService.Instance.PlayerLevelChanged += OnPlayerLevelChanged;
-                QuestDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+                _imageCancellationTokenSource = new CancellationTokenSource();
+                SubscribeSingletonEvents();
             }
-
-            NeededKeysService.Instance.LoadTrackerKeysFromResources();
 
             // Skip if already loaded (prevents re-initialization on tab switching)
             if (_isDataLoaded) return;
+
+            NeededKeysService.Instance.LoadTrackerKeysFromResources();
 
             await LoadItemDataAsync();
             if (_isUnloaded) return; // Check if page was unloaded during async operation
@@ -174,7 +239,6 @@ namespace TarkovHelper.Pages
             _isDataLoaded = true;
             SwitchNavigationMode(_navMode);
             ApplyFilters();
-            UpdateRecommendations();
             TraderPanel.RefreshAllTraders();
 
             // Process pending selection if any
@@ -199,34 +263,28 @@ namespace TarkovHelper.Pages
 
         private void OnLanguageChanged(object? sender, AppLanguage e)
         {
-            RefreshQuestDisplayNames();
-            UpdateSecondaryFilterDropdown();
-            ApplyFilters();
-            UpdateDetailPanel();
-            TraderPanel.RefreshAllTraders();
-        }
-
-        private void OnProgressChanged(object? sender, EventArgs e)
-        {
-            Dispatcher.Invoke(() =>
+            Dispatcher.InvokeAsync(() =>
             {
-                if (_viewMode == TasksViewMode.Graph)
+                if (_isUnloaded) return;
+                try
                 {
-                    UpdateGraphNodeStatuses();
+                    RefreshQuestDisplayNames();
+                    UpdateSecondaryFilterDropdown();
+                    ScheduleFullUiRefresh();
                 }
-                RefreshQuestStatuses();
-                ApplyFilters();
-                UpdateDetailPanel();
-                UpdateRecommendations();
-                TraderPanel.RefreshAllTraders();
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"QuestListPage OnLanguageChanged error: {ex.Message}");
+                }
             });
         }
 
         private async void OnDatabaseRefreshed(object? sender, EventArgs e)
         {
             // DB 업데이트 후 데이터 다시 로드
-            await Dispatcher.InvokeAsync(async () =>
+            await Dispatcher.InvokeAsync(() =>
             {
+                if (_isUnloaded) return;
                 // Item lookup 새로고침
                 _itemLookup = ItemDbService.Instance.GetItemLookup();
 
@@ -235,50 +293,16 @@ namespace TarkovHelper.Pages
                 PopulateTraderFilter();
                 PopulateMapFilter();
                 UpdateSecondaryFilterDropdown();
-                ApplyFilters();
-                UpdateDetailPanel();
-                UpdateRecommendations();
+                ScheduleFullUiRefresh();
                 UpdateKappaGauge();
-            });
-        }
-
-        private void OnProfileSettingChanged(object? sender, bool e)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                RefreshQuestStatuses();
-                ApplyFilters();
-                UpdateDetailPanel();
-                UpdateRecommendations();
-            });
-        }
-
-        private void OnPrestigeLevelChanged(object? sender, int e)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                RefreshQuestStatuses();
-                ApplyFilters();
-                UpdateDetailPanel();
-                UpdateRecommendations();
-            });
-        }
-
-        private void OnDspDecodeCountChanged(object? sender, int e)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                RefreshQuestStatuses();
-                ApplyFilters();
-                UpdateDetailPanel();
-                UpdateRecommendations();
             });
         }
 
         private void OnPlayerFactionChanged(object? sender, string? e)
         {
-            Dispatcher.Invoke(() =>
+            Dispatcher.BeginInvoke(new Action(() =>
             {
+                if (_isUnloaded) return;
                 // Update radio button selection to match the new faction
                 _isInitializing = true;
                 if (e == "bear")
@@ -298,11 +322,8 @@ namespace TarkovHelper.Pages
                 }
                 _isInitializing = false;
 
-                RefreshQuestStatuses();
-                ApplyFilters();
-                UpdateDetailPanel();
-                UpdateRecommendations();
-            });
+                ScheduleFullUiRefresh();
+            }));
         }
 
         /// <summary>
@@ -540,19 +561,21 @@ namespace TarkovHelper.Pages
             };
         }
 
-        private (string DisplayName, string Subtitle, bool ShowSubtitle) GetLocalizedNames(TarkovTask task)
+        private (string DisplayName, string Subtitle, bool ShowSubtitle) GetLocalizedNames(TarkovTask? task)
         {
+            if (task == null) return (string.Empty, string.Empty, false);
+
             var lang = _loc.CurrentLanguage;
             if (lang == AppLanguage.KO && !string.IsNullOrEmpty(task.NameKo))
             {
-                return (task.NameKo, task.Name, true);
+                return (task.NameKo, task.Name ?? string.Empty, true);
             }
             if (lang == AppLanguage.JA && !string.IsNullOrEmpty(task.NameJa))
             {
-                return (task.NameJa, task.Name, true);
+                return (task.NameJa, task.Name ?? string.Empty, true);
             }
 
-            return (task.Name, string.Empty, false);
+            return (task.Name ?? string.Empty, string.Empty, false);
         }
 
         private static string GetTraderInitial(string trader)
@@ -1215,8 +1238,14 @@ namespace TarkovHelper.Pages
 
             if (_navMode == NavigationMode.Maps && !string.IsNullOrEmpty(chip.Key))
             {
-                EnsureEmbeddedMap();
-                _embeddedMapPage?.SelectMap(chip.Key);
+                if (_embeddedMapPage != null)
+                {
+                    _embeddedMapPage.SelectMap(chip.Key);
+                }
+                else
+                {
+                    EnsureEmbeddedMapDeferred(chip.Key);
+                }
                 MapTrackerService.Instance.SetCurrentMap(chip.Key);
             }
 
@@ -1347,7 +1376,7 @@ namespace TarkovHelper.Pages
                 if (ColSplitter != null) ColSplitter.Width = new GridLength(0);
                 if (ColMapView != null) ColMapView.Width = new GridLength(0);
 
-                EnsureEmbeddedMap();
+                EnsureEmbeddedMapDeferred();
                 _embeddedMapPage?.SetEmbeddedMode(true);
             }
             else
@@ -1400,8 +1429,14 @@ namespace TarkovHelper.Pages
             if (mode == NavigationMode.Maps)
             {
                 var mapKey = string.IsNullOrEmpty(_selectedTarget) ? "customs" : _selectedTarget;
-                EnsureEmbeddedMap();
-                _embeddedMapPage?.SelectMap(mapKey);
+                if (_embeddedMapPage != null)
+                {
+                    _embeddedMapPage.SelectMap(mapKey);
+                }
+                else
+                {
+                    EnsureEmbeddedMapDeferred(mapKey);
+                }
                 MapTrackerService.Instance.SetCurrentMap(mapKey);
             }
 
@@ -1517,8 +1552,99 @@ namespace TarkovHelper.Pages
 
         #region Embedded Map Integration (M2)
 
+        private Border? _mapLoadingIndicator;
+        private bool _isMapInitializing;
+        private string? _pendingMapKeyToSelect;
+
+        private Border GetMapLoadingIndicator()
+        {
+            if (_mapLoadingIndicator != null) return _mapLoadingIndicator;
+
+            var sp = new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            sp.Children.Add(new TextBlock
+            {
+                Text = "INITIALIZING TACTICAL MAP...",
+                FontFamily = (FontFamily)TryFindResource("TacticalDisplayFont") ?? new FontFamily("Segoe UI"),
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)TryFindResource("TacticalGoldBrush") ?? Brushes.Gold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+            sp.Children.Add(new ProgressBar
+            {
+                IsIndeterminate = true,
+                Width = 180,
+                Height = 4,
+                Foreground = (Brush)TryFindResource("TacticalGoldBrush") ?? Brushes.Gold,
+                Background = (Brush)TryFindResource("TacticalSurface1Brush") ?? Brushes.Black,
+                HorizontalAlignment = HorizontalAlignment.Center
+            });
+
+            _mapLoadingIndicator = new Border
+            {
+                Background = (Brush)TryFindResource("TacticalSurface0Brush") ?? Brushes.Black,
+                Child = sp
+            };
+            return _mapLoadingIndicator;
+        }
+
+        public void EnsureEmbeddedMapDeferred(string? initialMapKey = null)
+        {
+            if (_embeddedMapPage != null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(initialMapKey))
+            {
+                _pendingMapKeyToSelect = initialMapKey;
+            }
+
+            if (EmbeddedMapContainer != null && EmbeddedMapContainer.Child == null)
+            {
+                EmbeddedMapContainer.Child = GetMapLoadingIndicator();
+            }
+
+            if (_isMapInitializing) return;
+            _isMapInitializing = true;
+
+            var dispatcher = Dispatcher;
+            bool isCrossThreadOrTest = false;
+            try
+            {
+                if (Application.Current != null && (!Application.Current.CheckAccess() || Application.Current.MainWindow == null))
+                {
+                    isCrossThreadOrTest = true;
+                }
+            }
+            catch { isCrossThreadOrTest = true; }
+
+            if (isCrossThreadOrTest || dispatcher == null || dispatcher.HasShutdownStarted || Application.Current == null)
+            {
+                EnsureEmbeddedMapImmediate();
+                return;
+            }
+
+            dispatcher.BeginInvoke(new Action(() =>
+            {
+                _isMapInitializing = false;
+                EnsureEmbeddedMapImmediate();
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
         public void EnsureEmbeddedMap()
         {
+            EnsureEmbeddedMapImmediate();
+        }
+
+        public void EnsureEmbeddedMapImmediate()
+        {
+            _isMapInitializing = false;
             if (_embeddedMapPage == null)
             {
                 _embeddedMapPage = new MapPage();
@@ -1527,6 +1653,30 @@ namespace TarkovHelper.Pages
                 if (EmbeddedMapContainer != null)
                 {
                     EmbeddedMapContainer.Child = _embeddedMapPage;
+                }
+                var mapToSelect = !string.IsNullOrEmpty(_pendingMapKeyToSelect)
+                    ? _pendingMapKeyToSelect
+                    : (string.IsNullOrEmpty(_selectedTarget) ? "customs" : _selectedTarget);
+                _pendingMapKeyToSelect = null;
+                _embeddedMapPage.SelectMap(mapToSelect);
+                MapTrackerService.Instance.SetCurrentMap(mapToSelect);
+
+                if (_isDataLoaded)
+                {
+                    ApplyFilters();
+                }
+            }
+            else
+            {
+                if (EmbeddedMapContainer != null && EmbeddedMapContainer.Child != _embeddedMapPage)
+                {
+                    EmbeddedMapContainer.Child = _embeddedMapPage;
+                }
+                if (!string.IsNullOrEmpty(_pendingMapKeyToSelect))
+                {
+                    _embeddedMapPage.SelectMap(_pendingMapKeyToSelect);
+                    MapTrackerService.Instance.SetCurrentMap(_pendingMapKeyToSelect);
+                    _pendingMapKeyToSelect = null;
                 }
             }
         }
@@ -1555,7 +1705,9 @@ namespace TarkovHelper.Pages
 
             SelectMapChipByKey(mapKey);
             MapTrackerService.Instance.SetCurrentMap(mapKey);
-            EnsureEmbeddedMap();
+
+            // On-demand guard: force immediate initialization if background load hasn't completed yet
+            EnsureEmbeddedMapImmediate();
 
             if (_embeddedMapPage != null)
             {
@@ -1727,11 +1879,8 @@ namespace TarkovHelper.Pages
         {
             if (!_isInitializing)
             {
-                if (_viewMode == TasksViewMode.Graph)
-                {
-                    FilterGraphNodes(TxtSearch?.Text);
-                }
-                ApplyFilters();
+                _searchDebounceTimer?.Stop();
+                _searchDebounceTimer?.Start();
             }
         }
 
@@ -1889,458 +2038,24 @@ namespace TarkovHelper.Pages
 
         private void UpdateDetailPanel(QuestViewModel? overrideVm = null)
         {
-            var selectedVm = overrideVm ?? LstQuests.SelectedItem as QuestViewModel;
+            if (_viewMode != TasksViewMode.List)
+                return;
 
-            if (selectedVm == null)
+            if ((overrideVm ?? LstQuests.SelectedItem as QuestViewModel) is not { Task: { } task })
             {
                 _currentDetailTask = null;
                 DetailPanel.Visibility = Visibility.Collapsed;
-                TxtSelectQuest.Visibility = Visibility.Visible;
-                if (TxtSelectQuestWrapper != null) TxtSelectQuestWrapper.Visibility = Visibility.Visible;
-                NeededKeysList.ItemsSource = null;
-                NeededKeysSectionWrapper.Visibility = Visibility.Collapsed;
-                DetailTaskCard?.LoadFromTask(new TarkovTask(), QuestStatus.Unavailable);
+                if (TxtSelectQuestWrapper != null)
+                    TxtSelectQuestWrapper.Visibility = Visibility.Visible;
                 return;
             }
 
             DetailPanel.Visibility = Visibility.Visible;
-            TxtSelectQuest.Visibility = Visibility.Collapsed;
-            if (TxtSelectQuestWrapper != null) TxtSelectQuestWrapper.Visibility = Visibility.Collapsed;
+            if (TxtSelectQuestWrapper != null)
+                TxtSelectQuestWrapper.Visibility = Visibility.Collapsed;
 
-            var task = selectedVm.Task;
             _currentDetailTask = task;
-            var status = _progressService.GetStatus(task);
-
-            // Load into canonical TaskCardControl
-            DetailTaskCard?.LoadFromTask(task, status);
-
-            // Show on Map button
-            BtnShowOnMap.Visibility = (task.Maps != null && task.Maps.Count > 0) ? Visibility.Visible : Visibility.Collapsed;
-
-            // Title
-            var (displayName, subtitle, showSubtitle) = GetLocalizedNames(task);
-            TxtDetailName.Text = displayName;
-            TxtDetailSubtitle.Text = subtitle;
-            TxtDetailSubtitle.Visibility = showSubtitle ? Visibility.Visible : Visibility.Collapsed;
-
-            // Trader & Status
-            TxtDetailTrader.Text = _loc.GetLocalizedTraderName(task.Trader);
-            TxtDetailStatus.Text = GetStatusText(status, task);
-            DetailStatusBadge.Background = GetStatusBrush(status);
-
-            // Maps
-            if (task.Maps != null && task.Maps.Count > 0)
-            {
-                var mapNames = task.Maps.Select(GetLocalizedMapName);
-                TxtDetailMap.Text = string.Join(", ", mapNames);
-                MapInfoPanel.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                TxtDetailMap.Text = "-";
-                MapInfoPanel.Visibility = Visibility.Visible;
-            }
-
-            // Kappa Progress Section (for Collector quest)
-            UpdateKappaProgressSection(task);
-
-            // Requirements - Level with current level comparison
-            bool hasLevelRequirement = task.RequiredLevel.HasValue && task.RequiredLevel.Value > 0;
-            bool hasScavKarmaRequirement = task.RequiredScavKarma.HasValue;
-
-            if (hasLevelRequirement)
-            {
-                var playerLevel = SettingsService.Instance.PlayerLevel;
-                var reqLevel = task.RequiredLevel!.Value;
-                if (playerLevel >= reqLevel)
-                {
-                    TxtRequiredLevel.Text = $"Lv.{reqLevel} (Current: {playerLevel})";
-                    TxtRequiredLevel.Foreground = (Brush)FindResource("TextPrimaryBrush");
-                }
-                else
-                {
-                    TxtRequiredLevel.Text = $"Lv.{reqLevel} (Current: {playerLevel})";
-                    TxtRequiredLevel.Foreground = LevelLockedBrush;
-                }
-                TxtRequiredLevel.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                TxtRequiredLevel.Visibility = Visibility.Collapsed;
-            }
-
-            // Requirements - Scav Karma (Fence reputation)
-            if (hasScavKarmaRequirement)
-            {
-                var playerScavRep = SettingsService.Instance.ScavRep;
-                var reqKarma = task.RequiredScavKarma!.Value;
-                var isMet = _progressService.IsScavKarmaRequirementMet(task);
-                var comparison = reqKarma < 0 ? "≤" : "≥";
-                TxtRequiredScavKarma.Text = $"Scav Karma {comparison} {reqKarma:0.#} (Current: {playerScavRep:0.#})";
-                TxtRequiredScavKarma.Foreground = isMet ? (Brush)FindResource("TextPrimaryBrush") : LevelLockedBrush;
-                TxtRequiredScavKarma.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                TxtRequiredScavKarma.Visibility = Visibility.Collapsed;
-            }
-
-            // Pool Requirements Section
-            bool hasPoolRequirement = false;
-            if (task.PoolRequirements != null && task.PoolRequirements.Count > 0)
-            {
-                var poolReq = task.PoolRequirements[0];
-                var (completed, required) = _progressService.GetPoolProgress(task);
-
-                string traderName = !string.IsNullOrEmpty(poolReq.Trader)
-                    ? _loc.GetLocalizedTraderName(poolReq.Trader)
-                    : (!string.IsNullOrEmpty(task.Trader) ? _loc.GetLocalizedTraderName(task.Trader) : "Trader");
-
-                string levelStr = poolReq.TraderLevel > 0 ? $" LL{poolReq.TraderLevel}" : "";
-
-                TxtRequiredPool.Text = $"Complete at least {required} {traderName}{levelStr} quests ({completed}/{required})";
-
-                var poolTaskItems = new List<PoolTaskItemViewModel>();
-                if (poolReq.TaskIds != null)
-                {
-                    foreach (var tid in poolReq.TaskIds)
-                    {
-                        var pTask = _progressService.GetTaskById(tid);
-                        bool isDone = _progressService.GetStatus(tid) == QuestStatus.Done;
-                        string pName = pTask != null ? GetLocalizedNames(pTask).Item1 : tid;
-                        poolTaskItems.Add(new PoolTaskItemViewModel
-                        {
-                            Task = pTask,
-                            TaskId = tid,
-                            DisplayName = pName,
-                            IsDone = isDone
-                        });
-                    }
-                }
-                PoolTasksList.ItemsSource = poolTaskItems;
-                PoolRequirementSection.Visibility = Visibility.Visible;
-                hasPoolRequirement = true;
-            }
-            else
-            {
-                PoolRequirementSection.Visibility = Visibility.Collapsed;
-            }
-
-            // Show requirements section if any requirement exists
-            RequirementsSectionWrapper.Visibility = (hasLevelRequirement || hasScavKarmaRequirement || hasPoolRequirement)
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-
-            // Prerequisites - show direct prerequisites with OR/AND grouping
-            var prereqGroups = new List<PrerequisiteGroupViewModel>();
-            bool hasBrokenPrereqs = false;
-            bool isStory = string.Equals(task.Trader, "Story", StringComparison.OrdinalIgnoreCase) ||
-                           string.Equals(task.Trader, "Story Chapters", StringComparison.OrdinalIgnoreCase);
-            bool isOverridden = !isStory && IsQuestOverridden(task);
-            bool prereqsMet = _progressService.ArePrerequisitesMet(task);
-
-            if (task.TaskRequirements != null && task.TaskRequirements.Count > 0)
-            {
-                // Group by GroupId: 0 = AND (each as separate group), >0 = OR (same GroupId = same group)
-                var andRequirements = task.TaskRequirements.Where(r => r.GroupId == 0).ToList();
-                var orGroups = task.TaskRequirements
-                    .Where(r => r.GroupId > 0)
-                    .GroupBy(r => r.GroupId)
-                    .ToList();
-
-                // Add AND requirements (each as separate entry)
-                foreach (var req in andRequirements)
-                {
-                    var reqTask = !string.IsNullOrEmpty(req.TaskId)
-                        ? _progressService.GetTaskById(req.TaskId)
-                        : _progressService.GetTask(req.TaskNormalizedName);
-
-                    if (reqTask == null)
-                    {
-                        hasBrokenPrereqs = true;
-                        string missingName = !string.IsNullOrEmpty(req.TaskNormalizedName)
-                            ? req.TaskNormalizedName
-                            : (!string.IsNullOrEmpty(req.TaskId) ? req.TaskId : "Unknown prerequisite");
-
-                        prereqGroups.Add(new PrerequisiteGroupViewModel
-                        {
-                            GroupId = 0,
-                            Items = new List<PrerequisiteItemViewModel>
-                            {
-                                new PrerequisiteItemViewModel
-                                {
-                                    Task = null,
-                                    DisplayName = $"{missingName} ⚠️ ({_loc.UnresolvedPrerequisiteWarning})",
-                                    StatusText = "Unresolved",
-                                    StatusBackground = LevelLockedBrush,
-                                    IsOrItem = false
-                                }
-                            }
-                        });
-                        continue;
-                    }
-
-                    var pStatus = _progressService.GetStatus(reqTask);
-                    var (pName, _, _) = GetLocalizedNames(reqTask);
-
-                    prereqGroups.Add(new PrerequisiteGroupViewModel
-                    {
-                        GroupId = 0,
-                        Items = new List<PrerequisiteItemViewModel>
-                        {
-                            new PrerequisiteItemViewModel
-                            {
-                                Task = reqTask,
-                                DisplayName = pName,
-                                StatusText = GetStatusText(pStatus),
-                                StatusBackground = GetStatusBrush(pStatus),
-                                IsOrItem = false
-                            }
-                        }
-                    });
-                }
-
-                // Add OR groups (only show as OR group if 2+ items, otherwise treat as AND)
-                foreach (var orGroup in orGroups)
-                {
-                    var orItems = orGroup.ToList();
-
-                    // If OR group has only 1 item, treat it as a regular AND requirement
-                    if (orItems.Count == 1)
-                    {
-                        var req = orItems[0];
-                        var reqTask = !string.IsNullOrEmpty(req.TaskId)
-                            ? _progressService.GetTaskById(req.TaskId)
-                            : _progressService.GetTask(req.TaskNormalizedName);
-
-                        if (reqTask == null)
-                        {
-                            hasBrokenPrereqs = true;
-                            string missingName = !string.IsNullOrEmpty(req.TaskNormalizedName)
-                                ? req.TaskNormalizedName
-                                : (!string.IsNullOrEmpty(req.TaskId) ? req.TaskId : "Unknown prerequisite");
-
-                            prereqGroups.Add(new PrerequisiteGroupViewModel
-                            {
-                                GroupId = 0,
-                                Items = new List<PrerequisiteItemViewModel>
-                                {
-                                    new PrerequisiteItemViewModel
-                                    {
-                                        Task = null,
-                                        DisplayName = $"{missingName} ⚠️ ({_loc.UnresolvedPrerequisiteWarning})",
-                                        StatusText = "Unresolved",
-                                        StatusBackground = LevelLockedBrush,
-                                        IsOrItem = false
-                                    }
-                                }
-                            });
-                        }
-                        else
-                        {
-                            var pStatus = _progressService.GetStatus(reqTask);
-                            var (pName, _, _) = GetLocalizedNames(reqTask);
-
-                            prereqGroups.Add(new PrerequisiteGroupViewModel
-                            {
-                                GroupId = 0, // Treat as AND (not OR group)
-                                Items = new List<PrerequisiteItemViewModel>
-                                {
-                                    new PrerequisiteItemViewModel
-                                    {
-                                        Task = reqTask,
-                                        DisplayName = pName,
-                                        StatusText = GetStatusText(pStatus),
-                                        StatusBackground = GetStatusBrush(pStatus),
-                                        IsOrItem = false
-                                    }
-                                }
-                            });
-                        }
-                        continue;
-                    }
-
-                    // OR group with 2+ items - display as OR group
-                    var groupVm = new PrerequisiteGroupViewModel
-                    {
-                        GroupId = orGroup.Key,
-                        Items = new List<PrerequisiteItemViewModel>()
-                    };
-
-                    bool isFirst = true;
-                    foreach (var req in orItems)
-                    {
-                        var reqTask = !string.IsNullOrEmpty(req.TaskId)
-                            ? _progressService.GetTaskById(req.TaskId)
-                            : _progressService.GetTask(req.TaskNormalizedName);
-
-                        if (reqTask == null)
-                        {
-                            hasBrokenPrereqs = true;
-                            string missingName = !string.IsNullOrEmpty(req.TaskNormalizedName)
-                                ? req.TaskNormalizedName
-                                : (!string.IsNullOrEmpty(req.TaskId) ? req.TaskId : "Unknown prerequisite");
-
-                            groupVm.Items.Add(new PrerequisiteItemViewModel
-                            {
-                                Task = null,
-                                DisplayName = $"{missingName} ⚠️ ({_loc.UnresolvedPrerequisiteWarning})",
-                                StatusText = "Unresolved",
-                                StatusBackground = LevelLockedBrush,
-                                IsOrItem = !isFirst
-                            });
-                        }
-                        else
-                        {
-                            var pStatus = _progressService.GetStatus(reqTask);
-                            var (pName, _, _) = GetLocalizedNames(reqTask);
-
-                            groupVm.Items.Add(new PrerequisiteItemViewModel
-                            {
-                                Task = reqTask,
-                                DisplayName = pName,
-                                StatusText = GetStatusText(pStatus),
-                                StatusBackground = GetStatusBrush(pStatus),
-                                IsOrItem = !isFirst  // Show "OR" separator for 2nd item onwards
-                            });
-                        }
-                        isFirst = false;
-                    }
-
-                    if (groupVm.Items.Count > 0)
-                    {
-                        prereqGroups.Add(groupVm);
-                    }
-                }
-            }
-            else if (task.Previous != null && task.Previous.Count > 0)
-            {
-                foreach (var prevName in task.Previous)
-                {
-                    var prevTask = _progressService.GetTask(prevName);
-                    if (prevTask == null)
-                    {
-                        hasBrokenPrereqs = true;
-                        prereqGroups.Add(new PrerequisiteGroupViewModel
-                        {
-                            GroupId = 0,
-                            Items = new List<PrerequisiteItemViewModel>
-                            {
-                                new PrerequisiteItemViewModel
-                                {
-                                    Task = null,
-                                    DisplayName = $"{prevName} ⚠️ ({_loc.UnresolvedPrerequisiteWarning})",
-                                    StatusText = "Unresolved",
-                                    StatusBackground = LevelLockedBrush,
-                                    IsOrItem = false
-                                }
-                            }
-                        });
-                        continue;
-                    }
-
-                    var pStatus = _progressService.GetStatus(prevTask);
-                    var (pName, _, _) = GetLocalizedNames(prevTask);
-
-                    prereqGroups.Add(new PrerequisiteGroupViewModel
-                    {
-                        GroupId = 0,
-                        Items = new List<PrerequisiteItemViewModel>
-                        {
-                            new PrerequisiteItemViewModel
-                            {
-                                Task = prevTask,
-                                DisplayName = pName,
-                                StatusText = GetStatusText(pStatus),
-                                StatusBackground = GetStatusBrush(pStatus),
-                                IsOrItem = false
-                            }
-                        }
-                    });
-                }
-            }
-
-            PrerequisitesList.ItemsSource = prereqGroups;
-
-            // Unresolved / broken prerequisite indicator (Feature 10)
-            bool showWarning = hasBrokenPrereqs || (isStory && !prereqsMet && prereqGroups.Count > 0);
-            TxtUnresolvedWarning.Text = _loc.UnresolvedPrerequisiteWarning;
-            UnresolvedPrereqWarningPanel.Visibility = showWarning ? Visibility.Visible : Visibility.Collapsed;
-
-            // Override active notice (Feature 10)
-            TxtOverrideActiveNotice.Text = _loc.OverrideActiveRestore;
-            OverrideActiveBadgePanel.Visibility = isOverridden ? Visibility.Visible : Visibility.Collapsed;
-
-            // Manual override button (Feature 10)
-            if (isOverridden)
-            {
-                BtnOverridePrereq.Visibility = Visibility.Visible;
-                BtnOverridePrereq.Content = _loc.RemoveManualOverride;
-            }
-            else if (status != QuestStatus.Done && (!prereqsMet || hasBrokenPrereqs))
-            {
-                BtnOverridePrereq.Visibility = Visibility.Visible;
-                BtnOverridePrereq.Content = _loc.OverridePrerequisite;
-            }
-            else
-            {
-                BtnOverridePrereq.Visibility = Visibility.Collapsed;
-            }
-
-            PrerequisitesSectionWrapper.Visibility = (prereqGroups.Count > 0 || hasBrokenPrereqs || isOverridden)
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-
-            // Alternative Quests Section (Mutually Exclusive)
-            var alternativeQuests = _progressService.GetAlternativeQuests(task);
-            if (alternativeQuests.Count > 0)
-            {
-                var altVms = alternativeQuests.Select(alt =>
-                {
-                    var altStatus = _progressService.GetStatus(alt);
-                    var (displayName, _, _) = GetLocalizedNames(alt);
-                    return new
-                    {
-                        DisplayName = displayName,
-                        TraderName = alt.Trader,
-                        StatusText = GetStatusText(altStatus, alt),
-                        StatusBackground = GetStatusBrush(altStatus)
-                    };
-                }).ToList();
-
-                AlternativeQuestsList.ItemsSource = altVms;
-                AlternativeQuestsSectionWrapper.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                AlternativeQuestsList.ItemsSource = null;
-                AlternativeQuestsSectionWrapper.Visibility = Visibility.Collapsed;
-            }
-
-            // Objectives Section
-            UpdateObjectivesSection(task);
-
-            // Guide Section
-            UpdateGuideSection(task);
-
-            // Needed Keys (Loaded first so duplicate keys can be filtered from RequiredItems)
-            LoadNeededKeys(task);
-
-            // Required Items
-            if (task.RequiredItems != null && task.RequiredItems.Count > 0)
-            {
-                LoadRequiredItems(task.RequiredItems, task);
-            }
-            else
-            {
-                RequiredItemsList.ItemsSource = null;
-                RequiredItemsSectionWrapper.Visibility = Visibility.Collapsed;
-            }
-
-            // Button states
-            BtnComplete.Visibility = status == QuestStatus.Done ? Visibility.Collapsed : Visibility.Visible;
-            BtnReset.Visibility = status == QuestStatus.Done || status == QuestStatus.Failed
-                ? Visibility.Visible : Visibility.Collapsed;
+            DetailTaskCard?.LoadFromTask(task, _progressService.GetStatus(task));
         }
 
         private void CompleteButton_Click(object sender, RoutedEventArgs e)
@@ -2773,6 +2488,11 @@ namespace TarkovHelper.Pages
 
         private async Task LoadGuideImagesAsync(List<GuideImage> guideImages)
         {
+            _imageCancellationTokenSource?.Cancel();
+            _imageCancellationTokenSource?.Dispose();
+            _imageCancellationTokenSource = new CancellationTokenSource();
+            var ct = _imageCancellationTokenSource.Token;
+
             // Create ViewModels with loading state first
             var imageVms = new System.Collections.ObjectModel.ObservableCollection<GuideImageViewModel>();
 
@@ -2787,28 +2507,28 @@ namespace TarkovHelper.Pages
             }
 
             // Set ItemsSource immediately to show placeholders
-            if (!_isUnloaded)
+            if (!_isUnloaded && !ct.IsCancellationRequested)
             {
-                Dispatcher.Invoke(() =>
+                await Dispatcher.InvokeAsync(() =>
                 {
-                    if (!_isUnloaded)
+                    if (!_isUnloaded && !ct.IsCancellationRequested)
                         GuideImagesList.ItemsSource = imageVms;
                 });
             }
 
-            // Load images in parallel for better performance
+            // Load images in parallel with cancellation
             var loadTasks = imageVms.Select(async (vm, index) =>
             {
-                if (_isUnloaded) return;
+                if (_isUnloaded || ct.IsCancellationRequested) return;
 
                 var image = await _imageCache.GetWikiImageAsync(vm.FileName);
 
                 // Update on UI thread
-                if (!_isUnloaded)
+                if (!_isUnloaded && !ct.IsCancellationRequested)
                 {
-                    Dispatcher.Invoke(() =>
+                    await Dispatcher.InvokeAsync(() =>
                     {
-                        if (!_isUnloaded)
+                        if (!_isUnloaded && !ct.IsCancellationRequested)
                         {
                             vm.ImageSource = image;
                             vm.IsLoading = false;
@@ -2817,7 +2537,14 @@ namespace TarkovHelper.Pages
                 }
             });
 
-            await Task.WhenAll(loadTasks);
+            try
+            {
+                await Task.WhenAll(loadTasks);
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when selection changes
+            }
         }
 
         private void GuideImage_Click(object sender, MouseButtonEventArgs e)
@@ -3171,20 +2898,6 @@ namespace TarkovHelper.Pages
 
         #endregion
 
-        #region Quest Recommendations
-
-        private void UpdateRecommendations()
-        {
-            // Panel is hidden per user preference, skip calculation
-        }
-
-        private void RecommendationsPanel_RecommendationClicked(object? sender, string questNormalizedName)
-        {
-            SelectQuestInternal(questNormalizedName);
-        }
-
-        #endregion
-
         #region Prerequisite Quest Navigation
 
         /// <summary>
@@ -3252,6 +2965,20 @@ namespace TarkovHelper.Pages
 
         #region Visual Task Progression Graph
 
+        private void ClearGraphVisuals()
+        {
+            foreach (var ctrl in _nodeControlMap.Values)
+            {
+                ctrl.NodeClicked -= OnGraphNodeClicked;
+                ctrl.NodeHoverChanged -= OnGraphNodeHoverChanged;
+                ctrl.CrossTraderClicked -= OnGraphCrossTraderClicked;
+            }
+            _nodeControlMap.Clear();
+            _edgePathMap.Clear();
+            if (GraphEdgesCanvas != null) GraphEdgesCanvas.Children.Clear();
+            if (GraphNodesCanvas != null) GraphNodesCanvas.Children.Clear();
+        }
+
         private void RefreshGraphView(bool resetPanZoom = true)
         {
             if (_progressService.AllTasks == null || _progressService.AllTasks.Count == 0) return;
@@ -3277,10 +3004,7 @@ namespace TarkovHelper.Pages
                 TxtGraphStatsDetails.Text = $"{_activeGraphLayout.TotalQuests} Tasks • {_activeGraphLayout.CompletedQuests} Done • {_activeGraphLayout.AvailableQuests} Ready • {_activeGraphLayout.LockedQuests} Locked";
             }
 
-            GraphEdgesCanvas.Children.Clear();
-            GraphNodesCanvas.Children.Clear();
-            _nodeControlMap.Clear();
-            _edgePathMap.Clear();
+            ClearGraphVisuals();
 
             GraphCanvas.Width = Math.Max(_activeGraphLayout.TotalWidth + 200, 3000);
             GraphCanvas.Height = Math.Max(_activeGraphLayout.TotalHeight + 200, 2000);

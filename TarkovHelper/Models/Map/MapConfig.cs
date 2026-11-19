@@ -215,43 +215,52 @@ public sealed class MapConfig
     }
 
     /// <summary>
+    /// Inversión afín explícita con comprobación de determinantes finitos y no singulares.
+    /// </summary>
+    public bool TryScreenToGameAffine(double[]? transform, double screenX, double screenY, out double gameX, out double gameZ)
+    {
+        gameX = 0;
+        gameZ = 0;
+
+        if (!double.IsFinite(screenX) || !double.IsFinite(screenY))
+            return false;
+
+        if (transform == null || transform.Length < 6)
+        {
+            if (ImageWidth <= 0 || ImageHeight <= 0) return false;
+            gameX = screenX - ImageWidth / 2.0;
+            gameZ = screenY - ImageHeight / 2.0;
+            return double.IsFinite(gameX) && double.IsFinite(gameZ);
+        }
+
+        double a = transform[0], b = transform[1], c = transform[2], d = transform[3];
+        double tx = transform[4], ty = transform[5];
+
+        double det = a * d - b * c;
+        if (!double.IsFinite(det) || Math.Abs(det) < 1e-9)
+            return false;
+
+        double invDet = 1.0 / det;
+        double dx = screenX - tx;
+        double dy = screenY - ty;
+
+        gameX = (d * dx - b * dy) * invDet;
+        gameZ = (-c * dx + a * dy) * invDet;
+        return double.IsFinite(gameX) && double.IsFinite(gameZ);
+    }
+
+    /// <summary>
     /// 맵 픽셀 좌표를 플레이어 좌표계 게임 좌표로 변환 (역행렬).
     /// PlayerMarkerTransform이 있으면 사용하고, 없으면 CalibratedTransform 사용.
     /// </summary>
     public (double gameX, double gameZ) ScreenToGameForPlayer(double screenX, double screenY)
     {
         var transform = PlayerMarkerTransform ?? CalibratedTransform;
-
-        if (transform == null || transform.Length < 6)
+        if (TryScreenToGameAffine(transform, screenX, screenY, out double gx, out double gz))
         {
-            return (screenX - ImageWidth / 2.0, screenY - ImageHeight / 2.0);
+            return (gx, gz);
         }
-
-        var a = transform[0];
-        var b = transform[1];
-        var c = transform[2];
-        var d = transform[3];
-        var tx = transform[4];
-        var ty = transform[5];
-
-        var det = a * d - b * c;
-        if (Math.Abs(det) < 1e-10)
-        {
-            return (0, 0);
-        }
-
-        var invA = d / det;
-        var invB = -b / det;
-        var invC = -c / det;
-        var invD = a / det;
-
-        var dx = screenX - tx;
-        var dy = screenY - ty;
-
-        var gameX = invA * dx + invB * dy;
-        var gameZ = invC * dx + invD * dy;
-
-        return (gameX, gameZ);
+        return (screenX - ImageWidth / 2.0, screenY - ImageHeight / 2.0);
     }
 
     /// <summary>

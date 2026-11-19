@@ -62,7 +62,7 @@ public sealed class QuestObjectiveRelocationService
 				if (File.Exists(fullPath))
 				{
 					string json = File.ReadAllText(fullPath);
-					MapConfigList mapConfigList = JsonSerializer.Deserialize<MapConfigList>(json, new JsonSerializerOptions
+					MapConfigList? mapConfigList = JsonSerializer.Deserialize<MapConfigList>(json, new JsonSerializerOptions
 					{
 						PropertyNameCaseInsensitive = true
 					});
@@ -122,7 +122,7 @@ public sealed class QuestObjectiveRelocationService
 		{
 			return false;
 		}
-		MapConfig mapConfig;
+		MapConfig? mapConfig;
 		lock (_lock)
 		{
 			mapConfig = _transformer.GetMapConfig(mapKey);
@@ -131,7 +131,7 @@ public sealed class QuestObjectiveRelocationService
 		{
 			return false;
 		}
-		double[] array = mapConfig.PlayerMarkerTransform ?? mapConfig.CalibratedTransform;
+		double[]? array = mapConfig.PlayerMarkerTransform ?? mapConfig.CalibratedTransform;
 		double value;
 		double value2;
 		if (array != null && array.Length >= 6)
@@ -140,14 +140,14 @@ public sealed class QuestObjectiveRelocationService
 		}
 		else
 		{
-			if (!_transformer.TryTransformToWorld(mapKey, canvasX, canvasY, out EftPosition worldPosition) || worldPosition == null)
+			if (!_transformer.TryTransformToWorld(mapKey, canvasX, canvasY, out EftPosition? worldPosition) || worldPosition == null)
 			{
 				return false;
 			}
 			value = worldPosition.X;
 			value2 = worldPosition.Z.GetValueOrDefault();
 		}
-		string text = currentFloorId;
+		string? text = currentFloorId;
 		if (string.IsNullOrEmpty(text) && mapConfig.Floors != null && mapConfig.Floors.Count > 0)
 		{
 			text = mapConfig.Floors.FirstOrDefault((MapFloorConfig f) => f.IsDefault)?.LayerId ?? mapConfig.Floors.FirstOrDefault()?.LayerId;
@@ -217,43 +217,31 @@ public sealed class QuestObjectiveRelocationService
 			WriteIndented = false
 		});
 		string connectionString = "Data Source=" + dbPath + ";Mode=ReadWrite";
-		bool result;
 		await using (SqliteConnection connection = new SqliteConnection(connectionString))
 		{
 			await connection.OpenAsync();
-			string currentLoc = null;
-			string originalLoc = null;
-			string questName = null;
-			string objDesc = null;
-			string mapName = null;
+			string? currentLoc = null;
+			string? originalLoc = null;
+			string? questName = null;
+			string? objDesc = null;
+			string? mapName = null;
 			string selectSql = "\n            SELECT o.LocationPoints, o.OriginalLocationPoints, o.IsCustomized, o.Description, o.MapName, q.Name\n            FROM QuestObjectives o\n            LEFT JOIN Quests q ON o.QuestId = q.Id\n            WHERE o.Id = @id";
-			bool flag2;
 			await using (SqliteCommand selCmd = new SqliteCommand(selectSql, connection))
 			{
 				selCmd.Parameters.AddWithValue("@id", objectiveId);
-				bool flag;
 				await using (SqliteDataReader reader = await selCmd.ExecuteReaderAsync())
 				{
-					if (await reader.ReadAsync())
-					{
-						currentLoc = (reader.IsDBNull(0) ? null : reader.GetString(0));
-						originalLoc = (reader.IsDBNull(1) ? null : reader.GetString(1));
-						objDesc = (reader.IsDBNull(3) ? null : reader.GetString(3));
-						mapName = (reader.IsDBNull(4) ? null : reader.GetString(4));
-						questName = (reader.IsDBNull(5) ? null : reader.GetString(5));
-						goto IL_0666;
-					}
-					flag = false;
+					if (!await reader.ReadAsync())
+						return false;
+
+					currentLoc = reader.IsDBNull(0) ? null : reader.GetString(0);
+					originalLoc = reader.IsDBNull(1) ? null : reader.GetString(1);
+					objDesc = reader.IsDBNull(3) ? null : reader.GetString(3);
+					mapName = reader.IsDBNull(4) ? null : reader.GetString(4);
+					questName = reader.IsDBNull(5) ? null : reader.GetString(5);
 				}
-				flag2 = flag;
 			}
-			result = flag2;
-			goto end_IL_0243;
-			IL_08c5:
-			bool flag3;
-			result = flag3;
-			goto end_IL_0243;
-			IL_0666:
+
 			if (originalLoc == null && currentLoc != null)
 			{
 				originalLoc = currentLoc;
@@ -263,21 +251,18 @@ public sealed class QuestObjectiveRelocationService
 			await using (SqliteCommand cmd = new SqliteCommand(updateSql, connection))
 			{
 				cmd.Parameters.AddWithValue("@json", json);
-				cmd.Parameters.AddWithValue("@origLoc", ((object)originalLoc) ?? ((object)DBNull.Value));
+				cmd.Parameters.AddWithValue("@origLoc", (object?)originalLoc ?? DBNull.Value);
 				cmd.Parameters.AddWithValue("@now", now);
 				cmd.Parameters.AddWithValue("@id", objectiveId);
 				if (await cmd.ExecuteNonQueryAsync() <= 0)
 				{
-					flag3 = false;
-					goto IL_08c5;
+					return false;
 				}
 			}
 			await LogRelocationActionAsync(connection, objectiveId, questName, objDesc, mapName, currentLoc, json, "Relocated", now);
 			await RefreshCachesAsync();
-			result = true;
-			end_IL_0243:;
+			return true;
 		}
-		return result;
 	}
 	public async Task<bool> RestoreObjectiveToFactoryAsync(string objectiveId, string? targetDbPath = null)
 	{
@@ -293,43 +278,31 @@ public sealed class QuestObjectiveRelocationService
 		}
 		await EnsureDatabaseSchemaAsync(dbPath);
 		string connectionString = "Data Source=" + dbPath + ";Mode=ReadWrite";
-		bool result;
 		await using (SqliteConnection connection = new SqliteConnection(connectionString))
 		{
 			await connection.OpenAsync();
-			string currentLoc = null;
-			string originalLoc = null;
-			string questName = null;
-			string objDesc = null;
-			string mapName = null;
+			string? currentLoc = null;
+			string? originalLoc = null;
+			string? questName = null;
+			string? objDesc = null;
+			string? mapName = null;
 			string selectSql = "\n            SELECT o.LocationPoints, o.OriginalLocationPoints, o.Description, o.MapName, q.Name\n            FROM QuestObjectives o\n            LEFT JOIN Quests q ON o.QuestId = q.Id\n            WHERE o.Id = @id";
-			bool flag2;
 			await using (SqliteCommand selCmd = new SqliteCommand(selectSql, connection))
 			{
 				selCmd.Parameters.AddWithValue("@id", objectiveId);
-				bool flag;
 				await using (SqliteDataReader reader = await selCmd.ExecuteReaderAsync())
 				{
-					if (await reader.ReadAsync())
-					{
-						currentLoc = (reader.IsDBNull(0) ? null : reader.GetString(0));
-						originalLoc = (reader.IsDBNull(1) ? null : reader.GetString(1));
-						objDesc = (reader.IsDBNull(2) ? null : reader.GetString(2));
-						mapName = (reader.IsDBNull(3) ? null : reader.GetString(3));
-						questName = (reader.IsDBNull(4) ? null : reader.GetString(4));
-						goto IL_0625;
-					}
-					flag = false;
+					if (!await reader.ReadAsync())
+						return false;
+
+					currentLoc = reader.IsDBNull(0) ? null : reader.GetString(0);
+					originalLoc = reader.IsDBNull(1) ? null : reader.GetString(1);
+					objDesc = reader.IsDBNull(2) ? null : reader.GetString(2);
+					mapName = reader.IsDBNull(3) ? null : reader.GetString(3);
+					questName = reader.IsDBNull(4) ? null : reader.GetString(4);
 				}
-				flag2 = flag;
 			}
-			result = flag2;
-			goto end_IL_0202;
-			IL_0818:
-			bool flag3;
-			result = flag3;
-			goto end_IL_0202;
-			IL_0625:
+
 			string now = DateTime.UtcNow.ToString("o");
 			string updateSql = "\n            UPDATE QuestObjectives\n            SET LocationPoints = OriginalLocationPoints,\n                IsCustomized = 0,\n                UpdatedAt = @now\n            WHERE Id = @id";
 			await using (SqliteCommand cmd = new SqliteCommand(updateSql, connection))
@@ -338,16 +311,13 @@ public sealed class QuestObjectiveRelocationService
 				cmd.Parameters.AddWithValue("@id", objectiveId);
 				if (await cmd.ExecuteNonQueryAsync() <= 0)
 				{
-					flag3 = false;
-					goto IL_0818;
+					return false;
 				}
 			}
 			await LogRelocationActionAsync(connection, objectiveId, questName, objDesc, mapName, currentLoc, originalLoc, "Restored", now);
 			await RefreshCachesAsync();
-			result = true;
-			end_IL_0202:;
+			return true;
 		}
-		return result;
 	}
 	public async Task<int> RestoreAllObjectivesToFactoryAsync(string? targetDbPath = null)
 	{
@@ -395,41 +365,29 @@ public sealed class QuestObjectiveRelocationService
 		}
 		await EnsureDatabaseSchemaAsync(dbPath);
 		string connectionString = "Data Source=" + dbPath + ";Mode=ReadWrite";
-		bool result;
 		await using (SqliteConnection connection = new SqliteConnection(connectionString))
 		{
 			await connection.OpenAsync();
-			string currentLoc = null;
-			string questName = null;
-			string objDesc = null;
-			string mapName = null;
+			string? currentLoc = null;
+			string? questName = null;
+			string? objDesc = null;
+			string? mapName = null;
 			string selectSql = "\n            SELECT o.LocationPoints, o.Description, o.MapName, q.Name\n            FROM QuestObjectives o\n            LEFT JOIN Quests q ON o.QuestId = q.Id\n            WHERE o.Id = @id";
-			bool flag2;
 			await using (SqliteCommand selCmd = new SqliteCommand(selectSql, connection))
 			{
 				selCmd.Parameters.AddWithValue("@id", objectiveId);
-				bool flag;
 				await using (SqliteDataReader reader = await selCmd.ExecuteReaderAsync())
 				{
-					if (await reader.ReadAsync())
-					{
-						currentLoc = (reader.IsDBNull(0) ? null : reader.GetString(0));
-						objDesc = (reader.IsDBNull(1) ? null : reader.GetString(1));
-						mapName = (reader.IsDBNull(2) ? null : reader.GetString(2));
-						questName = (reader.IsDBNull(3) ? null : reader.GetString(3));
-						goto IL_05fb;
-					}
-					flag = false;
+					if (!await reader.ReadAsync())
+						return false;
+
+					currentLoc = reader.IsDBNull(0) ? null : reader.GetString(0);
+					objDesc = reader.IsDBNull(1) ? null : reader.GetString(1);
+					mapName = reader.IsDBNull(2) ? null : reader.GetString(2);
+					questName = reader.IsDBNull(3) ? null : reader.GetString(3);
 				}
-				flag2 = flag;
 			}
-			result = flag2;
-			goto end_IL_0202;
-			IL_07ee:
-			bool flag3;
-			result = flag3;
-			goto end_IL_0202;
-			IL_05fb:
+
 			string now = DateTime.UtcNow.ToString("o");
 			string updateSql = "\n            UPDATE QuestObjectives\n            SET LocationPoints = NULL,\n                IsCustomized = 0,\n                UpdatedAt = @now\n            WHERE Id = @id";
 			await using (SqliteCommand cmd = new SqliteCommand(updateSql, connection))
@@ -438,16 +396,13 @@ public sealed class QuestObjectiveRelocationService
 				cmd.Parameters.AddWithValue("@id", objectiveId);
 				if (await cmd.ExecuteNonQueryAsync() <= 0)
 				{
-					flag3 = false;
-					goto IL_07ee;
+					return false;
 				}
 			}
 			await LogRelocationActionAsync(connection, objectiveId, questName, objDesc, mapName, currentLoc, null, "Cleared", now);
 			await RefreshCachesAsync();
-			result = true;
-			end_IL_0202:;
+			return true;
 		}
-		return result;
 	}
 	public async Task<List<CustomizedObjectiveItem>> GetCustomizedObjectivesAsync(string? targetDbPath = null)
 	{
@@ -554,7 +509,7 @@ public sealed class QuestObjectiveRelocationService
 						bool canRelocate = QuestObjectiveViewModel.IsGeographicObjective(type, desc);
 						if (!geographicOnly || canRelocate)
 						{
-							string locJson = (reader.IsDBNull(7) ? null : reader.GetString(7));
+							string? locJson = (reader.IsDBNull(7) ? null : reader.GetString(7));
 							bool isCustomized = !reader.IsDBNull(8) && reader.GetInt32(8) == 1;
 							bool hasLocation = !string.IsNullOrWhiteSpace(locJson);
 							string status = (isCustomized ? "Custom" : ((!hasLocation) ? "No Location" : "Default"));
@@ -635,11 +590,11 @@ public sealed class QuestObjectiveRelocationService
 			string logSql = "\n                INSERT INTO QuestObjectiveRelocationLog (\n                    ObjectiveId, QuestName, ObjectiveDescription, MapName,\n                    PreviousLocationPoints, NewLocationPoints, Action, Timestamp\n                ) VALUES (\n                    @objId, @quest, @desc, @map, @prev, @new, @action, @time\n                )";
 			await using SqliteCommand cmd = new SqliteCommand(logSql, connection);
 			cmd.Parameters.AddWithValue("@objId", objectiveId);
-			cmd.Parameters.AddWithValue("@quest", ((object)questName) ?? ((object)DBNull.Value));
-			cmd.Parameters.AddWithValue("@desc", ((object)description) ?? ((object)DBNull.Value));
-			cmd.Parameters.AddWithValue("@map", ((object)mapName) ?? ((object)DBNull.Value));
-			cmd.Parameters.AddWithValue("@prev", ((object)previousLoc) ?? ((object)DBNull.Value));
-			cmd.Parameters.AddWithValue("@new", ((object)newLoc) ?? ((object)DBNull.Value));
+			cmd.Parameters.AddWithValue("@quest", (object?)questName ?? DBNull.Value);
+			cmd.Parameters.AddWithValue("@desc", (object?)description ?? DBNull.Value);
+			cmd.Parameters.AddWithValue("@map", (object?)mapName ?? DBNull.Value);
+			cmd.Parameters.AddWithValue("@prev", (object?)previousLoc ?? DBNull.Value);
+			cmd.Parameters.AddWithValue("@new", (object?)newLoc ?? DBNull.Value);
 			cmd.Parameters.AddWithValue("@action", action);
 			cmd.Parameters.AddWithValue("@time", timestamp);
 			await cmd.ExecuteNonQueryAsync();
@@ -658,7 +613,7 @@ public sealed class QuestObjectiveRelocationService
 		}
 		try
 		{
-			List<LocationPoint> list = JsonSerializer.Deserialize<List<LocationPoint>>(json);
+			List<LocationPoint>? list = JsonSerializer.Deserialize<List<LocationPoint>>(json);
 			if (list != null && list.Count > 0)
 			{
 				LocationPoint locationPoint = list[0];

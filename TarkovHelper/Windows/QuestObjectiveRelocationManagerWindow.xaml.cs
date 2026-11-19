@@ -61,9 +61,9 @@ public partial class QuestObjectiveRelocationManagerWindow : Window
 		try
 		{
 			TxtStatusMessage.Text = "Searching objectives...";
-			string query = TxtSearchQuery.Text?.Trim();
-			string trader = CmbTraderFilter.SelectedItem as string;
-			string map = CmbMapFilter.SelectedItem as string;
+			string? query = TxtSearchQuery.Text?.Trim();
+			string? trader = CmbTraderFilter.SelectedItem as string;
+			string? map = CmbMapFilter.SelectedItem as string;
 			bool geoOnly = ChkGeographicOnly.IsChecked ?? true;
 			bool missingOnly = ChkWithoutCoordsOnly.IsChecked == true;
 			List<RelocationSearchItem> results = await _relocationService.SearchObjectivesAsync(query, trader, map, geoOnly, missingOnly);

@@ -131,14 +131,14 @@ public sealed class ScreenshotCoordinateParser : IScreenshotCoordinateParser
             !double.TryParse(qwGroup.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var qw))
             return null;
 
-        // 쿼터니언에서 Y축 회전(Yaw) 각도 계산
-        var siny_cosp = 2.0 * (qw * qy + qx * qz);
-        var cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz);
-        var yaw = Math.Atan2(siny_cosp, cosy_cosp);
-
-        // 라디안을 도(degree)로 변환 후 180도 추가 (EFT 좌표계 보정)
-        var degrees = yaw * 180.0 / Math.PI + 180.0;
-        return degrees;
+        // 쿼터니언 정규화 및 Y축 회전(Yaw) 각도 계산
+        double normSq = qx * qx + qy * qy + qz * qz + qw * qw;
+        if (normSq < 1e-8 || !double.IsFinite(normSq)) return null;
+        double invNorm = 1.0 / Math.Sqrt(normSq);
+        qx *= invNorm; qy *= invNorm; qz *= invNorm; qw *= invNorm;
+        double sinyCosp = 2.0 * (qw * qy + qx * qz);
+        double cosyCosp = 1.0 - 2.0 * (qy * qy + qz * qz);
+        return ((Math.Atan2(sinyCosp, cosyCosp) * 180.0 / Math.PI + 180.0) % 360.0 + 360.0) % 360.0;
     }
 
     /// <inheritdoc />

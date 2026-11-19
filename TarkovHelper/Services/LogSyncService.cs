@@ -1,5 +1,14 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using TarkovHelper.Models;
 using TarkovHelper.Services.Logging;
 
@@ -11,39 +20,31 @@ namespace TarkovHelper.Services
     public class LogSyncService : IDisposable
     {
         private static readonly ILogger _log = Log.For<LogSyncService>();
-        private static LogSyncService? _instance;
-        public static LogSyncService Instance => _instance ??= new LogSyncService();
+        private static readonly Lazy<LogSyncService> _lazyInstance =
+            new(() => new LogSyncService(), LazyThreadSafetyMode.ExecutionAndPublication);
+        public static LogSyncService Instance => _lazyInstance.Value;
 
-        private static readonly string DebugLogPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TarkovHelper", "logsync_debug.log");
-
+        [System.Diagnostics.Conditional("DEBUG")]
         private static void DebugLog(string message)
         {
-            try
-            {
-                var dir = Path.GetDirectoryName(DebugLogPath);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
-                File.AppendAllText(DebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] {message}\n");
-            }
-            catch { }
+            _log.Debug(message);
         }
 
         private FileSystemWatcher? _logWatcher;
-        private FileSystemWatcher? _applicationLogWatcher;
         private readonly object _watcherLock = new();
         private readonly HashSet<string> _processedEventKeys = new(StringComparer.OrdinalIgnoreCase);
-        private DateTime _lastEventTime = DateTime.MinValue;
-        private DateTime _lastMapEventTime = DateTime.MinValue;
-        private string? _lastModifiedFile;
-        private string? _lastMapModifiedFile;
-        private bool _isWatching;
-        private long _lastApplicationLogPosition;
+        private readonly Queue<string> _processedEventOrder = new();
+        private const int MaxProcessedKeys = 4096;
+        private readonly ConcurrentDictionary<string, long> _pushLogOffsets = new(StringComparer.OrdinalIgnoreCase);
+        private readonly SemaphoreSlim _pushProcessGate = new(1, 1);
+
+        private volatile bool _isWatching;
+        private volatile bool _isDisposed;
         private string? _currentMapKey;
+        private CancellationTokenSource? _monitoringCts;
 
         // Trailing debounce timer for push notification logs to prevent dropped events
-        private System.Threading.Timer? _pushLogDebounceTimer;
+        private Timer? _pushLogDebounceTimer;
         private readonly object _pushDebounceLock = new();
         private string? _pendingPushLogFile;
 
@@ -77,76 +78,59 @@ namespace TarkovHelper.Services
         private const int MSG_TYPE_FAILED = 11;
         private const int MSG_TYPE_COMPLETED = 12;
 
+        private static readonly TimeSpan RegexSafetyTimeout = TimeSpan.FromMilliseconds(250);
+
+        private static readonly Regex TransitMapRegex = new(
+            @"\[Transit\][^\r\n]*?Locations:([a-zA-Z0-9_]+)\s*->",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase, RegexSafetyTimeout);
+
+        private static readonly Regex ScenePresetMapRegex = new(
+            @"scene preset path:maps/([a-zA-Z0-9_]+)\.bundle",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase, RegexSafetyTimeout);
+
         // Map name to key mapping (EFT log name -> map_configs.json key)
-        // All keys are stored in lowercase for case-insensitive matching
-        // Use TryGetMapKey() method for lookups instead of direct dictionary access
-        //
-        // EFT uses two patterns in logs:
-        // 1. scene preset path:maps/<name>.bundle (e.g., "maps/shoreline_preset.bundle")
-        // 2. [Transit] Locations:<name> (e.g., "Locations:Shoreline")
         private static readonly Dictionary<string, string> MapNameToKey = new(StringComparer.OrdinalIgnoreCase)
         {
             // Woods
-            // Transit: "Woods", Preset: "woods_preset"
             { "woods", "Woods" },
             { "woods_preset", "Woods" },
 
             // Customs
-            // Transit: "bigmap", Preset: "customs_preset"
             { "customs", "Customs" },
             { "customs_preset", "Customs" },
             { "bigmap", "Customs" },
             { "bigmap_preset", "Customs" },
 
             // Shoreline
-            // Transit: "Shoreline", Preset: "shoreline_preset"
             { "shoreline", "Shoreline" },
             { "shoreline_preset", "Shoreline" },
 
             // Interchange
-            // Transit: "Interchange", Preset: "shopping_mall"
             { "interchange", "Interchange" },
-            { "interchange_preset", "Interchange" },
             { "shopping_mall", "Interchange" },
-            { "shopping_mall_preset", "Interchange" },
 
             // Reserve
-            // Transit: "RezervBase", Preset: "rezerv_base_preset"
             { "reserve", "Reserve" },
             { "rezervbase", "Reserve" },
-            { "rezerv_base", "Reserve" },
             { "rezerv_base_preset", "Reserve" },
-            { "rezervbase_preset", "Reserve" },
 
             // Lighthouse
-            // Transit: "Lighthouse", Preset: "lighthouse_preset"
             { "lighthouse", "Lighthouse" },
             { "lighthouse_preset", "Lighthouse" },
 
             // Streets of Tarkov
-            // Transit: "TarkovStreets", Preset: "city_preset"
-            { "streetsoftarkov", "StreetsOfTarkov" },
-            { "streets", "StreetsOfTarkov" },
             { "tarkovstreets", "StreetsOfTarkov" },
-            { "tarkovstreets_preset", "StreetsOfTarkov" },
-            { "city", "StreetsOfTarkov" },
+            { "streets", "StreetsOfTarkov" },
             { "city_preset", "StreetsOfTarkov" },
 
-            // Factory (Day/Night variants)
-            // Transit: "factory4_day", "factory4_night", Preset: "factory_day_preset", "factory_night_preset"
+            // Factory
             { "factory", "Factory" },
-            { "factory4", "Factory" },
             { "factory4_day", "Factory" },
             { "factory4_night", "Factory" },
-            { "factory_day", "Factory" },
-            { "factory_night", "Factory" },
             { "factory_day_preset", "Factory" },
             { "factory_night_preset", "Factory" },
-            { "factory4_day_preset", "Factory" },
-            { "factory4_night_preset", "Factory" },
 
-            // Ground Zero (Sandbox_start for level 1-20, Sandbox_high for level 21+)
-            // Transit: "Sandbox_high", "Sandbox_start", Preset: "sandbox_high_preset", "sandbox_start_preset"
+            // Ground Zero
             { "groundzero", "GroundZero" },
             { "sandbox", "GroundZero" },
             { "sandbox_high", "GroundZero" },
@@ -156,56 +140,27 @@ namespace TarkovHelper.Services
             { "sandbox_start_preset", "GroundZero" },
 
             // Labs
-            // Transit: "laboratory", Preset: "laboratory_preset"
+            { "laboratory", "Labs" },
+            { "laboratory_preset", "Labs" },
             { "labs", "Labs" },
             { "lab", "Labs" },
-            { "laboratory", "Labs" },
-            { "thelab", "Labs" },
-            { "laboratory_preset", "Labs" },
 
-            // Labyrinth (if available)
+            // Labyrinth
             { "labyrinth", "Labyrinth" },
-            { "thelabyrinth", "Labyrinth" },
             { "labyrinth_preset", "Labyrinth" },
         };
-
-        /// <summary>
-        /// Try to get the map key from a map name (case-insensitive)
-        /// </summary>
-        private static bool TryGetMapKey(string mapName, out string? mapKey)
-        {
-            mapKey = null;
-            if (string.IsNullOrEmpty(mapName))
-                return false;
-
-            // Direct lookup (case-insensitive due to StringComparer.OrdinalIgnoreCase)
-            if (MapNameToKey.TryGetValue(mapName, out mapKey))
-                return true;
-
-            // Try removing common suffixes and prefixes
-            var cleanedName = mapName
-                .Replace("_preset", "")
-                .Replace("preset_", "")
-                .Replace("_high", "")
-                .Replace("_low", "")
-                .Replace("_day", "")
-                .Replace("_night", "")
-                .Trim();
-
-            if (!string.IsNullOrEmpty(cleanedName) && MapNameToKey.TryGetValue(cleanedName, out mapKey))
-                return true;
-
-            return false;
-        }
 
         private LogSyncService()
         {
             // Delegate map change detection to dedicated LogMapWatcherService
-            TarkovHelper.Services.Map.LogMapWatcherService.Instance.MapChanged += (s, e) =>
-            {
-                _currentMapKey = e.NewMapKey;
-                MapDetected?.Invoke(this, new MapDetectedEventArgs(e.NewMapKey, DateTime.Now));
-            };
+            TarkovHelper.Services.Map.LogMapWatcherService.Instance.MapChanged += OnExternalMapChanged;
+        }
+
+        private void OnExternalMapChanged(object? sender, TarkovHelper.Services.Map.MapChangedEventArgs e)
+        {
+            if (!_isWatching || _isDisposed) return;
+            _currentMapKey = e.NewMapKey;
+            RaiseEventSafe(MapDetected, new MapDetectedEventArgs(e.NewMapKey, DateTime.Now));
         }
 
         #region Log File Monitoring
@@ -229,111 +184,118 @@ namespace TarkovHelper.Services
 
                 try
                 {
+                    _monitoringCts = new CancellationTokenSource();
+                    var ct = _monitoringCts.Token;
+
+                    _pushLogDebounceTimer = new Timer(OnPushDebounceTick, ct, Timeout.Infinite, Timeout.Infinite);
+
                     // Quest event watcher (push-notifications logs)
                     _logWatcher = new FileSystemWatcher(logFolderPath)
                     {
                         NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
                         Filter = "*push-notifications*.log",
                         IncludeSubdirectories = true,
-                        EnableRaisingEvents = true
+                        InternalBufferSize = 65536,
+                        EnableRaisingEvents = false
                     };
 
                     _logWatcher.Changed += OnLogFileChanged;
                     _logWatcher.Created += OnLogFileChanged;
-
-// Map monitoring is handled by LogMapWatcherService
-                    InitializeLatestPushNotificationEvents(logFolderPath);
+                    _logWatcher.Error += OnWatcherError;
 
                     _isWatching = true;
-                    MonitoringStatusChanged?.Invoke(this, true);
+
+                    // Seed initial events before enabling live watcher notifications
+                    _ = Task.Run(async () =>
+                    {
+                        await SeedLatestPushNotificationEventsAsync(logFolderPath, ct).ConfigureAwait(false);
+                        lock (_watcherLock)
+                        {
+                            if (!ct.IsCancellationRequested && _logWatcher != null && _isWatching)
+                            {
+                                _logWatcher.EnableRaisingEvents = true;
+                            }
+                        }
+                    }, ct);
+
+                    RaiseEventSafe(MonitoringStatusChanged, true);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    _log.Error($"Failed starting push log watcher: {ex.Message}");
                     _isWatching = false;
-                    MonitoringStatusChanged?.Invoke(this, false);
+                    RaiseEventSafe(MonitoringStatusChanged, false);
                 }
             }
         }
 
-        /// <summary>
-        /// Initialize position to end of latest application log file
-        /// </summary>
-        private void InitializeLatestApplicationLogPosition(string logFolderPath)
+        private void OnWatcherError(object sender, ErrorEventArgs e)
+        {
+            var ex = e.GetException();
+            _log.Warning($"Push log FileSystemWatcher buffer overflow or error: {ex.Message}");
+        }
+
+        private async Task SeedLatestPushNotificationEventsAsync(string logFolderPath, CancellationToken ct)
         {
             try
             {
-                var latestLog = Directory.GetFiles(logFolderPath, "*application*.log", SearchOption.AllDirectories)
+                var latestLog = Directory.GetFiles(logFolderPath, "*push-notifications*.log", SearchOption.AllDirectories)
                     .OrderByDescending(f => File.GetLastWriteTime(f))
                     .FirstOrDefault();
 
                 if (latestLog != null && File.Exists(latestLog))
                 {
                     var fileInfo = new FileInfo(latestLog);
-                    _lastApplicationLogPosition = fileInfo.Length;
-                    _lastMapModifiedFile = latestLog;
-                }
-            }
-            catch
-            {
-                _lastApplicationLogPosition = 0;
-            }
-        }
+                    _pushLogOffsets[latestLog] = fileInfo.Length;
 
-        /// <summary>
-        /// Pre-populate processed event keys with existing events from the latest push-notifications log
-        /// so that upon startup we don't re-fire old events
-        /// </summary>
-        private void InitializeLatestPushNotificationEvents(string logFolderPath)
-        {
-            Task.Run(() =>
-            {
-                try
-                {
-                    var latestLog = Directory.GetFiles(logFolderPath, "*push-notifications*.log", SearchOption.AllDirectories)
-                        .OrderByDescending(f => File.GetLastWriteTime(f))
-                        .FirstOrDefault();
+                    var initialEvents = ParseLogFile(latestLog, tailOnly: false);
+                    var progressService = QuestProgressService.Instance;
 
-                    if (latestLog != null && File.Exists(latestLog))
+                    foreach (var evt in initialEvents)
                     {
-                        var initialEvents = ParseLogFile(latestLog, tailOnly: false);
-                        var progressService = QuestProgressService.Instance;
+                        if (ct.IsCancellationRequested) return;
 
-                        foreach (var evt in initialEvents)
+                        var eventKey = $"{evt.QuestId}_{evt.EventType}_{evt.Timestamp.Ticks}";
+                        bool isNew;
+                        lock (_processedEventKeys)
                         {
-                            var eventKey = $"{evt.QuestId}_{evt.EventType}_{evt.Timestamp.Ticks}";
-                            bool isNew;
-                            lock (_processedEventKeys)
+                            isNew = _processedEventKeys.Add(eventKey);
+                            if (isNew)
                             {
-                                isNew = _processedEventKeys.Add(eventKey);
-                            }
-
-                            // If this is a recent completed event (within last 24h), verify if it is already completed in progress
-                            if (isNew && evt.EventType == QuestEventType.Completed && Math.Abs((DateTime.Now - evt.Timestamp).TotalHours) < 24)
-                            {
-                                var cleanId = evt.QuestId?.Trim() ?? "";
-                                if (cleanId.Contains(' ')) cleanId = cleanId.Split(' ')[0];
-
-                                var task = progressService.GetTask(cleanId) ??
-                                           progressService.AllTasks.FirstOrDefault(t =>
-                                               string.Equals(t.BsgId, cleanId, StringComparison.OrdinalIgnoreCase) ||
-                                               string.Equals(t.Id, cleanId, StringComparison.OrdinalIgnoreCase) ||
-                                               (t.Ids != null && t.Ids.Contains(cleanId, StringComparer.OrdinalIgnoreCase)));
-
-                                if (task != null && progressService.GetStatus(task) != QuestStatus.Done)
+                                _processedEventOrder.Enqueue(eventKey);
+                                while (_processedEventOrder.Count > MaxProcessedKeys)
                                 {
-                                    DebugLog($"Startup auto-sync: Catching missed completed quest: {task.Name} ({cleanId})");
-                                    QuestEventDetected?.Invoke(this, evt);
+                                    var oldest = _processedEventOrder.Dequeue();
+                                    _processedEventKeys.Remove(oldest);
                                 }
                             }
                         }
-                        DebugLog($"Initialized {_processedEventKeys.Count} existing push-notification events as seen");
+
+                        if (isNew && evt.EventType == QuestEventType.Completed && Math.Abs((DateTime.Now - evt.Timestamp).TotalHours) < 24)
+                        {
+                            var cleanId = evt.QuestId?.Trim() ?? "";
+                            if (cleanId.Contains(' ')) cleanId = cleanId.Split(' ')[0];
+
+                            var task = progressService.GetTask(cleanId) ??
+                                       progressService.AllTasks.FirstOrDefault(t =>
+                                           string.Equals(t.BsgId, cleanId, StringComparison.OrdinalIgnoreCase) ||
+                                           string.Equals(t.Id, cleanId, StringComparison.OrdinalIgnoreCase) ||
+                                           (t.Ids != null && t.Ids.Contains(cleanId, StringComparer.OrdinalIgnoreCase)));
+
+                            if (task != null && progressService.GetStatus(task) != QuestStatus.Done)
+                            {
+                                DebugLog($"Startup auto-sync: Catching missed completed quest: {task.Name} ({cleanId})");
+                                RaiseEventSafe(QuestEventDetected, evt);
+                            }
+                        }
                     }
+                    DebugLog($"Initialized {_processedEventKeys.Count} existing push-notification events as seen");
                 }
-                catch (Exception ex)
-                {
-                    DebugLog($"Error initializing push-notifications events: {ex.Message}");
-                }
-            });
+            }
+            catch (Exception ex)
+            {
+                DebugLog($"Error initializing push-notifications events: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -343,18 +305,29 @@ namespace TarkovHelper.Services
         {
             lock (_watcherLock)
             {
+                _monitoringCts?.Cancel();
+                _monitoringCts?.Dispose();
+                _monitoringCts = null;
+
                 if (_logWatcher != null)
                 {
                     _logWatcher.EnableRaisingEvents = false;
                     _logWatcher.Changed -= OnLogFileChanged;
                     _logWatcher.Created -= OnLogFileChanged;
+                    _logWatcher.Error -= OnWatcherError;
                     _logWatcher.Dispose();
                     _logWatcher = null;
                 }
 
-
                 _currentMapKey = null;
-                lock (_processedEventKeys) { _processedEventKeys.Clear(); }
+
+                lock (_processedEventKeys)
+                {
+                    _processedEventKeys.Clear();
+                    _processedEventOrder.Clear();
+                }
+
+                _pushLogOffsets.Clear();
 
                 lock (_pushDebounceLock)
                 {
@@ -364,7 +337,7 @@ namespace TarkovHelper.Services
                 }
 
                 _isWatching = false;
-                MonitoringStatusChanged?.Invoke(this, false);
+                RaiseEventSafe(MonitoringStatusChanged, false);
             }
         }
 
@@ -372,133 +345,66 @@ namespace TarkovHelper.Services
         {
             lock (_pushDebounceLock)
             {
+                if (!_isWatching || _isDisposed) return;
                 _pendingPushLogFile = e.FullPath;
-                _pushLogDebounceTimer?.Dispose();
-                _pushLogDebounceTimer = new System.Threading.Timer(_ =>
-                {
-                    string? fileToProcess;
-                    lock (_pushDebounceLock)
-                    {
-                        fileToProcess = _pendingPushLogFile;
-                    }
-
-                    if (!string.IsNullOrEmpty(fileToProcess))
-                    {
-                        _ = ProcessLatestLogEvents(fileToProcess);
-                    }
-                }, null, 300, Timeout.Infinite);
+                _pushLogDebounceTimer?.Change(300, Timeout.Infinite);
             }
         }
 
-        private void OnApplicationLogChanged(object sender, FileSystemEventArgs e)
+        private void OnPushDebounceTick(object? state)
         {
-            DebugLog($"OnApplicationLogChanged: {e.FullPath}");
-
-            // Debounce events
-            var now = DateTime.Now;
-            if ((now - _lastMapEventTime).TotalMilliseconds < 300 && e.FullPath == _lastMapModifiedFile)
+            string? fileToProcess;
+            lock (_pushDebounceLock)
             {
-                DebugLog($"Debounced - skipping");
-                return;
+                fileToProcess = _pendingPushLogFile;
             }
 
-            _lastMapEventTime = now;
-            _lastMapModifiedFile = e.FullPath;
-
-            // Process new lines for map detection
-            Task.Run(() => ProcessApplicationLogForMap(e.FullPath));
-        }
-
-        private async Task ProcessApplicationLogForMap(string filePath)
-        {
-            try
+            if (!string.IsNullOrEmpty(fileToProcess) && _isWatching && !_isDisposed)
             {
-                await Task.Delay(100); // Small delay for file write completion
-
-                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                var fileLength = stream.Length;
-
-                DebugLog($"ProcessApplicationLogForMap: fileLength={fileLength}, lastPos={_lastApplicationLogPosition}");
-
-                // Only read new content
-                if (fileLength <= _lastApplicationLogPosition)
-                {
-                    DebugLog($"No new content to read");
-                    return;
-                }
-
-                stream.Seek(_lastApplicationLogPosition, SeekOrigin.Begin);
-                using var reader = new StreamReader(stream);
-                var newContent = await reader.ReadToEndAsync();
-                _lastApplicationLogPosition = fileLength;
-
-                DebugLog($"Read {newContent.Length} chars of new content");
-
-                // Parse for map loading events
-                var detectedMap = ParseMapFromLogContent(newContent);
-                DebugLog($"ParseMapFromLogContent result: {detectedMap ?? "null"}");
-
-                if (!string.IsNullOrEmpty(detectedMap) && detectedMap != _currentMapKey)
-                {
-                    _currentMapKey = detectedMap;
-                    DebugLog($"Map changed! Firing MapDetected event: {detectedMap}");
-                    MapDetected?.Invoke(this, new MapDetectedEventArgs(detectedMap, DateTime.Now));
-                }
-            }
-            catch (Exception ex)
-            {
-                DebugLog($"Error reading application log: {ex.Message}");
+                _ = ProcessLatestLogEvents(fileToProcess);
             }
         }
 
         /// <summary>
-        /// Parse map name from log content using multiple detection patterns
+        /// Parse map name from log content using multiple detection patterns (returns latest match in content)
         /// </summary>
-        private string? ParseMapFromLogContent(string content)
+        public static string? ParseMapFromLogContent(string content)
         {
-            // Pattern 1 (most reliable): [Transit] Locations:MapName ->
-            // Example: "[Transit] Flag:None, RaidId:..., Locations:Shoreline ->"
-            // This appears after map is fully loaded and raid starts
-            var transitMatch = System.Text.RegularExpressions.Regex.Match(
-                content,
-                @"\[Transit\].*Locations:([a-zA-Z0-9_]+)\s*->",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (string.IsNullOrEmpty(content)) return null;
 
-            if (transitMatch.Success)
+            try
             {
-                var mapName = transitMatch.Groups[1].Value;
-                _log.Debug($"Transit pattern matched: {mapName}");
-                if (TryGetMapKey(mapName, out var mapKey))
+                var transitMatches = TransitMapRegex.Matches(content);
+                for (int i = transitMatches.Count - 1; i >= 0; i--)
                 {
-                    return mapKey;
+                    var mapName = transitMatches[i].Groups[1].Value;
+                    if (TryGetMapKey(mapName, out var mapKey))
+                    {
+                        return mapKey;
+                    }
+                }
+
+                var sceneMatches = ScenePresetMapRegex.Matches(content);
+                for (int i = sceneMatches.Count - 1; i >= 0; i--)
+                {
+                    var mapName = sceneMatches[i].Groups[1].Value;
+                    if (TryGetMapKey(mapName, out var mapKey))
+                    {
+                        return mapKey;
+                    }
                 }
             }
-
-            // Pattern 2: scene preset path:maps/<mapname>.bundle
-            // Examples:
-            //   "scene preset path:maps/shoreline_preset.bundle"
-            //   "scene preset path:maps/shopping_mall.bundle"
-            //   "scene preset path:maps/city_preset.bundle"
-            // This appears when map loading starts
-            var scenePresetMatch = System.Text.RegularExpressions.Regex.Match(
-                content,
-                @"scene preset path:maps/([a-zA-Z0-9_]+)\.bundle",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-            if (scenePresetMatch.Success)
+            catch (RegexMatchTimeoutException ex)
             {
-                var mapName = scenePresetMatch.Groups[1].Value;
-                _log.Debug($"Scene preset pattern matched: {mapName}");
-                if (TryGetMapKey(mapName, out var mapKey))
-                {
-                    return mapKey;
-                }
+                _log.Warning($"Regex timeout parsing map content: {ex.Message}");
             }
-
-            // Pattern 3: LocationLoaded (backup pattern, less specific about which map)
-            // This just confirms a location was loaded but Transit pattern is preferred
 
             return null;
+        }
+
+        public static bool TryGetMapKey(string mapName, out string mapKey)
+        {
+            return MapNameToKey.TryGetValue(mapName, out mapKey!);
         }
 
         /// <summary>
@@ -514,10 +420,9 @@ namespace TarkovHelper.Services
 
             try
             {
-                // Find the most recent application log file
                 var logFiles = Directory.GetFiles(path, "*application*.log", SearchOption.AllDirectories)
                     .OrderByDescending(f => File.GetLastWriteTime(f))
-                    .Take(3)  // Check last 3 log files
+                    .Take(3)
                     .ToList();
 
                 if (logFiles.Count == 0)
@@ -548,31 +453,22 @@ namespace TarkovHelper.Services
         {
             try
             {
-                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
-                // Read last 200KB of file (should be enough to find recent map)
                 var readSize = Math.Min(stream.Length, 200 * 1024);
                 if (readSize <= 0) return null;
 
                 stream.Seek(-readSize, SeekOrigin.End);
-                using var reader = new StreamReader(stream);
-                var content = reader.ReadToEnd();
+                using var reader = new StreamReader(stream, Encoding.UTF8);
 
-                // Split into lines and search from end
-                var lines = content.Split('\n');
-                string? lastFoundMap = null;
-
-                // Search through all lines to find the LAST map reference
-                foreach (var line in lines)
+                // Discard potentially split partial UTF-8 line at boundary
+                if (stream.Position > 0)
                 {
-                    var mapKey = ParseMapFromLogContent(line);
-                    if (!string.IsNullOrEmpty(mapKey))
-                    {
-                        lastFoundMap = mapKey;
-                    }
+                    reader.ReadLine();
                 }
 
-                return lastFoundMap;
+                var content = reader.ReadToEnd();
+                return ParseMapFromLogContent(content);
             }
             catch (Exception ex)
             {
@@ -583,13 +479,17 @@ namespace TarkovHelper.Services
 
         private async Task ProcessLatestLogEvents(string filePath)
         {
+            if (!await _pushProcessGate.WaitAsync(0).ConfigureAwait(false))
+                return;
+
             try
             {
-                // Wait briefly for OS buffer flush and release
-                await Task.Delay(100);
+                await Task.Delay(100).ConfigureAwait(false);
+                if (!File.Exists(filePath)) return;
 
-                // Read full log (push-notification logs are compact, ensures 0 dropped events)
-                var events = await ParseLogFileAsync(filePath, tailOnly: false);
+                long lastOffset = _pushLogOffsets.GetValueOrDefault(filePath, 0L);
+                var (events, newOffset) = await ParsePushLogIncrementalAsync(filePath, lastOffset).ConfigureAwait(false);
+                _pushLogOffsets[filePath] = newOffset;
 
                 foreach (var evt in events)
                 {
@@ -600,18 +500,18 @@ namespace TarkovHelper.Services
                         if (!_processedEventKeys.Add(eventKey))
                             continue;
 
-                        if (_processedEventKeys.Count > 1000)
+                        _processedEventOrder.Enqueue(eventKey);
+                        while (_processedEventOrder.Count > MaxProcessedKeys)
                         {
-                            var toRemove = _processedEventKeys.Take(500).ToList();
-                            foreach (var key in toRemove) _processedEventKeys.Remove(key);
+                            var oldest = _processedEventOrder.Dequeue();
+                            _processedEventKeys.Remove(oldest);
                         }
                     }
 
-                    // Process event if within last 24 hours (won't drop due to file buffering delays or minor clock drift)
                     if (Math.Abs((DateTime.Now - evt.Timestamp).TotalHours) < 24)
                     {
                         DebugLog($"Live quest event detected: {evt.QuestId} ({evt.EventType}) at {evt.Timestamp}");
-                        QuestEventDetected?.Invoke(this, evt);
+                        RaiseEventSafe(QuestEventDetected, evt);
                     }
                 }
             }
@@ -619,6 +519,44 @@ namespace TarkovHelper.Services
             {
                 DebugLog($"Error in ProcessLatestLogEvents: {ex.Message}");
             }
+            finally
+            {
+                _pushProcessGate.Release();
+            }
+        }
+
+        private async Task<(List<QuestLogEvent> Events, long NewOffset)> ParsePushLogIncrementalAsync(string filePath, long lastOffset)
+        {
+            var events = new List<QuestLogEvent>();
+            long currentOffset = lastOffset;
+
+            try
+            {
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                if (stream.Length < currentOffset)
+                {
+                    currentOffset = 0L;
+                }
+
+                if (stream.Length <= currentOffset)
+                {
+                    return (events, stream.Length);
+                }
+
+                stream.Seek(currentOffset, SeekOrigin.Begin);
+                using var reader = new StreamReader(stream, Encoding.UTF8);
+                var content = await reader.ReadToEndAsync().ConfigureAwait(false);
+                currentOffset = stream.Position;
+
+                var fileName = Path.GetFileName(filePath);
+                events = ParseLogContent(content, fileName);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Incremental read failed for '{filePath}': {ex.Message}");
+            }
+
+            return (events, currentOffset);
         }
 
         #endregion
@@ -635,7 +573,6 @@ namespace TarkovHelper.Services
             if (!Directory.Exists(logFolderPath))
                 return allEvents;
 
-            // Find all push-notifications log files
             var logFiles = Directory.GetFiles(logFolderPath, "*push-notifications*.log", SearchOption.AllDirectories)
                 .OrderBy(f => File.GetLastWriteTime(f))
                 .ToList();
@@ -647,7 +584,7 @@ namespace TarkovHelper.Services
             {
                 try
                 {
-                    var events = await ParseLogFileAsync(file);
+                    var events = await ParseLogFileAsync(file).ConfigureAwait(false);
                     allEvents.AddRange(events);
 
                     processed++;
@@ -659,9 +596,7 @@ namespace TarkovHelper.Services
                 }
             }
 
-            // Sort by timestamp
             allEvents = allEvents.OrderBy(e => e.Timestamp).ToList();
-
             return allEvents;
         }
 
@@ -677,8 +612,8 @@ namespace TarkovHelper.Services
 
             try
             {
-                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                using var reader = new StreamReader(stream);
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var reader = new StreamReader(stream, Encoding.UTF8);
 
                 var fileName = Path.GetFileName(filePath);
 
@@ -711,81 +646,85 @@ namespace TarkovHelper.Services
 
             try
             {
-                // Read file with shared access (game might be writing)
-                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                using var reader = new StreamReader(stream);
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var reader = new StreamReader(stream, Encoding.UTF8);
 
                 var fileName = Path.GetFileName(filePath);
 
-                // If tailOnly, skip to last 50KB
                 if (tailOnly && stream.Length > 50000)
                 {
                     stream.Seek(-50000, SeekOrigin.End);
-                    reader.ReadLine(); // Skip partial line
+                    reader.ReadLine();
                 }
 
-                // Read entire content for multiline JSON parsing
-                var content = await reader.ReadToEndAsync();
+                var content = await reader.ReadToEndAsync().ConfigureAwait(false);
                 var parsedEvents = ParseLogContent(content, fileName);
                 events.AddRange(parsedEvents);
             }
             catch
             {
-                // File access error, return what we have
             }
 
             return events;
         }
 
         /// <summary>
-        /// Parse log content with multiline JSON support
+        /// Robust parser for log content with nested/multiline JSON support immune to braces inside strings
         /// </summary>
         private List<QuestLogEvent> ParseLogContent(string content, string? sourceFile)
         {
             var events = new List<QuestLogEvent>();
+            if (string.IsNullOrEmpty(content)) return events;
 
-            // Split into lines
-            var lines = content.Split('\n');
-            var jsonBuilder = new System.Text.StringBuilder();
-            bool inJson = false;
-            int braceCount = 0;
-
-            for (int i = 0; i < lines.Length; i++)
+            int i = 0;
+            while (i < content.Length)
             {
-                var line = lines[i].TrimEnd('\r');
-
-                // Check if this line starts a JSON block (line starting with '{')
-                if (!inJson && line.TrimStart().StartsWith("{"))
+                if (content[i] == '{' && (i == 0 || content[i - 1] == '\n' || content[i - 1] == ' ' || content[i - 1] == '\t' || content[i - 1] == '\r'))
                 {
-                    inJson = true;
-                    jsonBuilder.Clear();
-                    braceCount = 0;
-                }
+                    int start = i;
+                    int depth = 0;
+                    bool inString = false;
+                    bool escaped = false;
+                    bool completed = false;
+                    const int maxChars = 256 * 1024;
 
-                if (inJson)
-                {
-                    jsonBuilder.AppendLine(line);
-
-                    // Count braces
-                    foreach (char c in line)
+                    for (int j = i; j < content.Length && (j - start) < maxChars; j++)
                     {
-                        if (c == '{') braceCount++;
-                        else if (c == '}') braceCount--;
-                    }
-
-                    // JSON block complete
-                    if (braceCount == 0)
-                    {
-                        inJson = false;
-                        var jsonString = jsonBuilder.ToString();
-
-                        var evt = ParseJsonBlock(jsonString, sourceFile);
-                        if (evt != null)
+                        char c = content[j];
+                        if (inString)
                         {
-                            events.Add(evt);
+                            if (escaped) escaped = false;
+                            else if (c == '\\') escaped = true;
+                            else if (c == '"') inString = false;
+                        }
+                        else
+                        {
+                            if (c == '"') inString = true;
+                            else if (c == '{') depth++;
+                            else if (c == '}')
+                            {
+                                depth--;
+                                if (depth == 0)
+                                {
+                                    var jsonSlice = content.Substring(start, j - start + 1);
+                                    var evt = ParseJsonBlock(jsonSlice, sourceFile);
+                                    if (evt != null) events.Add(evt);
+
+                                    i = j + 1;
+                                    completed = true;
+                                    break;
+                                }
+                                if (depth < 0) break;
+                            }
                         }
                     }
+
+                    if (completed) continue;
                 }
+
+                int nextNl = content.IndexOf('\n', i);
+                if (nextNl < 0) break;
+                i = nextNl + 1;
             }
 
             return events;
@@ -801,26 +740,30 @@ namespace TarkovHelper.Services
                 using var doc = JsonDocument.Parse(jsonString);
                 var root = doc.RootElement;
 
-                // Check if this is a new_message notification
                 if (!root.TryGetProperty("type", out var typeElement) ||
                     typeElement.GetString() != "new_message")
                     return null;
 
-                // Get message element
                 if (!root.TryGetProperty("message", out var messageElement))
                     return null;
 
-                // Get message type
                 if (!messageElement.TryGetProperty("type", out var msgTypeElement))
                     return null;
 
-                var msgType = msgTypeElement.GetInt32();
+                int msgType = 0;
+                if (msgTypeElement.ValueKind == JsonValueKind.Number)
+                {
+                    if (!msgTypeElement.TryGetInt32(out msgType)) return null;
+                }
+                else if (msgTypeElement.ValueKind == JsonValueKind.String)
+                {
+                    if (!int.TryParse(msgTypeElement.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out msgType)) return null;
+                }
+                else return null;
 
-                // Check if this is a quest-related message
                 if (msgType != MSG_TYPE_STARTED && msgType != MSG_TYPE_COMPLETED && msgType != MSG_TYPE_FAILED)
                     return null;
 
-                // Get templateId (contains quest ID)
                 if (!messageElement.TryGetProperty("templateId", out var templateIdElement))
                     return null;
 
@@ -828,25 +771,35 @@ namespace TarkovHelper.Services
                 if (string.IsNullOrEmpty(templateId))
                     return null;
 
-                // Extract quest ID (first token in templateId)
                 var questId = templateId.Split(' ')[0];
 
-                // Get dialogId (trader ID)
                 var traderId = "";
                 if (root.TryGetProperty("dialogId", out var dialogIdElement))
                 {
                     traderId = dialogIdElement.GetString() ?? "";
                 }
 
-                // Get timestamp
                 var timestamp = DateTime.Now;
                 if (messageElement.TryGetProperty("dt", out var dtElement))
                 {
-                    var unixTime = dtElement.GetInt64();
-                    timestamp = DateTimeOffset.FromUnixTimeSeconds(unixTime).LocalDateTime;
+                    double seconds = 0;
+                    bool ok = dtElement.ValueKind switch
+                    {
+                        JsonValueKind.Number => dtElement.TryGetDouble(out seconds),
+                        JsonValueKind.String => double.TryParse(dtElement.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out seconds),
+                        _ => false
+                    };
+
+                    if (ok && seconds > 946684800 && seconds < 4102444800)
+                    {
+                        timestamp = DateTimeOffset.FromUnixTimeMilliseconds((long)(seconds * 1000)).LocalDateTime;
+                    }
+                    else if (ok && seconds > 0)
+                    {
+                        timestamp = DateTimeOffset.FromUnixTimeSeconds((long)seconds).LocalDateTime;
+                    }
                 }
 
-                // Determine event type
                 var eventType = msgType switch
                 {
                     MSG_TYPE_STARTED => QuestEventType.Started,
@@ -861,7 +814,7 @@ namespace TarkovHelper.Services
                     EventType = eventType,
                     TraderId = traderId,
                     Timestamp = timestamp,
-                    OriginalLine = jsonString.Substring(0, Math.Min(200, jsonString.Length)),
+                    OriginalLine = jsonString.Length > 200 ? jsonString.Substring(0, 200) : jsonString,
                     SourceFile = sourceFile
                 };
             }
@@ -878,9 +831,6 @@ namespace TarkovHelper.Services
         /// <summary>
         /// Synchronize quest progress from log files
         /// </summary>
-        /// <param name="logFolderPath">Path to log folder</param>
-        /// <param name="progress">Progress reporter</param>
-        /// <param name="daysRange">Number of days to look back (0 = all logs)</param>
         public async Task<SyncResult> SyncFromLogsAsync(string logFolderPath, IProgress<string>? progress = null, int daysRange = 0)
         {
             var result = new SyncResult();
@@ -888,11 +838,9 @@ namespace TarkovHelper.Services
             _log.Info($"Starting sync from: {logFolderPath}");
             progress?.Report("Scanning log files...");
 
-            // Parse all log files
-            var events = await ParseLogDirectoryAsync(logFolderPath, progress);
+            var events = await ParseLogDirectoryAsync(logFolderPath, progress).ConfigureAwait(false);
             _log.Info($"Found {events.Count} quest events in logs");
 
-            // Apply date filter if specified
             if (daysRange > 0)
             {
                 var cutoffDate = DateTime.Now.AddDays(-daysRange);
@@ -911,16 +859,11 @@ namespace TarkovHelper.Services
 
             progress?.Report($"Analyzing {events.Count} quest events...");
 
-            // Get task data
             var progressService = QuestProgressService.Instance;
             var graphService = QuestGraphService.Instance;
-
-            // Build a lookup for quest IDs
             var tasksByQuestId = BuildQuestIdLookup(progressService.AllTasks);
             _log.Debug($"Built lookup with {tasksByQuestId.Count} quest IDs from {progressService.AllTasks.Count} tasks");
 
-            // STEP 1: Determine final state for each quest (last event wins)
-            // Key: normalizedName, Value: (finalEventType, timestamp, task)
             var questFinalStates = new Dictionary<string, (QuestEventType EventType, DateTime Timestamp, TarkovTask Task)>(StringComparer.OrdinalIgnoreCase);
             var startedQuests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -929,7 +872,6 @@ namespace TarkovHelper.Services
                 var task = FindTaskByQuestId(tasksByQuestId, evt.QuestId);
                 if (task == null)
                 {
-                    // Ignore procedural daily/operational tasks (starts with 61604)
                     if (!evt.QuestId.StartsWith("61604", StringComparison.OrdinalIgnoreCase))
                     {
                         if (!result.UnmatchedQuestIds.Contains(evt.QuestId))
@@ -941,16 +883,13 @@ namespace TarkovHelper.Services
                 var normalizedName = task.NormalizedName ?? "";
                 if (string.IsNullOrEmpty(normalizedName)) continue;
 
-                // Track started quests (for in-progress detection)
                 if (evt.EventType == QuestEventType.Started)
                 {
                     startedQuests.Add(normalizedName);
                 }
 
-                // Last event for each quest determines final state
                 questFinalStates[normalizedName] = (evt.EventType, evt.Timestamp, task);
 
-                // Count events
                 switch (evt.EventType)
                 {
                     case QuestEventType.Started: result.QuestsStarted++; break;
@@ -959,11 +898,9 @@ namespace TarkovHelper.Services
                 }
             }
 
-            // STEP 2: Build questsToComplete based on final states
             var questsToComplete = new List<QuestChangeInfo>();
             var processedPrereqs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // First, collect all quests that will be in a terminal state (Completed or Failed)
             var terminalStateQuests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var kvp in questFinalStates)
             {
@@ -982,12 +919,9 @@ namespace TarkovHelper.Services
                 switch (eventType)
                 {
                     case QuestEventType.Started:
-                        // Started quests: only complete prerequisites, not the quest itself
-                        // Quest stays Active
                         break;
 
                     case QuestEventType.Completed:
-                        // Only add if status will actually change
                         if (currentStatus != QuestStatus.Done)
                         {
                             questsToComplete.Add(new QuestChangeInfo
@@ -1003,7 +937,6 @@ namespace TarkovHelper.Services
                         break;
 
                     case QuestEventType.Failed:
-                        // Only add if status will actually change
                         if (currentStatus != QuestStatus.Failed)
                         {
                             questsToComplete.Add(new QuestChangeInfo
@@ -1019,9 +952,6 @@ namespace TarkovHelper.Services
                         break;
                 }
 
-                // STEP 3: Complete prerequisites for quests that were COMPLETED or FAILED only
-                // For Started quests, we cannot reliably determine prerequisite completion
-                // because a quest can be started even if prerequisites are still in progress in some cases
                 if (eventType == QuestEventType.Started)
                     continue;
 
@@ -1031,24 +961,19 @@ namespace TarkovHelper.Services
                     if (prereq.NormalizedName == null) continue;
                     if (processedPrereqs.Contains(prereq.NormalizedName)) continue;
 
-                    // Skip if this prereq will have a terminal state from logs
                     if (terminalStateQuests.Contains(prereq.NormalizedName)) continue;
-
-                    // Skip if prereq is explicitly started but not in terminal state (still in progress)
                     if (startedQuests.Contains(prereq.NormalizedName) && !terminalStateQuests.Contains(prereq.NormalizedName))
                         continue;
 
                     var prereqStatus = progressService.GetStatus(prereq);
                     if (prereqStatus != QuestStatus.Done)
                     {
-                        // Skip alternative quests - will be collected separately
                         if (progressService.HasAlternativeQuests(prereq))
                         {
                             _log.Debug($"Skipping alternative quest prereq: {prereq.Name}");
                             continue;
                         }
 
-                        // Defensive Guard: Never auto-complete a prerequisite that cannot be legitimately unlocked
                         if (prereqStatus == QuestStatus.Unavailable)
                         {
                             _log.Warning($"Skipping prerequisite auto-complete for {prereq.Name}: Quest is Unavailable for current player/faction/edition.");
@@ -1088,9 +1013,6 @@ namespace TarkovHelper.Services
                 }
             }
 
-            // STEP 3.1: Gated Trader Unlock Reconcile (TarkovTracker parity)
-            // If the logs contain any completed quest for a gated trader,
-            // or the player has reached Loyalty Level >= 2 with them, the unlock quest MUST be completed.
             var gatedTraders = new (string Trader, string UnlockId, string UnlockNorm, string UnlockTitle)[]
             {
                 ("Jaeger", "5d2495a886f77425cd51e403", "introduction", "Introduction"),
@@ -1132,23 +1054,16 @@ namespace TarkovHelper.Services
                 }
             }
 
-            // Sort by timestamp (oldest first) for chronological display
             result.QuestsToComplete = questsToComplete.OrderBy(q => q.Timestamp).ToList();
-
-            // STEP 4: Collect alternative quest groups that need user selection
-            // These are mutually exclusive quests where user must choose which one they completed
             result.AlternativeQuestGroups = CollectAlternativeQuestGroups(progressService, questFinalStates, terminalStateQuests);
 
-            // Build InProgressQuests list: quests whose final state is Started (not Completed/Failed)
             foreach (var kvp in questFinalStates)
             {
                 var normalizedName = kvp.Key;
                 var (eventType, _, task) = kvp.Value;
 
-                // Only include quests whose FINAL state is Started
                 if (eventType == QuestEventType.Started)
                 {
-                    // Check if already done in saved progress
                     var currentStatus = progressService.GetStatus(task);
                     if (currentStatus != QuestStatus.Done)
                     {
@@ -1157,7 +1072,6 @@ namespace TarkovHelper.Services
                 }
             }
 
-            // Build CompletedQuests list from QuestsToComplete
             foreach (var change in questsToComplete.Where(q => q.ChangeType == QuestEventType.Completed && !q.IsPrerequisite))
             {
                 var task = progressService.GetTask(change.NormalizedName);
@@ -1168,19 +1082,7 @@ namespace TarkovHelper.Services
             }
 
             progress?.Report($"Found {questsToComplete.Count} quests to update");
-
             _log.Info($"Sync complete: {result.TotalEventsFound} events, {result.QuestsToComplete.Count} to complete, {result.InProgressQuests.Count} in progress, {result.UnmatchedQuestIds.Count} unmatched");
-
-            // 매칭되지 않은 ID 샘플 출력
-            if (result.UnmatchedQuestIds.Count > 0)
-            {
-                var sampleUnmatched = result.UnmatchedQuestIds.Take(10).ToList();
-                _log.Debug($"Sample unmatched IDs: {string.Join(", ", sampleUnmatched)}");
-
-                // DB의 샘플 ID도 출력
-                var sampleDbIds = tasksByQuestId.Keys.Take(10).ToList();
-                _log.Debug($"Sample DB IDs: {string.Join(", ", sampleDbIds)}");
-            }
 
             return result;
         }
@@ -1195,7 +1097,6 @@ namespace TarkovHelper.Services
 
             _log.Info($"ApplyQuestChangesAsync: {changes.Count} total changes, {selectedChanges.Count} selected");
 
-            // Build batch of changes
             var batchChanges = new List<(TarkovTask Task, QuestStatus Status)>();
 
             foreach (var change in selectedChanges)
@@ -1221,10 +1122,9 @@ namespace TarkovHelper.Services
                 }
             }
 
-            // Apply all changes in one batch (single DB transaction, single UI update)
             if (batchChanges.Count > 0)
             {
-                await progressService.ApplyQuestChangesBatchAsync(batchChanges);
+                await progressService.ApplyQuestChangesBatchAsync(batchChanges).ConfigureAwait(false);
                 _log.Info($"Batch applied {batchChanges.Count} quest changes");
             }
 
@@ -1232,17 +1132,26 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
-        /// Apply quest changes after user confirmation (legacy sync method, calls async internally)
+        /// Apply quest changes after user confirmation (legacy sync method, calls async safely)
         /// </summary>
         [Obsolete("Use ApplyQuestChangesAsync for better performance")]
         public void ApplyQuestChanges(List<QuestChangeInfo> changes)
         {
-            _ = ApplyQuestChangesAsync(changes);
+            _ = ApplyQuestChangesSafeWrapperAsync(changes);
         }
 
-        /// <summary>
-        /// Build a lookup dictionary for quest IDs
-        /// </summary>
+        private async Task ApplyQuestChangesSafeWrapperAsync(List<QuestChangeInfo> changes)
+        {
+            try
+            {
+                await ApplyQuestChangesAsync(changes).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"Unhandled failure in ApplyQuestChanges: {ex.Message}");
+            }
+        }
+
         private Dictionary<string, TarkovTask> BuildQuestIdLookup(IReadOnlyList<TarkovTask> tasks)
         {
             var lookup = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
@@ -1264,17 +1173,11 @@ namespace TarkovHelper.Services
             return lookup;
         }
 
-        /// <summary>
-        /// Find task by quest ID
-        /// </summary>
         private TarkovTask? FindTaskByQuestId(Dictionary<string, TarkovTask> lookup, string questId)
         {
             return lookup.TryGetValue(questId, out var task) ? task : null;
         }
 
-        /// <summary>
-        /// Collect alternative quest groups that need user selection
-        /// </summary>
         private List<AlternativeQuestGroup> CollectAlternativeQuestGroups(
             QuestProgressService progressService,
             Dictionary<string, (QuestEventType EventType, DateTime Timestamp, TarkovTask Task)> questFinalStates,
@@ -1284,13 +1187,11 @@ namespace TarkovHelper.Services
             var processedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var graphService = QuestGraphService.Instance;
 
-            // Find all alternative quest groups that are prerequisites for started/completed quests
             foreach (var kvp in questFinalStates)
             {
                 var normalizedName = kvp.Key;
                 var task = kvp.Value.Task;
 
-                // Get all prerequisites
                 var prereqs = graphService.GetAllPrerequisites(normalizedName);
 
                 foreach (var prereq in prereqs)
@@ -1298,15 +1199,12 @@ namespace TarkovHelper.Services
                     if (prereq.NormalizedName == null) continue;
                     if (!progressService.HasAlternativeQuests(prereq)) continue;
 
-                    // Skip if already processed this group
                     var groupKey = GetAlternativeGroupKey(prereq, progressService);
                     if (processedGroups.Contains(groupKey)) continue;
                     processedGroups.Add(groupKey);
 
-                    // Build the group
                     var group = new AlternativeQuestGroup { IsRequired = true };
 
-                    // Add the main quest
                     var mainStatus = progressService.GetStatus(prereq);
                     group.Choices.Add(new AlternativeQuestChoice
                     {
@@ -1316,7 +1214,6 @@ namespace TarkovHelper.Services
                         IsSelected = mainStatus == QuestStatus.Done
                     });
 
-                    // Add alternative quests
                     if (prereq.AlternativeQuests != null)
                     {
                         foreach (var altName in prereq.AlternativeQuests)
@@ -1336,7 +1233,6 @@ namespace TarkovHelper.Services
                         }
                     }
 
-                    // Only add if there are multiple choices and none are completed yet
                     if (group.Choices.Count > 1 && !group.Choices.Any(c => c.IsCompleted))
                     {
                         groups.Add(group);
@@ -1347,9 +1243,6 @@ namespace TarkovHelper.Services
             return groups;
         }
 
-        /// <summary>
-        /// Get a unique key for an alternative quest group
-        /// </summary>
         private string GetAlternativeGroupKey(TarkovTask task, QuestProgressService progressService)
         {
             var names = new List<string> { task.NormalizedName ?? "" };
@@ -1363,11 +1256,33 @@ namespace TarkovHelper.Services
             return string.Join("|", names);
         }
 
+        private void RaiseEventSafe<TArgs>(EventHandler<TArgs>? eventHandler, TArgs args)
+        {
+            if (eventHandler == null) return;
+
+            foreach (var singleDelegate in eventHandler.GetInvocationList())
+            {
+                try
+                {
+                    ((EventHandler<TArgs>)singleDelegate).Invoke(this, args);
+                }
+                catch (Exception ex)
+                {
+                    _log.Error($"Subscriber '{singleDelegate.Method.DeclaringType?.Name}.{singleDelegate.Method.Name}' threw unhandled exception: {ex.Message}");
+                }
+            }
+        }
+
         #endregion
 
         public void Dispose()
         {
+            if (_isDisposed) return;
+            _isDisposed = true;
+
+            TarkovHelper.Services.Map.LogMapWatcherService.Instance.MapChanged -= OnExternalMapChanged;
             StopMonitoring();
+            _pushProcessGate.Dispose();
             GC.SuppressFinalize(this);
         }
     }
@@ -1377,14 +1292,7 @@ namespace TarkovHelper.Services
     /// </summary>
     public class MapDetectedEventArgs : EventArgs
     {
-        /// <summary>
-        /// Detected map key (matches map_configs.json key)
-        /// </summary>
         public string MapKey { get; }
-
-        /// <summary>
-        /// Time when map was detected
-        /// </summary>
         public DateTime DetectedAt { get; }
 
         public MapDetectedEventArgs(string mapKey, DateTime detectedAt)

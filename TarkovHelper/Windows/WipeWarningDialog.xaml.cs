@@ -10,7 +10,6 @@ namespace TarkovHelper.Windows;
 /// </summary>
 public partial class WipeWarningDialog : Window
 {
-    private readonly LocalizationService _loc = LocalizationService.Instance;
     private readonly string _logPath;
 
     /// <summary>

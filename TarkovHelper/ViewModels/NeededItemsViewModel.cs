@@ -62,6 +62,13 @@ namespace TarkovHelper.ViewModels
                 base.OnCollectionChanged(e);
         }
     }
+
+    /// <summary>
+    /// Specialized collection implementing range updates and batch replacement with a single NotifyCollectionChanged event.
+    /// </summary>
+    public class RangeObservableCollection<T> : BulkObservableCollection<T>
+    {
+    }
     /// <summary>
     /// Contract view model for an individual needed item card in the TarkovTracker-aligned Needed Items grid.
     /// Supports grouping identical items per quest/station, interactive steppers, FIR status, and trader avatars.
@@ -314,8 +321,11 @@ namespace TarkovHelper.ViewModels
 
         public string FilteredCountText => $"{FilteredCards.Count} items";
 
-        // Search text
+        // Search text with 120ms debounce
         private string _searchText = string.Empty;
+        private CancellationTokenSource? _searchDebounceCts;
+        public bool EnableSearchDebounce { get; set; } = true;
+
         public string SearchText
         {
             get => _searchText;
@@ -325,7 +335,39 @@ namespace TarkovHelper.ViewModels
                 {
                     _searchText = value;
                     OnPropertyChanged();
-                    ApplyFilters();
+
+                    _searchDebounceCts?.Cancel();
+                    _searchDebounceCts?.Dispose();
+
+                    if (string.IsNullOrEmpty(value) || !EnableSearchDebounce || Application.Current == null)
+                    {
+                        ApplyFilters();
+                    }
+                    else
+                    {
+                        var cts = new CancellationTokenSource();
+                        _searchDebounceCts = cts;
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await Task.Delay(120, cts.Token);
+                                if (!cts.Token.IsCancellationRequested)
+                                {
+                                    var dispatcher = Application.Current?.Dispatcher;
+                                    if (dispatcher != null && !dispatcher.HasShutdownStarted && dispatcher.Thread.IsAlive)
+                                    {
+                                        dispatcher.Invoke(() => ApplyFilters());
+                                    }
+                                    else
+                                    {
+                                        ApplyFilters();
+                                    }
+                                }
+                            }
+                            catch (OperationCanceledException) { }
+                        });
+                    }
                 }
             }
         }
@@ -439,6 +481,7 @@ namespace TarkovHelper.ViewModels
 
         internal void SetCardsForTesting(IEnumerable<NeededItemCardViewModel> cards)
         {
+            EnableSearchDebounce = false;
             lock (_allCards)
             {
                 _allCards.Clear();
@@ -791,10 +834,20 @@ namespace TarkovHelper.ViewModels
 
             void UpdateCollections()
             {
+                _streamingCts?.Cancel();
+                _streamingCts?.Dispose();
+                _streamingCts = new CancellationTokenSource();
+                var token = _streamingCts.Token;
+
                 FilteredCards.ReplaceAll(list);
                 _displayedCount = Math.Min(InitialDisplayBatchSize, list.Count);
                 DisplayedCards.ReplaceAll(list.Take(_displayedCount));
                 OnPropertyChanged(nameof(FilteredCountText));
+
+                if (list.Count > _displayedCount)
+                {
+                    StreamRemainingCards(list, _displayedCount, token);
+                }
             }
 
             var dispatcher = Application.Current?.Dispatcher;
@@ -806,6 +859,51 @@ namespace TarkovHelper.ViewModels
             {
                 UpdateCollections();
             }
+        }
+
+        private CancellationTokenSource? _streamingCts;
+
+        private void StreamRemainingCards(List<NeededItemCardViewModel> allItems, int startIndex, CancellationToken ct)
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.HasShutdownStarted)
+            {
+                var rest = allItems.Skip(startIndex).ToList();
+                if (rest.Count > 0 && !ct.IsCancellationRequested)
+                {
+                    _displayedCount += rest.Count;
+                    DisplayedCards.AddRange(rest);
+                }
+                return;
+            }
+
+            int currentIndex = startIndex;
+            const int chunkSize = 40;
+
+            void PostNextChunk()
+            {
+                if (ct.IsCancellationRequested || currentIndex >= allItems.Count) return;
+
+                dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (ct.IsCancellationRequested || currentIndex >= allItems.Count) return;
+
+                    var chunk = allItems.Skip(currentIndex).Take(chunkSize).ToList();
+                    if (chunk.Count > 0)
+                    {
+                        _displayedCount += chunk.Count;
+                        DisplayedCards.AddRange(chunk);
+                        currentIndex += chunk.Count;
+                    }
+
+                    if (currentIndex < allItems.Count && !ct.IsCancellationRequested)
+                    {
+                        PostNextChunk();
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Background);
+            }
+
+            PostNextChunk();
         }
 
         public void LoadMoreDisplayedCards()

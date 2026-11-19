@@ -11,7 +11,6 @@ namespace TarkovHelper.Windows;
 /// </summary>
 public partial class SyncResultDialog : Window
 {
-    private readonly LocalizationService _loc = LocalizationService.Instance;
     private readonly SyncResult _result;
     private ObservableCollection<QuestChangeInfo> _pendingChanges;
     private List<AlternativeQuestGroupViewModel>? _alternativeGroups;

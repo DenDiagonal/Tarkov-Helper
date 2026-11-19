@@ -250,13 +250,23 @@ namespace TarkovHelper.ViewModels
         }
 
         public string TasksPercentageText => $"{TopStats.TasksCompletionPercentage:F0}%";
-        public string TasksCountText => $"{CompletedTasksCount}/{TotalTasksCount} tasks";
+        public string TasksCountText => LocalizationService.Instance.CurrentLanguage switch
+        {
+            AppLanguage.ES => $"{CompletedTasksCount}/{TotalTasksCount} misiones",
+            AppLanguage.KO => $"{CompletedTasksCount}/{TotalTasksCount} 퀘스트",
+            _ => $"{CompletedTasksCount}/{TotalTasksCount} tasks"
+        };
         public string KappaText => $"Kappa {TopStats.CompletedKappaTasks}/{TopStats.TotalKappaTasks}";
         public string KappaPercentageText => TopStats.TotalKappaTasks > 0
             ? $"{(int)Math.Floor((double)TopStats.CompletedKappaTasks * 100 / TopStats.TotalKappaTasks)}%"
             : "0%";
         public string HideoutPercentageText => $"{TopStats.HideoutItemsPercentage:F0}%";
-        public string HideoutCountText => $"{CompletedHideoutItems}/{TotalHideoutItems} barter items";
+        public string HideoutCountText => LocalizationService.Instance.CurrentLanguage switch
+        {
+            AppLanguage.ES => $"{CompletedHideoutItems}/{TotalHideoutItems} objetos",
+            AppLanguage.KO => $"{CompletedHideoutItems}/{TotalHideoutItems} 바터 아이템",
+            _ => $"{CompletedHideoutItems}/{TotalHideoutItems} barter items"
+        };
         public bool IsKappaReady => TopStats.CompletedKappaTasks == TopStats.TotalKappaTasks && TopStats.TotalKappaTasks > 0;
 
         private static readonly HashSet<string> CurrencyKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -370,9 +380,15 @@ namespace TarkovHelper.ViewModels
                     }
                 }
 
+                var questDisplayName = (LocalizationService.Instance.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(task.NameKo))
+                    ? task.NameKo
+                    : ((LocalizationService.Instance.CurrentLanguage == AppLanguage.JA && !string.IsNullOrEmpty(task.NameJa))
+                        ? task.NameJa
+                        : (task.Name ?? task.NormalizedName ?? string.Empty));
+
                 items.Add(new UpNextTaskItem(
                     task.Id ?? task.NormalizedName ?? string.Empty,
-                    task.Name ?? task.NormalizedName ?? string.Empty,
+                    questDisplayName,
                     task.Trader ?? "Unknown",
                     task.Maps?.FirstOrDefault() ?? "Any",
                     impact.UnlocksNext,
@@ -607,7 +623,7 @@ namespace TarkovHelper.ViewModels
 
                 cards.Add(new TraderProgressCardViewModel(
                     spec.Key,
-                    spec.Name,
+                    LocalizationService.Instance.GetLocalizedTraderName(spec.Name),
                     avatarUrl,
                     loyaltyLevel,
                     currentRep,

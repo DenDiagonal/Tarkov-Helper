@@ -446,11 +446,6 @@ namespace TarkovHelper.Models.DataAudit
         public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
         public string DatabasePath { get; set; } = string.Empty;
 
-        /// <summary>
-        /// Optional reconciliation report detailing BSG official server overrides and cascade inferences.
-        /// </summary>
-        public BsgReconciliationReport? ReconciliationReport { get; set; }
-
         public List<QuestDiff> QuestDiffs { get; set; } = new();
         public List<QuestRequirementDiff> QuestRequirementDiffs { get; set; } = new();
         public List<QuestItemDiff> QuestItemDiffs { get; set; } = new();

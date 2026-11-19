@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Windows;
 using AutoUpdaterDotNET;
 using TarkovHelper.Services;
+using TarkovHelper.Services.DataAudit;
 using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper
@@ -25,120 +26,113 @@ namespace TarkovHelper
 
         protected override void OnStartup(StartupEventArgs e)
         {
-            // DB 초기화를 가장 먼저 수행 (SettingsService, ProfileService 등이 안전하게 접근할 수 있도록 보장)
-            UserDataDbService.Instance.EnsureInitialized();
-
             base.OnStartup(e);
 
-            // 전역 예외 처리 - 에러 로그 파일에 기록
+            // 전역 예외 처리 - 에러 로그 파일에 안전하게 기록
             AppDomain.CurrentDomain.UnhandledException += (s, args) =>
             {
                 var ex = args.ExceptionObject as Exception;
-                var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash_log.txt");
-                File.WriteAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Unhandled Exception:\n{ex}\n\nStack trace:\n{ex?.StackTrace}");
+                WriteCrashLog($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Unhandled Exception:\n{ex}\n\nStack trace:\n{ex?.StackTrace}");
             };
 
             DispatcherUnhandledException += (s, args) =>
             {
-                var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash_log.txt");
-                File.WriteAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Dispatcher Exception:\n{args.Exception}\n\nStack trace:\n{args.Exception.StackTrace}");
+                WriteCrashLog($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Dispatcher Exception:\n{args.Exception}\n\nStack trace:\n{args.Exception.StackTrace}");
                 args.Handled = false; // 앱 종료 허용
             };
 
             // 버전 변경 시 캐시 데이터 초기화 (사용자 진행 상황은 유지)
             CheckAndRefreshDataOnVersionChange();
 
-            // 폰트 크기 적용
-            ApplyBaseFontSize(SettingsService.Instance.BaseFontSize);
+            // 폰트 크기 적용 (초기 프레임은 기본값 적용, DB 로드 완료 시 이벤트로 자동 반영)
+            ApplyBaseFontSize(SettingsService.DefaultBaseFontSize);
             SettingsService.Instance.BaseFontSizeChanged += (_, size) => ApplyBaseFontSize(size);
+
+            // Purgado asíncrono de logs antiguos y copias de seguridad obsoletas en segundo plano (baja prioridad)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await LogCleanupService.CreateFromSettings().CleanupAsync().ConfigureAwait(false);
+                    DatabaseBackupManager.Instance.PruneOldBackups(maxRetainedBackups: 5);
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"Background maintenance cleanup failed: {ex.Message}");
+                }
+            });
 
             // Note: AutoUpdater is now managed by UpdateService in MainWindow
             // It will show update dialog only when user clicks "Update to vX.X.X" button
         }
 
+        private static void WriteCrashLog(string message)
+        {
+            try
+            {
+                var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash_log.txt");
+                File.WriteAllText(logPath, message);
+            }
+            catch
+            {
+                try
+                {
+                    var fallbackDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TarkovHelper");
+                    if (!Directory.Exists(fallbackDir)) Directory.CreateDirectory(fallbackDir);
+                    var fallbackPath = Path.Combine(fallbackDir, "crash_log.txt");
+                    File.WriteAllText(fallbackPath, message);
+                }
+                catch { }
+            }
+        }
+
         protected override void OnExit(ExitEventArgs e)
         {
-            _log.Info("Application shutting down...");
+            _log.Info("Application shutting down cleanly...");
 
-            try
+            // 1. Detener emisores de eventos de red, watchers de archivos y timers ANTES de volcar BD
+            TryDispose(() => UpdateService.Instance.StopAutoCheck(), nameof(UpdateService));
+            TryDispose(() => DatabaseUpdateService.Instance.Dispose(), nameof(DatabaseUpdateService));
+            TryDispose(() => LogSyncService.Instance.Dispose(), nameof(LogSyncService));
+            TryDispose(() => EftRaidEventService.Instance.Dispose(), nameof(EftRaidEventService));
+            TryDispose(() => TarkovHelper.Services.Map.LogMapWatcherService.Instance.Dispose(), "LogMapWatcherService");
+            TryDispose(() => TarkovHelper.Services.Map.MapTrackerService.Instance.Dispose(), "MapTrackerService");
+            TryDispose(() => OverlayMiniMapService.Instance.Dispose(), nameof(OverlayMiniMapService));
+            TryDispose(() =>
             {
-                // Stop background database updates
-                DatabaseUpdateService.Instance.Dispose();
-                _log.Debug("DatabaseUpdateService disposed");
-            }
-            catch (Exception ex)
-            {
-                _log.Error("Error disposing DatabaseUpdateService", ex);
-            }
-
-            try
-            {
-                // Dispose overlay service (closes overlay window and unsubscribes events)
-                OverlayMiniMapService.Instance.Dispose();
-                _log.Debug("OverlayMiniMapService disposed");
-            }
-            catch (Exception ex)
-            {
-                _log.Error("Error disposing OverlayMiniMapService", ex);
-            }
-
-            try
-            {
-                // Dispose log map watcher service
-                TarkovHelper.Services.Map.LogMapWatcherService.Instance.Dispose();
-                _log.Debug("LogMapWatcherService disposed");
-            }
-            catch (Exception ex)
-            {
-                _log.Error("Error disposing LogMapWatcherService", ex);
-            }
-
-            try
-            {
-                // Dispose keyboard hook (releases Windows hook)
                 GlobalKeyboardHookService.Instance.IsEnabled = false;
                 GlobalKeyboardHookService.Instance.Dispose();
-                _log.Debug("GlobalKeyboardHookService disposed");
-            }
-            catch (Exception ex)
-            {
-                _log.Error("Error disposing GlobalKeyboardHookService", ex);
-            }
+            }, nameof(GlobalKeyboardHookService));
 
-            try
+            // 2. Volcado determinista y bloqueante con timeout acotado (2s) de todas las escrituras pendientes a SQLite
+            TryDispose(() =>
             {
-                // Flush pending needed item progress saves to database
-                NeededItemProgressService.Instance.FlushPendingSaves();
-                ObjectiveProgressService.Instance.SaveObjectiveProgress();
-                _log.Debug("NeededItemProgressService flushed pending saves");
-            }
-            catch (Exception ex)
-            {
-                _log.Error("Error flushing NeededItemProgressService", ex);
-            }
+                Task.Run(async () =>
+                {
+                    await NeededItemProgressService.Instance.FlushPendingSavesAsync().ConfigureAwait(false);
+                    await ObjectiveProgressService.Instance.FlushPendingSavesAsync().ConfigureAwait(false);
+                }).Wait(TimeSpan.FromSeconds(2));
 
-            try
-            {
-                // Dispose single instance mutex and event handle
-                SingleInstanceService.Instance.Dispose();
-            }
-            catch
-            {
-                // Ignore errors during shutdown
-            }
+                // Checkpoint limpio del WAL antes de cerrar el pool de conexiones
+                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            }, "SQLiteFlushAndCheckpoint");
 
-            try
-            {
-                // Flush and dispose logging service
-                LoggingService.Instance.Dispose();
-            }
-            catch
-            {
-                // Ignore logging errors during shutdown
-            }
+            TryDispose(() => SingleInstanceService.Instance.Dispose(), nameof(SingleInstanceService));
+            TryDispose(() => LoggingService.Instance.Dispose(), nameof(LoggingService));
 
             base.OnExit(e);
-            Environment.Exit(0);
+        }
+
+        private static void TryDispose(Action action, string componentName)
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                try { _log.Error($"Error shutting down {componentName}", ex); } catch { }
+            }
         }
 
         /// <summary>
@@ -202,24 +196,28 @@ namespace TarkovHelper
         /// tasks.json, items.json, hideout.json 등 캐시 데이터 삭제
         /// app_settings.json, quest_progress.json, hideout_progress.json 등 사용자 데이터는 유지
         /// </summary>
+        /// <summary>
+        /// API에서 받은 캐시 데이터만 삭제 (화이트리스트 기반 안전 삭제)
+        /// tasks.json, items.json, hideout.json 등 캐시 데이터만 삭제하며,
+        /// DB 파일(*.db, *.db-wal)이나 사용자 데이터 파일은 절대 삭제하지 않음.
+        /// </summary>
         private void DeleteCacheDataFiles()
         {
-            var ignoreFiles = new[]
+            if (!Directory.Exists(DataDirectory)) return;
+
+            var cacheFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                // 사용자 설정 파일
-                Path.Combine(DataDirectory, "app_settings.json"),
-                // 퀘스트/하이드아웃 진행 상황
-                Path.Combine(DataDirectory, "quest_progress.json"),
-                Path.Combine(DataDirectory, "hideout_progress.json"),
-                // 레거시 파일 (하위 호환성)
-                Path.Combine(DataDirectory, "progress.json"),
-                Path.Combine(DataDirectory, "settings.json"),
-                Path.Combine(DataDirectory, "game_settings.json")
+                "tasks.json",
+                "items.json",
+                "hideout.json",
+                "traders.json",
+                "maps.json"
             };
 
-            foreach (var file in Directory.GetFiles(DataDirectory))
+            foreach (var file in Directory.GetFiles(DataDirectory, "*.json"))
             {
-                if (File.Exists(file) && !ignoreFiles.Contains(file))
+                var fileName = Path.GetFileName(file);
+                if (cacheFileNames.Contains(fileName))
                 {
                     try
                     {

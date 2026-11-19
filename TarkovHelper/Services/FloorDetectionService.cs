@@ -129,16 +129,31 @@ public sealed class FloorDetectionService
     /// <param name="y">Y 좌표 (높이)</param>
     /// <param name="z">Z 좌표</param>
     /// <returns>감지된 층 ID (없으면 null)</returns>
-    public string? DetectFloor(string mapKey, double x, double y, double z)
+    private const double VerticalHysteresisMeters = 0.65;
+
+    public string? DetectFloor(string mapKey, double x, double y, double z, string? currentFloorId = null)
     {
         if (!_floorRangesByMap.TryGetValue(mapKey, out var ranges))
             return null;
 
-        // Priority 순서대로 (내림차순) 체크
+        // 1º coincidencia estricta por prioridad descendente
         foreach (var range in ranges)
         {
             if (range.Contains(x, y, z))
                 return range.FloorId;
+        }
+
+        // 2º Si está en transición/escalera cerca de los límites de la planta actual, mantenerla para evitar flickering
+        if (!string.IsNullOrEmpty(currentFloorId))
+        {
+            var sticky = ranges.FirstOrDefault(r =>
+                string.Equals(r.FloorId, currentFloorId, StringComparison.OrdinalIgnoreCase) &&
+                y >= r.MinY - VerticalHysteresisMeters &&
+                y <= r.MaxY + VerticalHysteresisMeters &&
+                (!r.HasXZBounds || (x >= r.MinX!.Value && x <= r.MaxX!.Value && z >= r.MinZ!.Value && z <= r.MaxZ!.Value)));
+
+            if (sticky != null)
+                return sticky.FloorId;
         }
 
         return null;

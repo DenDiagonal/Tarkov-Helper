@@ -10,6 +10,7 @@
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BackgroundDarkBrush}"
         Loaded="Window_Loaded"
+        PreviewKeyDown="MainWindow_PreviewKeyDown"
         TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType"
         RenderOptions.ClearTypeHint="Enabled"
@@ -277,6 +278,13 @@
                                 Margin="0,0,6,0" Click="BtnProfile_Click"
                                 Style="{StaticResource HeaderActionButtonStyle}"
                                 ToolTip="Profile settings (Mode, Faction, Edition, Prestige, etc.)"/>
+
+                        <!-- Minimap Button (Toggle Overlay) -->
+                        <Button x:Name="BtnMinimap" Content="🗺️" Width="30" Height="28" Padding="0"
+                                Margin="0,0,6,0" Click="BtnMinimap_Click"
+                                Style="{StaticResource HeaderActionButtonStyle}"
+                                FontSize="13"
+                                ToolTip="Minimap Overlay (Ctrl+1)"/>
 
                         <!-- Settings -->
                         <Button x:Name="BtnSettings" Content="⚙" Width="30" Height="28" Padding="0"
@@ -753,9 +761,30 @@
 
                             <StackPanel Grid.Column="2">
 
+                                <!-- Language Selection Section -->
+                                <TextBlock x:Name="TxtLanguageLabel" Text="Language"
+                                           FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           Margin="0,0,0,8"/>
+
+                                <TextBlock x:Name="TxtLanguageDesc"
+                                           Text="Select application display language."
+                                           FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,0,0,12"/>
+
+                                <ComboBox x:Name="ComboLanguage" Margin="0,0,0,16"
+                                          SelectionChanged="ComboLanguage_SelectionChanged">
+                                    <ComboBoxItem Content="English" Tag="EN"/>
+                                    <ComboBoxItem Content="Español" Tag="ES"/>
+                                    <ComboBoxItem Content="한국어 (Korean)" Tag="KO"/>
+                                    <ComboBoxItem Content="日本語 (Japanese)" Tag="JA"/>
+                                </ComboBox>
+
                                 <!-- Cache Management Section -->
 
-                                <TextBlock Text="Cache Management"
+                                <TextBlock x:Name="TxtCacheLabel" Text="Cache Management"
 
                                            FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
 
@@ -765,7 +794,7 @@
 
 
 
-                                <TextBlock Text="Clear wiki page cache and downloaded data. Use if data is corrupted or to re-download everything."
+                                <TextBlock x:Name="TxtCacheDesc" Text="Clear wiki page cache and downloaded data. Use if data is corrupted or to re-download everything."
 
                                            FontSize="{DynamicResource FontSizeXSmall}"
 
@@ -781,7 +810,7 @@
 
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
 
-                                    <TextBlock Text="Cache size: "
+                                    <TextBlock x:Name="TxtCacheSizeLabel" Text="Cache size: "
 
                                                FontSize="{DynamicResource FontSizeXSmall}"
 
@@ -827,7 +856,7 @@
 
                                     <StackPanel>
 
-                                        <TextBlock Text="Data Update"
+                                        <TextBlock x:Name="TxtDataUpdateLabel" Text="Data Update"
 
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
 
@@ -837,7 +866,7 @@
 
 
 
-                                        <TextBlock Text="Manually update latest quest and trader requirements from Tarkov Tracker API."
+                                        <TextBlock x:Name="TxtDataUpdateDesc" Text="Manually update latest quest and trader requirements from Tarkov Tracker API."
 
                                                    FontSize="{DynamicResource FontSizeXSmall}"
 
@@ -964,7 +993,7 @@
 
                                     <StackPanel>
 
-                                        <TextBlock Text="Font Size"
+                                        <TextBlock x:Name="TxtFontSizeLabel" Text="Font Size"
 
                                                    FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
 
@@ -974,7 +1003,7 @@
 
 
 
-                                        <TextBlock Text="Adjust default application font size."
+                                        <TextBlock x:Name="TxtFontSizeDesc" Text="Adjust default application font size."
 
                                                    FontSize="{DynamicResource FontSizeXSmall}"
 

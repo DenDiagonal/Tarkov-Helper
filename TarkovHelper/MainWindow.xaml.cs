@@ -78,6 +78,28 @@ public partial class MainWindow : Window
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
 
     private bool _isExplicitExit = false;
+    private int _uiHeaderRefreshQueued = 0;
+    private readonly SemaphoreSlim _profileSwitchGate = new(1, 1);
+
+    private void RequestHeaderAndQuestRefresh()
+    {
+        if (_isExplicitExit) return;
+        if (Interlocked.Exchange(ref _uiHeaderRefreshQueued, 1) == 1)
+            return;
+
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            Interlocked.Exchange(ref _uiHeaderRefreshQueued, 0);
+            if (_isExplicitExit) return;
+
+            UpdatePlayerLevelUI();
+            UpdateDspDecodeUI();
+            UpdateEditionUI();
+            UpdatePrestigeLevelUI();
+            UpdateFactionUI();
+            _questListPage?.RefreshDisplay();
+        }, System.Windows.Threading.DispatcherPriority.DataBind);
+    }
 
 
 
@@ -212,21 +234,37 @@ public partial class MainWindow : Window
 
 
     private void OnLanguageChanged(object? sender, AppLanguage e)
-
     {
-
-        UpdateAllLocalizedText();
-
+        try
+        {
+            UpdateAllLocalizedText();
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Error in OnLanguageChanged: {ex.Message}");
+        }
     }
 
 
 
     private void UpdateAllLocalizedText()
-
     {
-
         TxtWelcome.Text = _loc.Welcome;
 
+        // Navigation Tabs
+        TabDashboard.Content = _loc.Dashboard;
+        TabStoryline.Content = _loc.Storyline;
+        TabTasks.Content = _loc.Quests;
+        TabNeededItems.Content = _loc.NeededItems;
+        TabHideout.Content = _loc.Hideout;
+
+        // Action Buttons
+        BtnQuickSync.Content = _loc.Sync;
+        BtnProfile.Content = _loc.Profile;
+        BtnSettings.ToolTip = _loc.Settings;
+
+        // Settings Dialog
+        UpdateSettingsLocalizedText();
     }
 
 
@@ -281,6 +319,8 @@ public partial class MainWindow : Window
 
         {
 
+            _ = Task.Run(() => NeededKeysService.Instance.LoadTrackerKeysFromResources());
+
             await DatabaseBootstrapService.Instance.EnsureDatabaseSchemaAsync();
 
             await UserDataDbService.Instance.InitializeAsync();
@@ -327,7 +367,22 @@ public partial class MainWindow : Window
 
         AutoStartLogMonitoring();
 
-
+        // 5. Inicializar Overlay MiniMap Service y Global Keyboard Hook a nivel de aplicación
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            try
+            {
+                await OverlayMiniMapService.Instance.InitializeAsync();
+                GlobalKeyboardHookService.Instance.IsEnabled = true;
+                OverlayMiniMapService.Instance.OverlayVisibilityChanged -= OnOverlayVisibilityChanged;
+                OverlayMiniMapService.Instance.OverlayVisibilityChanged += OnOverlayVisibilityChanged;
+                OnOverlayVisibilityChanged(OverlayMiniMapService.Instance.IsOverlayVisible);
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"Failed to initialize OverlayMiniMapService on startup: {ex.Message}");
+            }
+        });
 
         RadioPvp.Checked += ProfileRadio_Checked;
 
@@ -1395,21 +1450,13 @@ public partial class MainWindow : Window
 
 
 
-            // Debug: Show hideout module status
+            // Lazy instantiation: reset secondary pages so they instantiate on demand
 
-            _log.Debug($"Creating HideoutPage: modules={_hideoutModules?.Count ?? 0}");
+            _hideoutPage = null;
 
-            _hideoutPage = _hideoutModules != null && _hideoutModules.Count > 0
+            _dashboardPage = null;
 
-                ? new HideoutPage()
-
-                : null;
-
-            _log.Debug($"HideoutPage created: {_hideoutPage != null}");
-
-            _dashboardPage = new DashboardPage();
-
-            _itemsPage = new ItemsPage();
+            _itemsPage = null;
 
 
 
@@ -1422,30 +1469,6 @@ public partial class MainWindow : Window
             TabTasks.IsChecked = true;
 
             PageContent.Content = _questListPage;
-
-
-
-            if (_itemsPage != null)
-
-            {
-
-                Dispatcher.InvokeAsync(async () =>
-
-                {
-
-                    try
-
-                    {
-
-                        await _itemsPage.ViewModel.LoadCardsAsync();
-
-                    }
-
-                    catch { }
-
-                }, System.Windows.Threading.DispatcherPriority.Background);
-
-            }
 
         }
 
@@ -1537,19 +1560,24 @@ public partial class MainWindow : Window
 
     {
 
+        if (!await _profileSwitchGate.WaitAsync(0))
+            return; // Evita ejecuciones concurrentes al alternar perfiles rápidamente
+
         ShowLoadingOverlay($"Loading {ProfileService.Instance.CurrentProfile.ToString().ToUpper()} data...");
-
-
 
         try
 
         {
 
+            await UserDataDbService.Instance.EnsureDatabaseSchemaAsync();
+
             var currentProfile = ProfileService.Instance.CurrentProfile;
 
-            
+            // 1. Flush preventivo del perfil saliente ANTES de destruir singletons
+            NeededItemProgressService.Instance.FlushPendingSaves();
+            ObjectiveProgressService.Instance.SaveObjectiveProgress();
 
-            // 1. 서비스들을 물리적으로 리셋
+            // 2. 서비스들을 물리적으로 리셋
 
             QuestProgressService.ResetInstance();
 
@@ -1557,77 +1585,38 @@ public partial class MainWindow : Window
 
             HideoutProgressService.ResetInstance();
 
-
-
-            // 2. 백엔드 서비스 리셋 및 데이터 다시 로드
-
+            // 3. 백엔드 서비스 리셋 및 데이터 다시 로드
             _settingsService.ReloadSettings();
 
-            await QuestProgressService.Instance.InitializeFromDbAsync(currentProfile);
-
-            
-
-            // [중요] 은신처 데이터 DB로부터 명시적 로드 및 주입
-
-            await HideoutDbService.Instance.LoadStationsAsync();
-
-            await HideoutProgressService.Instance.InitializeAsync(HideoutDbService.Instance.AllStations.ToList());
-
-
-
-            await HideoutProgressService.Instance.ReloadProgressAsync();
-
-            await ItemInventoryService.Instance.InitializeAsync();
-
-            // 서브 목표 및 아이템 부분 납품 진행 상태 로드
-            await NeededItemProgressService.Instance.LoadProgressAsync(currentProfile);
-            await ObjectiveProgressService.Instance.LoadObjectiveProgressAsync(currentProfile);
-
-
-
-            // 3. [핵심] 데이터 무결성 검증 루프 (최대 3초)
-
-            // 퀘스트와 은신처 데이터가 모두 채워질 때까지 기다려 화이트아웃 방지
-
-            int retryCount = 0;
-
-            while ((QuestProgressService.Instance.AllTasks.Count == 0 || 
-
-                    HideoutProgressService.Instance.AllModules.Count == 0) && retryCount < 30)
-
+            // Carga determinista con backoff exponencial real (máximo 3 intentos)
+            for (int attempt = 1; attempt <= 3; attempt++)
             {
+                await QuestProgressService.Instance.InitializeFromDbAsync(currentProfile);
+                await HideoutDbService.Instance.LoadStationsAsync();
+                await HideoutProgressService.Instance.InitializeAsync(HideoutDbService.Instance.AllStations.ToList());
+                await HideoutProgressService.Instance.ReloadProgressAsync();
 
-                await Task.Delay(100);
-
-                retryCount++;
-
-                // 1초마다 재시도 강제 호출
-
+                if (QuestProgressService.Instance.AllTasks.Count > 0 &&
+                    HideoutProgressService.Instance.AllModules.Count > 0)
                 {
-
-                    await QuestProgressService.Instance.InitializeFromDbAsync(currentProfile);
-
-                    await HideoutDbService.Instance.LoadStationsAsync();
-
-                    await HideoutProgressService.Instance.InitializeAsync(HideoutDbService.Instance.AllStations.ToList());
-
-                    await HideoutProgressService.Instance.ReloadProgressAsync();
-
+                    break;
                 }
 
+                _log.Warning($"Static DB hydration incomplete on attempt {attempt}/3. Retrying...");
+                await Task.Delay(300 * attempt);
             }
 
+            await Task.WhenAll(
+                ItemInventoryService.Instance.InitializeAsync(),
+                NeededItemProgressService.Instance.LoadProgressAsync(currentProfile),
+                ObjectiveProgressService.Instance.LoadObjectiveProgressAsync(currentProfile));
 
-
-            _log.Info($"Data verification complete. Quests: {QuestProgressService.Instance.AllTasks.Count}, Retry: {retryCount}");
-
-
+            // Re-vincular overlay minimapa al nuevo perfil
+            OverlayMiniMapService.Instance.OnProfileSwitched();
 
             // 4. 퀘스트 그래프 서비스 초기화 (의존성 추적 및 카파 게이지용)
 
             QuestGraphService.Instance.Initialize(QuestProgressService.Instance.AllTasks.ToList());
-
-
 
             // 5. Lazy-create only the active tab page immediately; reset others to null so they instantiate on demand
 
@@ -1640,8 +1629,6 @@ public partial class MainWindow : Window
             _itemsPage = null;
 
             _hideoutPage = null;
-
-
 
             if (TabDashboard.IsChecked == true)
 
@@ -1695,25 +1682,11 @@ public partial class MainWindow : Window
 
             }
 
-
-
-            UpdatePlayerLevelUI();
-
-            UpdateDspDecodeUI();
-
-            UpdateEditionUI();
-
-            UpdatePrestigeLevelUI();
-
-            UpdateFactionUI();
-
-            
+            RequestHeaderAndQuestRefresh();
 
             TabContentArea.Visibility = Visibility.Visible;
 
             TxtWelcome.Visibility = Visibility.Collapsed;
-
-
 
             // Pre-warm background data caches off the UI thread so switching to Tasks or Needed Items is instant
 
@@ -1752,6 +1725,7 @@ public partial class MainWindow : Window
         {
 
             HideLoadingOverlay();
+            _profileSwitchGate.Release();
 
         }
 
@@ -1941,25 +1915,7 @@ public partial class MainWindow : Window
 
     /// </summary>
 
-    private void OnPlayerLevelChanged(object? sender, int newLevel)
-
-    {
-
-        Dispatcher.Invoke(() =>
-
-        {
-
-            UpdatePlayerLevelUI();
-
-
-
-            // Refresh quest list if visible
-
-            _questListPage?.RefreshDisplay();
-
-        });
-
-    }
+    private void OnPlayerLevelChanged(object? sender, int newLevel) => RequestHeaderAndQuestRefresh();
 
 
 
@@ -2069,21 +2025,7 @@ public partial class MainWindow : Window
 
     /// </summary>
 
-    private void OnScavRepChanged(object? sender, double newScavRep)
-
-    {
-
-        Dispatcher.Invoke(() =>
-
-        {
-
-            // Refresh quest list if visible
-
-            _questListPage?.RefreshDisplay();
-
-        });
-
-    }
+    private void OnScavRepChanged(object? sender, double newScavRep) => RequestHeaderAndQuestRefresh();
 
 
 
@@ -2165,25 +2107,7 @@ public partial class MainWindow : Window
 
     /// </summary>
 
-    private void OnDspDecodeCountChanged(object? sender, int newCount)
-
-    {
-
-        Dispatcher.Invoke(() =>
-
-        {
-
-            UpdateDspDecodeUI();
-
-
-
-            // Refresh quest list if visible
-
-            _questListPage?.RefreshDisplay();
-
-        });
-
-    }
+    private void OnDspDecodeCountChanged(object? sender, int newCount) => RequestHeaderAndQuestRefresh();
 
 
 
@@ -2253,10 +2177,7 @@ public partial class MainWindow : Window
 
     /// </summary>
 
-    private void OnPlayerFactionChanged(object? sender, string? faction)
-    {
-        Dispatcher.Invoke(UpdateFactionUI);
-    }
+    private void OnPlayerFactionChanged(object? sender, string? faction) => RequestHeaderAndQuestRefresh();
 
     private void UpdateFactionUI()
     {
@@ -2295,25 +2216,7 @@ public partial class MainWindow : Window
         _settingsService.PlayerFaction = faction;
     }
 
-    private void OnEditionChanged(object? sender, bool value)
-
-    {
-
-        Dispatcher.Invoke(() =>
-
-        {
-
-            UpdateEditionUI();
-
-
-
-            // Refresh quest list if visible
-
-            _questListPage?.RefreshDisplay();
-
-        });
-
-    }
+    private void OnEditionChanged(object? sender, bool value) => RequestHeaderAndQuestRefresh();
 
 
 
@@ -2389,25 +2292,7 @@ public partial class MainWindow : Window
 
     /// </summary>
 
-    private void OnPrestigeLevelChanged(object? sender, int newLevel)
-
-    {
-
-        Dispatcher.Invoke(() =>
-
-        {
-
-            UpdatePrestigeLevelUI();
-
-
-
-            // Refresh quest list if visible
-
-            _questListPage?.RefreshDisplay();
-
-        });
-
-    }
+    private void OnPrestigeLevelChanged(object? sender, int newLevel) => RequestHeaderAndQuestRefresh();
 
 
 
@@ -2549,6 +2434,47 @@ public partial class MainWindow : Window
 
 
 
+    private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control &&
+            (e.Key == Key.D1 || e.Key == Key.NumPad1))
+        {
+            e.Handled = true;
+            OverlayMiniMapService.Instance.ToggleOverlay();
+        }
+        else if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control &&
+                 (e.Key == Key.D7 || e.Key == Key.NumPad7))
+        {
+            e.Handled = true;
+            OverlayMiniMapService.Instance.ShowSettingsWindow();
+        }
+    }
+
+    private void BtnMinimap_Click(object sender, RoutedEventArgs e)
+    {
+        OverlayMiniMapService.Instance.ToggleOverlay();
+    }
+
+    private void OnOverlayVisibilityChanged(bool isVisible)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (BtnMinimap != null)
+            {
+                if (isVisible)
+                {
+                    BtnMinimap.Background = (TryFindResource("AccentBrush") as Brush) ?? Brushes.RoyalBlue;
+                    BtnMinimap.Foreground = Brushes.White;
+                }
+                else
+                {
+                    BtnMinimap.ClearValue(Button.BackgroundProperty);
+                    BtnMinimap.ClearValue(Button.ForegroundProperty);
+                }
+            }
+        });
+    }
+
     #region Settings
 
 
@@ -2626,19 +2552,26 @@ public partial class MainWindow : Window
     /// </summary>
 
     private void UpdateSettingsUI()
-
     {
-
         var logPath = _settingsService.LogFolderPath;
-
         var isValid = _settingsService.IsLogFolderValid;
-
         var method = _settingsService.DetectionMethod;
 
-
+        // Sync Language Selection ComboBox without triggering SelectionChanged loop
+        if (ComboLanguage != null)
+        {
+            ComboLanguage.SelectionChanged -= ComboLanguage_SelectionChanged;
+            ComboLanguage.SelectedIndex = _loc.CurrentLanguage switch
+            {
+                AppLanguage.ES => 1,
+                AppLanguage.KO => 2,
+                AppLanguage.JA => 3,
+                _ => 0
+            };
+            ComboLanguage.SelectionChanged += ComboLanguage_SelectionChanged;
+        }
 
         // Update localized text
-
         UpdateSettingsLocalizedText();
 
 
@@ -2706,73 +2639,72 @@ public partial class MainWindow : Window
 
 
         // Update status indicator
-
         if (isValid)
-
         {
-
             LogFolderStatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(76, 175, 80)); // Green
-
-            TxtLogFolderStatus.Text = _loc.CurrentLanguage switch
-
-            {
-
-                AppLanguage.KO => "유효한 경로",
-
-                _ => "Valid path"
-
-            };
-
+            TxtLogFolderStatus.Text = _loc.ValidPath;
         }
-
         else
-
         {
-
             LogFolderStatusIndicator.Fill = new SolidColorBrush(Color.FromRgb(244, 67, 54)); // Red
-
-            TxtLogFolderStatus.Text = "Invalid path";
-
+            TxtLogFolderStatus.Text = _loc.InvalidPath;
         }
-
     }
 
-
-
     /// <summary>
-
     /// Update settings dialog localized text
-
     /// </summary>
-
     private void UpdateSettingsLocalizedText()
-
     {
+        TxtSettingsTitle.Text = _loc.Settings;
+        TxtLanguageLabel.Text = _loc.Language;
+        TxtLanguageDesc.Text = _loc.LanguageSelectionDesc;
+        TxtLogFolderLabel.Text = _loc.LogFolder;
+        TxtLogFolderDesc.Text = _loc.LogFolderDesc;
+        BtnAutoDetect.Content = _loc.AutoDetect;
+        BtnBrowseLogFolder.Content = _loc.Browse;
+        BtnResetLogFolder.Content = _loc.Reset;
+        TxtQuestSyncLabel.Text = _loc.QuestLogSync;
+        TxtQuestSyncDesc.Text = _loc.QuestSyncDesc;
+        BtnSyncQuest.Content = _loc.SyncQuests;
+        BtnInProgressQuestInput.Content = _loc.EnterInProgressQuests;
+        TxtCacheLabel.Text = _loc.CacheManagement;
+        TxtCacheDesc.Text = _loc.CacheDesc;
+        BtnClearCache.Content = _loc.ClearCache;
+        BtnClearAllData.Content = _loc.DeleteAllData;
+        TxtDataUpdateLabel.Text = _loc.UpdateApiData;
+        TxtDataUpdateDesc.Text = _loc.DataUpdateDesc;
+        BtnUpdateApiData.Content = _loc.UpdateApiData;
+        BtnRollbackBackup.Content = _loc.RestoreBackup;
+        TxtFontLabel.Text = _loc.Font;
+        TxtFontDesc.Text = _loc.FontDesc;
+        TxtFontSizeLabel.Text = _loc.FontSize;
+        TxtFontSizeDesc.Text = _loc.CurrentLanguage switch
+        {
+            AppLanguage.ES => "Ajusta el tamaño de fuente predeterminado de la aplicación.",
+            AppLanguage.KO => "기본 애플리케이션 글꼴 크기를 조정합니다.",
+            AppLanguage.JA => "デフォルトのフォントサイズを調整します。",
+            _ => "Adjust default application font size."
+        };
+        BtnResetFontSize.Content = _loc.RestoreDefaults;
+    }
 
-
-
-        TxtSettingsTitle.Text = "Settings";
-
-
-
-        TxtLogFolderLabel.Text = "Tarkov Log Folder";
-
-
-
-        TxtLogFolderDesc.Text = "Set the Tarkov Logs folder path to automatically track completed quests.";
-
-
-
-        BtnAutoDetect.Content = "Auto Detect";
-
-
-
-        BtnBrowseLogFolder.Content = "Browse...";
-
-
-
-        BtnResetLogFolder.Content = "Reset";
-
+    private void ComboLanguage_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ComboLanguage?.SelectedItem is ComboBoxItem item && item.Tag is string tag && Enum.TryParse<AppLanguage>(tag, out var lang))
+        {
+            if (_loc.CurrentLanguage != lang)
+            {
+                try
+                {
+                    _loc.CurrentLanguage = lang;
+                }
+                catch (Exception ex)
+                {
+                    _log.Error($"Error changing language to {lang}: {ex.Message}");
+                }
+            }
+        }
     }
 
 
@@ -3275,11 +3207,9 @@ public partial class MainWindow : Window
 
 
 
-        TxtMonitoringStatus.Text = isMonitoring ? "Monitoring" : "Not monitoring";
+        TxtMonitoringStatus.Text = isMonitoring ? _loc.Monitoring : _loc.NotMonitoring;
 
-
-
-        BtnToggleMonitoring.Content = isMonitoring ? "Stop Monitoring" : "Start Monitoring";
+        BtnToggleMonitoring.Content = isMonitoring ? _loc.StopMonitoring : _loc.StartMonitoring;
 
 
 

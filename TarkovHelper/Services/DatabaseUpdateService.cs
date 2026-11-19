@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,8 +19,9 @@ namespace TarkovHelper.Services;
 public sealed class DatabaseUpdateService : IDisposable
 {
     private static readonly ILogger _log = Log.For<DatabaseUpdateService>();
-    private static DatabaseUpdateService? _instance;
-    public static DatabaseUpdateService Instance => _instance ??= new DatabaseUpdateService();
+    private static readonly Lazy<DatabaseUpdateService> _lazyInstance =
+        new(() => new DatabaseUpdateService(), LazyThreadSafetyMode.ExecutionAndPublication);
+    public static DatabaseUpdateService Instance => _lazyInstance.Value;
 
     private const string TARKOV_DEV_API_URL = "https://api.tarkov.dev/graphql";
     private const string VERSION_URL = "https://raw.githubusercontent.com/DenDiagonal/Tarkov-Helper/refs/heads/main/TarkovHelper/Assets/db_version.txt";
@@ -32,11 +34,12 @@ public sealed class DatabaseUpdateService : IDisposable
     private readonly string _databasePath;
     private readonly string _versionFilePath;
     private readonly HttpClient _httpClient;
-    private System.Threading.Timer _updateTimer;
-    private Task<UpdateCheckResult>? _currentUpdateTask;
-    private bool _isUpdating;
-    private bool _disposed;
+    private readonly System.Threading.Timer _updateTimer;
+    private readonly SemaphoreSlim _updateLock = new(1, 1);
+    private readonly CancellationTokenSource _cts = new();
 
+    private volatile bool _isUpdating;
+    private volatile bool _disposed;
 
     /// <summary>
     /// 데이터베이스 파일 경로
@@ -127,7 +130,7 @@ public sealed class DatabaseUpdateService : IDisposable
     public void StartBackgroundUpdates()
     {
         _log.Info("Starting background update checks (every 5 minutes)");
-        _updateTimer.Change(0, UPDATE_INTERVAL_MS); // 즉시 시작 후 5분마다 반복
+        _updateTimer.Change(0, UPDATE_INTERVAL_MS);
     }
 
     /// <summary>
@@ -140,11 +143,24 @@ public sealed class DatabaseUpdateService : IDisposable
     }
 
     /// <summary>
-    /// 타이머 콜백
+    /// Safe timer tick: handles exceptions and avoids async void crash
     /// </summary>
-    private async void OnUpdateTimerElapsed(object? state)
+    private void OnUpdateTimerElapsed(object? state)
     {
-        await CheckAndUpdateAsync();
+        if (_disposed || _cts.IsCancellationRequested) return;
+        _ = RunTimerCheckSafeAsync();
+    }
+
+    private async Task RunTimerCheckSafeAsync()
+    {
+        try
+        {
+            await CheckAndUpdateAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Unhandled error in background DB update timer: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -153,7 +169,7 @@ public sealed class DatabaseUpdateService : IDisposable
     public async Task<UpdateCheckResult> CheckAndUpdateAsync()
     {
         _log.Info("Update check disabled by user request");
-        return new UpdateCheckResult(true, false, "Update feature is disabled");
+        return await Task.FromResult(new UpdateCheckResult(true, false, "Update feature is disabled")).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -163,7 +179,7 @@ public sealed class DatabaseUpdateService : IDisposable
     {
         try
         {
-            var diffReport = await CheckTarkovTrackerUpdatesAsync(progress, ct);
+            var diffReport = await CheckTarkovTrackerUpdatesAsync(progress, ct).ConfigureAwait(false);
             return new UpdateCheckResult(true, false, "Comprobación completada", diffReport);
         }
         catch (Exception ex)
@@ -181,16 +197,11 @@ public sealed class DatabaseUpdateService : IDisposable
     {
         _log.Info("Starting TarkovTracker update check with dual-source BSG reconciliation...");
         using var extractor = new TarkovTrackerExtractorService();
-        var rawData = await extractor.ExtractAsync(progress, ct);
+        var rawData = await extractor.ExtractAsync(progress, ct).ConfigureAwait(false);
 
         progress?.Report("Normalizing TarkovTracker dataset...");
         var normalizer = new DataNormalizerService();
         var normalized = normalizer.Normalize(rawData, (CommunityDataPayload?)null);
-
-        // BsgServerReconciliationService and its cascading inheritance loop have been
-        // permanently removed: they relied on an outdated SP-Tarkov template that corrupted
-        // modern quest levels (inflating ~315 quest levels to obsolete values).
-        // Official live TarkovTracker API is the single source of truth for quest levels and requirements.
 
         progress?.Report("Computing differences against local database...");
         var diffEngine = DatabaseDiffEngine.Instance;
@@ -200,12 +211,11 @@ public sealed class DatabaseUpdateService : IDisposable
             includeUnchanged: false, 
             detectRemovedQuests: false, 
             pruneBrokenPrerequisites: false, 
-            ct: ct);
+            ct: ct).ConfigureAwait(false);
 
         _log.Info($"TarkovTracker update check complete: {diffReport.TotalChanges} total differences found.");
         return diffReport;
     }
-
 
     /// <summary>
     /// 실제 업데이트 확인 및 필요시 다운로드 수행
@@ -216,10 +226,9 @@ public sealed class DatabaseUpdateService : IDisposable
 
         try
         {
-
             // 1. 원격 버전 확인
             _log.Debug("Checking remote version...");
-            var remoteVersion = await GetRemoteVersionAsync();
+            var remoteVersion = await GetRemoteVersionAsync().ConfigureAwait(false);
 
             if (string.IsNullOrEmpty(remoteVersion))
             {
@@ -242,7 +251,7 @@ public sealed class DatabaseUpdateService : IDisposable
 
             // 3. 새 버전 다운로드
             _log.Info($"New version available: {remoteVersion}");
-            var downloadSuccess = await DownloadDatabaseAsync();
+            var downloadSuccess = await DownloadDatabaseAsync(_cts.Token).ConfigureAwait(false);
 
             if (!downloadSuccess)
             {
@@ -252,7 +261,7 @@ public sealed class DatabaseUpdateService : IDisposable
             }
 
             // 4. 버전 파일 업데이트
-            await UpdateLocalVersionAsync(remoteVersion);
+            await UpdateLocalVersionAsync(remoteVersion).ConfigureAwait(false);
 
             // 5. 업데이트 완료 이벤트 발생
             _log.Info("Database updated successfully, notifying services...");
@@ -269,11 +278,7 @@ public sealed class DatabaseUpdateService : IDisposable
             UpdateCheckCompleted?.Invoke(this, result);
             return result;
         }
-        finally
-        {
-        }
     }
-
 
     /// <summary>
     /// 원격 버전 정보 가져오기 (tarkov.dev API 우선)
@@ -282,17 +287,15 @@ public sealed class DatabaseUpdateService : IDisposable
     {
         try
         {
-            // 1. tarkov.dev API에서 최신 데이터 상태 확인
-            var tarkovDevVersion = await GetTarkovDevStatusAsync();
+            var tarkovDevVersion = await GetTarkovDevStatusAsync().ConfigureAwait(false);
             if (!string.IsNullOrEmpty(tarkovDevVersion))
             {
                 _log.Debug($"Latest tarkov.dev updated at: {tarkovDevVersion}");
                 return tarkovDevVersion;
             }
             
-            // 2. 실패 시 GitHub의 정적 버전 파일 확인 (폴백)
             _log.Debug("Falling back to GitHub version check...");
-            var response = await _httpClient.GetStringAsync(VERSION_URL);
+            var response = await _httpClient.GetStringAsync(VERSION_URL, _cts.Token).ConfigureAwait(false);
             return response.Trim();
         }
         catch (Exception ex)
@@ -312,10 +315,10 @@ public sealed class DatabaseUpdateService : IDisposable
             var query = "{ \"query\": \"{ tarkovDataStatus { updated } }\" }";
             var content = new StringContent(query, System.Text.Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.PostAsync(TARKOV_DEV_API_URL, content);
+            var response = await _httpClient.PostAsync(TARKOV_DEV_API_URL, content, _cts.Token).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
-            var json = await response.Content.ReadAsStringAsync();
+            var json = await response.Content.ReadAsStringAsync(_cts.Token).ConfigureAwait(false);
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             
             if (doc.RootElement.TryGetProperty("data", out var data) &&
@@ -334,118 +337,225 @@ public sealed class DatabaseUpdateService : IDisposable
     }
 
     /// <summary>
-    /// 데이터베이스 파일 다운로드
+    /// 데이터베이스 파일 다운로드 및 유효성 검증 후 안전한 원자적 스왑 수행
     /// </summary>
-    private async Task<bool> DownloadDatabaseAsync()
+    private async Task<bool> DownloadDatabaseAsync(CancellationToken ct = default)
     {
+        if (!await _updateLock.WaitAsync(0, ct).ConfigureAwait(false))
+        {
+            _log.Info("Database download already in progress; skipping concurrent invocation.");
+            return false;
+        }
+
+        _isUpdating = true;
+        var tempPath = _databasePath + $".{Guid.NewGuid():N}.tmp";
+        var backupPath = _databasePath + ".bak";
+
         try
         {
             _log.Info("Downloading database...");
 
-            // Assets 폴더가 없으면 생성
             if (!Directory.Exists(_assetsPath))
             {
                 Directory.CreateDirectory(_assetsPath);
             }
 
-            // 임시 파일로 다운로드
-            var tempPath = _databasePath + ".tmp";
-
-            using (var response = await _httpClient.GetAsync(DATABASE_URL, HttpCompletionOption.ResponseHeadersRead))
+            using (var response = await _httpClient.GetAsync(DATABASE_URL, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false))
             {
                 response.EnsureSuccessStatusCode();
 
-                var totalBytes = response.Content.Headers.ContentLength ?? -1;
-                _log.Debug($"Database size: {totalBytes} bytes");
+                var totalBytes = response.Content.Headers.ContentLength;
+                _log.Debug($"Expected database size: {totalBytes?.ToString() ?? "unknown"} bytes");
 
-                await using var contentStream = await response.Content.ReadAsStreamAsync();
-                await using var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
+                await using var contentStream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                await using var fileStream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
 
-                var buffer = new byte[81920];
+                var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(81920);
                 long downloadedBytes = 0;
-                int bytesRead;
 
-                while ((bytesRead = await contentStream.ReadAsync(buffer)) > 0)
+                try
                 {
-                    await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead));
-                    downloadedBytes += bytesRead;
-
-                    if (totalBytes > 0)
+                    int bytesRead;
+                    while ((bytesRead = await contentStream.ReadAsync(buffer.AsMemory(0, 81920), ct).ConfigureAwait(false)) > 0)
                     {
-                        var progress = (double)downloadedBytes / totalBytes * 100;
-                        _log.Trace($"Download progress: {progress:F1}%");
+                        await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), ct).ConfigureAwait(false);
+                        downloadedBytes += bytesRead;
                     }
+
+                    if (totalBytes.HasValue && downloadedBytes != totalBytes.Value)
+                    {
+                        throw new IOException($"Truncated download: received {downloadedBytes} of {totalBytes.Value} bytes.");
+                    }
+
+                    if (downloadedBytes < 4096)
+                    {
+                        throw new InvalidDataException($"Downloaded file is too small ({downloadedBytes} bytes) to be a valid SQLite database.");
+                    }
+
+                    // Flush physically to disk before validating
+                    fileStream.Flush(flushToDisk: true);
+                }
+                finally
+                {
+                    System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
                 }
             }
 
-            // 기존 파일 백업 및 교체
-            var backupPath = _databasePath + ".bak";
-            if (File.Exists(_databasePath))
+            // 1. Validate downloaded candidate SQLite file strictly
+            _log.Debug("Validating downloaded database file integrity...");
+            await ValidateDownloadedSqliteFileAsync(tempPath, ct).ConfigureAwait(false);
+
+            // 2. Clear target SQLite pool specifically
+            ClearTargetDbPool(_databasePath);
+
+            // 3. Perform atomic swap with retry
+            const int maxRetries = 5;
+            bool swapSucceeded = false;
+
+            for (int attempt = 0; attempt < maxRetries; attempt++)
             {
-                // SQLite 연결 풀 클리어 - 파일 핸들 해제를 위해 필수
-                _log.Debug("Clearing SQLite connection pools...");
-                SqliteConnection.ClearAllPools();
-
-                // 연결 풀 클리어 후 파일 핸들이 해제될 시간 확보
-                await Task.Delay(100);
-
-                if (File.Exists(backupPath))
+                try
                 {
-                    File.Delete(backupPath);
+                    DeleteSidecarIfExists(_databasePath + "-wal");
+                    DeleteSidecarIfExists(_databasePath + "-shm");
+
+                    if (File.Exists(_databasePath))
+                    {
+                        // Atomic swap using Windows ReplaceFileW
+                        File.Replace(tempPath, _databasePath, backupPath, ignoreMetadataErrors: true);
+                    }
+                    else
+                    {
+                        File.Move(tempPath, _databasePath);
+                    }
+
+                    swapSucceeded = true;
+                    _log.Info("Database downloaded, validated, and swapped successfully via atomic Replace.");
+                    break;
                 }
-
-                // 파일 이동 재시도 로직 (연결 풀 해제 지연 대응)
-                const int maxRetries = 3;
-                for (int retry = 0; retry < maxRetries; retry++)
+                catch (IOException ex) when (attempt < maxRetries - 1)
                 {
-                    try
-                    {
-                        File.Move(_databasePath, backupPath);
-                        break;
-                    }
-                    catch (IOException) when (retry < maxRetries - 1)
-                    {
-                        _log.Warning($"File move failed, retrying ({retry + 1}/{maxRetries})...");
-                        SqliteConnection.ClearAllPools();
-                        await Task.Delay(500 * (retry + 1));
-                    }
+                    _log.Warning($"Database swap retry {attempt + 1}/{maxRetries}: {ex.Message}");
+                    ClearTargetDbPool(_databasePath);
+                    await Task.Delay(250 * (attempt + 1), ct).ConfigureAwait(false);
                 }
             }
 
-            File.Move(tempPath, _databasePath);
-            _log.Info("Database downloaded successfully");
-
-            // 백업 파일 삭제
-            if (File.Exists(backupPath))
+            if (!swapSucceeded)
             {
-                File.Delete(backupPath);
+                throw new IOException("Failed to atomically replace target database file after maximum retries.");
             }
+
+            DeleteSidecarIfExists(backupPath);
+            DeleteSidecarIfExists(_databasePath + "-wal");
+            DeleteSidecarIfExists(_databasePath + "-shm");
 
             return true;
         }
         catch (Exception ex)
         {
-            _log.Error($"Failed to download database: {ex.Message}");
+            _log.Error($"Failed to download/swap database: {ex.Message}");
 
-            // 다운로드 실패 시 임시 파일 정리
-            var tempPath = _databasePath + ".tmp";
-            if (File.Exists(tempPath))
+            // Defensive recovery: if destination was somehow removed and backup exists, restore it
+            if (!File.Exists(_databasePath) && File.Exists(backupPath))
             {
-                try { File.Delete(tempPath); } catch { }
+                try
+                {
+                    File.Move(backupPath, _databasePath);
+                }
+                catch { }
             }
 
             return false;
         }
+        finally
+        {
+            DeleteSidecarIfExists(tempPath);
+            _isUpdating = false;
+            _updateLock.Release();
+        }
+    }
+
+    private static async Task ValidateDownloadedSqliteFileAsync(string candidateDbPath, CancellationToken ct)
+    {
+        if (!File.Exists(candidateDbPath))
+            throw new FileNotFoundException("Candidate SQLite database file not found.", candidateDbPath);
+
+        // 1. Binary magic header check
+        byte[] header = new byte[16];
+        await using (var fs = new FileStream(candidateDbPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            int read = await fs.ReadAsync(header.AsMemory(0, 16), ct).ConfigureAwait(false);
+            byte[] expectedMagic = System.Text.Encoding.ASCII.GetBytes("SQLite format 3\0");
+            if (read < 16 || !header.SequenceEqual(expectedMagic))
+                throw new InvalidDataException("Downloaded file does not have a valid SQLite 3 binary header.");
+        }
+
+        // 2. Open connection without pooling and execute integrity check
+        var csb = new SqliteConnectionStringBuilder
+        {
+            DataSource = candidateDbPath,
+            Mode = SqliteOpenMode.ReadOnly,
+            DefaultTimeout = 5,
+            Pooling = false
+        };
+
+        await using var conn = new SqliteConnection(csb.ConnectionString);
+        await conn.OpenAsync(ct).ConfigureAwait(false);
+
+        await using (var integrityCmd = new SqliteCommand("PRAGMA quick_check(1);", conn))
+        {
+            var checkResult = (await integrityCmd.ExecuteScalarAsync(ct).ConfigureAwait(false))?.ToString();
+            if (!string.Equals(checkResult, "ok", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"SQLite integrity check failed on downloaded DB: '{checkResult}'");
+        }
+
+        await using (var schemaCmd = new SqliteCommand(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('items', 'quests', 'Tasks');", conn))
+        {
+            var tableCount = Convert.ToInt32(await schemaCmd.ExecuteScalarAsync(ct).ConfigureAwait(false));
+            if (tableCount < 1)
+                throw new InvalidDataException("Downloaded SQLite DB is missing required core tables.");
+        }
+    }
+
+    private static void ClearTargetDbPool(string dbPath)
+    {
+        foreach (var mode in new[] { SqliteOpenMode.ReadOnly, SqliteOpenMode.ReadWrite, SqliteOpenMode.ReadWriteCreate })
+        {
+            try
+            {
+                using var dummy = new SqliteConnection(new SqliteConnectionStringBuilder
+                {
+                    DataSource = dbPath,
+                    Mode = mode,
+                    Pooling = true
+                }.ConnectionString);
+                SqliteConnection.ClearPool(dummy);
+            }
+            catch { }
+        }
+    }
+
+    private static void DeleteSidecarIfExists(string path)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch { }
     }
 
     /// <summary>
-    /// 로컬 버전 파일 업데이트
+    /// 로컬 버전 파일 업데이트 (임시 파일 거친 원자적 저장)
     /// </summary>
     private async Task UpdateLocalVersionAsync(string version)
     {
         try
         {
-            await File.WriteAllTextAsync(_versionFilePath, version);
+            var tempVersionFile = _versionFilePath + ".tmp";
+            await File.WriteAllTextAsync(tempVersionFile, version, _cts.Token).ConfigureAwait(false);
+            File.Move(tempVersionFile, _versionFilePath, overwrite: true);
             LocalVersion = version;
             _log.Debug($"Local version updated to: {version}");
         }
@@ -460,7 +570,6 @@ public sealed class DatabaseUpdateService : IDisposable
     /// </summary>
     private void OnDatabaseUpdated()
     {
-        // UI 스레드에서 이벤트 발생
         if (System.Windows.Application.Current?.Dispatcher != null)
         {
             System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
@@ -474,13 +583,6 @@ public sealed class DatabaseUpdateService : IDisposable
         }
     }
 
-    /// <summary>
-    /// 수동 업데이트 체크 (UI에서 호출용)
-    /// </summary>
-/// <summary>
-    /// Forces notification of DatabaseUpdated event to all listeners.
-    /// Used after database transaction application or hot-reloads.
-    /// </summary>
     public void NotifyDatabaseUpdated()
     {
         _log.Info("NotifyDatabaseUpdated called, dispatching DatabaseUpdated event...");
@@ -490,7 +592,7 @@ public sealed class DatabaseUpdateService : IDisposable
     public async Task<UpdateCheckResult> ForceUpdateCheckAsync()
     {
         _log.Info("Manual update check requested");
-        return await CheckAndUpdateAsync();
+        return await CheckAndUpdateAsync().ConfigureAwait(false);
     }
 
     public void Dispose()
@@ -498,7 +600,15 @@ public sealed class DatabaseUpdateService : IDisposable
         if (_disposed) return;
         _disposed = true;
 
+        try
+        {
+            _cts.Cancel();
+            _cts.Dispose();
+        }
+        catch { }
+
         _updateTimer.Dispose();
+        _updateLock.Dispose();
         _httpClient.Dispose();
     }
 }
@@ -513,10 +623,10 @@ public class UpdateCheckResult
     public string Message { get; }
     public DataDiffReport? DiffReport { get; }
 
-    public UpdateCheckResult(bool success, bool wasUpdated, string message, DataDiffReport? diffReport = null)
+    public UpdateCheckResult(bool success, bool WasUpdated, string message, DataDiffReport? diffReport = null)
     {
         Success = success;
-        WasUpdated = wasUpdated;
+        this.WasUpdated = WasUpdated;
         Message = message;
         DiffReport = diffReport;
     }

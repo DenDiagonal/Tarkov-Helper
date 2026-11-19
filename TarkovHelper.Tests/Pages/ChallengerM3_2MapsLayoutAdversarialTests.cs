@@ -576,8 +576,9 @@ namespace TarkovHelper.Tests.Pages
                         Assert.All(page.MapChips.Where(c => c != targetChip), other => Assert.False(other.IsSelected));
 
                         var currentTrackerMap = MapTrackerService.Instance.CurrentMapKey;
-                        Assert.True(string.Equals(currentTrackerMap, canonicalKey, StringComparison.OrdinalIgnoreCase),
-                            $"MapTrackerService CurrentMapKey '{currentTrackerMap}' should match selected chip '{canonicalKey}'");
+                        var expectedTrackerMap = MapTrackerService.Instance.ResolveMapKey(canonicalKey) ?? canonicalKey;
+                        Assert.True(string.Equals(currentTrackerMap, expectedTrackerMap, StringComparison.OrdinalIgnoreCase),
+                            $"MapTrackerService CurrentMapKey '{currentTrackerMap}' should match selected chip '{canonicalKey}' (expected: '{expectedTrackerMap}')");
                     }
                 }
                 finally
@@ -593,22 +594,30 @@ namespace TarkovHelper.Tests.Pages
             RunInSta(() =>
             {
                 var mapPage = new MapPage();
-                mapPage.SetEmbeddedMode(true);
-
-                // 1. All 12 canonical maps
-                foreach (var mapKey in R1R2TestHelpers.Canonical12Maps)
+                try
                 {
-                    mapPage.SelectMap(mapKey);
-                }
+                    mapPage.SetEmbeddedMode(true);
 
-                // 2. Adversarial Edge Cases: should degrade gracefully and NEVER throw exceptions
-                mapPage.SelectMap("");
-                mapPage.SelectMap("   ");
-                mapPage.SelectMap("customs_night");
-                mapPage.SelectMap("the-labyrinth");
-                mapPage.SelectMap("terminal");
-                mapPage.SelectMap("unknown-bogus-map-key-999");
-            });
+                    // 1. All 12 canonical maps
+                    foreach (var mapKey in R1R2TestHelpers.Canonical12Maps)
+                    {
+                        mapPage.SelectMap(mapKey);
+                    }
+
+                    // 2. Adversarial Edge Cases: should degrade gracefully and NEVER throw exceptions
+                    mapPage.SelectMap("");
+                    mapPage.SelectMap("   ");
+                    mapPage.SelectMap("customs_night");
+                    mapPage.SelectMap("the-labyrinth");
+                    mapPage.SelectMap("terminal");
+                    mapPage.SelectMap("unknown-bogus-map-key-999");
+                }
+                finally
+                {
+                    var mapUnloaded = typeof(MapPage).GetMethod("MapTrackerPage_Unloaded", BindingFlags.Instance | BindingFlags.NonPublic);
+                    mapUnloaded?.Invoke(mapPage, new object[] { mapPage, new RoutedEventArgs() });
+                }
+            }, 15000);
         }
 
         [Fact]
@@ -634,7 +643,8 @@ namespace TarkovHelper.Tests.Pages
                         selectChipMethod.Invoke(page, new object[] { chosen });
 
                         Assert.True(chosen.IsSelected);
-                        Assert.Equal(chosen.Key, MapTrackerService.Instance.CurrentMapKey);
+                        var expectedMap = MapTrackerService.Instance.ResolveMapKey(chosen.Key) ?? chosen.Key;
+                        Assert.Equal(expectedMap, MapTrackerService.Instance.CurrentMapKey, StringComparer.OrdinalIgnoreCase);
                     }
                 }
                 finally

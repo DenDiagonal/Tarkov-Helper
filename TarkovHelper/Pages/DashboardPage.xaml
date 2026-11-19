@@ -44,7 +44,7 @@
 
         <local:LoyaltyButtonBorderConverter x:Key="LoyaltyBorderConverter"/>
 
-        <local:BoolToVisibilityConverter x:Key="BoolToVisConverter"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
 
         <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisConverter"/>
 

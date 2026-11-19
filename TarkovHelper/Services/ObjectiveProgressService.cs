@@ -529,6 +529,11 @@ namespace TarkovHelper.Services
 
         #region Persistence
 
+        public async Task FlushPendingSavesAsync()
+        {
+            await SaveObjectiveProgressToDbAsync().ConfigureAwait(false);
+        }
+
         public void FlushPendingSaves()
         {
             SaveObjectiveProgressSync();

@@ -100,10 +100,6 @@ public class MapQuestMarkerManager
 
     private Popup? _markerGroupPopup;
 
-    // 디바운싱 타이머 (줌 변경 시 그룹화 재계산용)
-
-    private System.Windows.Threading.DispatcherTimer? _regroupDebounceTimer;
-
     // 이벤트
 
     public event EventHandler<TaskObjectiveWithLocation>? ObjectiveSelected;

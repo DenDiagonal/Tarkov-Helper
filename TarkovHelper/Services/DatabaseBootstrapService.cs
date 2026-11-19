@@ -16,8 +16,6 @@ public sealed class DatabaseBootstrapService
     private static DatabaseBootstrapService? _instance;
     public static DatabaseBootstrapService Instance => _instance ??= new DatabaseBootstrapService();
 
-    private readonly object _lock = new();
-
     private DatabaseBootstrapService() { }
 
     /// <summary>

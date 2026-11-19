@@ -115,7 +115,18 @@ public class QuestObjectiveViewModel
             : objective.Description;
 
         TypeDisplay = GetTypeDisplay(objective.Type);
-        TypeBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(objective.MarkerColor));
+        Color markerCol;
+        try
+        {
+            markerCol = !string.IsNullOrEmpty(objective.MarkerColor)
+                ? (Color)ColorConverter.ConvertFromString(objective.MarkerColor)
+                : Colors.Orange;
+        }
+        catch
+        {
+            markerCol = Colors.Orange;
+        }
+        TypeBrush = new SolidColorBrush(markerCol);
 
         // 체크박스 상태 설정 (ObjectiveId 기반 - 동일 설명 목표 개별 추적)
         if (progressService != null)

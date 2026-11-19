@@ -1,6 +1,8 @@
+using System.IO;
 using System.Net.Http;
 using System.Reflection;
 using System.Timers;
+using System.Xml;
 using System.Xml.Linq;
 using TarkovHelper.Services.Logging;
 
@@ -166,7 +168,16 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var doc = XDocument.Parse(xmlContent);
+                var settings = new XmlReaderSettings
+                {
+                    DtdProcessing = DtdProcessing.Prohibit,
+                    XmlResolver = null,
+                    MaxCharactersInDocument = 64 * 1024
+                };
+
+                using var sr = new StringReader(xmlContent);
+                using var xr = XmlReader.Create(sr, settings);
+                var doc = XDocument.Load(xr);
                 var item = doc.Root;
 
                 // Root element is <item> directly
@@ -176,9 +187,9 @@ namespace TarkovHelper.Services
                     return null;
                 }
 
-                var versionStr = item.Element("version")?.Value;
-                var url = item.Element("url")?.Value;
-                var changelog = item.Element("changelog")?.Value;
+                var versionStr = item.Element("version")?.Value?.Trim();
+                var url = item.Element("url")?.Value?.Trim();
+                var changelog = item.Element("changelog")?.Value?.Trim();
 
                 if (string.IsNullOrEmpty(versionStr) || string.IsNullOrEmpty(url))
                 {
@@ -192,11 +203,30 @@ namespace TarkovHelper.Services
                     return null;
                 }
 
+                if (!Uri.TryCreate(url, UriKind.Absolute, out var downloadUri) || downloadUri.Scheme != Uri.UriSchemeHttps)
+                {
+                    _log.Warning($"Update download URL is not a valid absolute HTTPS URI: {url}");
+                    return null;
+                }
+
+                string? validChangelogUrl = null;
+                if (!string.IsNullOrEmpty(changelog))
+                {
+                    if (Uri.TryCreate(changelog, UriKind.Absolute, out var changelogUri) && changelogUri.Scheme == Uri.UriSchemeHttps)
+                    {
+                        validChangelogUrl = changelog;
+                    }
+                    else
+                    {
+                        _log.Warning($"Update changelog URL is not a valid HTTPS URI, ignoring: {changelog}");
+                    }
+                }
+
                 return new UpdateInfo
                 {
                     Version = version,
                     DownloadUrl = url,
-                    ChangelogUrl = changelog
+                    ChangelogUrl = validChangelogUrl
                 };
             }
             catch (Exception ex)

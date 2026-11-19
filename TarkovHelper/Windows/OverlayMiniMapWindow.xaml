@@ -22,7 +22,7 @@
 
         WindowStyle="None"
 
-        AllowsTransparency="True"
+        ShowActivated="False"
 
         Topmost="True"
 
@@ -37,6 +37,13 @@
         ToolTipService.BetweenShowDelay="100"
 
         Background="Transparent">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome GlassFrameThickness="-1"
+                      ResizeBorderThickness="4"
+                      CaptionHeight="0"
+                      CornerRadius="0" />
+    </WindowChrome.WindowChrome>
 
 
 

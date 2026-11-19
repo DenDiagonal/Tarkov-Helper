@@ -1522,9 +1522,8 @@
             </ScrollViewer>
         </Border>
 
-        <!-- Row 4: Recommended Quests Section (Collapsible) -->
-        <components:QuestRecommendationsPanel x:Name="RecommendationsPanel" Grid.Row="4" Margin="0" Visibility="Collapsed"
-                                               RecommendationClicked="RecommendationsPanel_RecommendationClicked"/>
+        <!-- Row 4: Reserved (Collapsed) -->
+        <Border Grid.Row="4" Height="0" Visibility="Collapsed"/>
 
         <!-- Row 5: Main Content (Vertical Top-to-Bottom Stack in Maps Mode, Full-width in List/Traders) -->
         <Grid Grid.Row="5">
@@ -1606,9 +1605,17 @@
                         
                         <!-- Expanded Hidden Tasks List -->
                         <ListBox x:Name="LstHiddenQuests" Grid.Row="1" Margin="0,10,0,0"
+                                 MaxHeight="360"
                                  Background="Transparent" BorderThickness="0"
                                  ItemTemplate="{StaticResource QuestCardTemplate}"
                                  ItemContainerStyle="{StaticResource QuestCardListBoxItem}"
+                                 VirtualizingPanel.IsVirtualizing="True"
+                                 VirtualizingPanel.VirtualizationMode="Recycling"
+                                 VirtualizingPanel.ScrollUnit="Pixel"
+                                 VirtualizingPanel.CacheLength="1,1"
+                                 VirtualizingPanel.CacheLengthUnit="Page"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  Visibility="Collapsed"/>
                     </Grid>
                 </Border>
@@ -1630,6 +1637,8 @@
                              VirtualizingPanel.IsVirtualizing="True"
                              VirtualizingPanel.VirtualizationMode="Recycling"
                              VirtualizingPanel.ScrollUnit="Pixel"
+                             VirtualizingPanel.CacheLength="1,1"
+                             VirtualizingPanel.CacheLengthUnit="Page"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
 
                     <!-- Master-Detail Splitter for LIST mode -->

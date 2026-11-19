@@ -180,9 +180,20 @@ namespace TarkovHelper.Pages
 
         private void OnLanguageChanged(object? sender, AppLanguage e)
         {
-            RefreshModuleDisplayNames();
-            ApplyFilters();
-            UpdateDetailPanel();
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (_isUnloaded || !_isDataLoaded) return;
+                try
+                {
+                    RefreshModuleDisplayNames();
+                    ApplyFilters();
+                    UpdateDetailPanel();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error on language change in HideoutPage: {ex.Message}");
+                }
+            });
         }
 
         private void OnProgressChanged(object? sender, EventArgs e)
@@ -290,19 +301,20 @@ namespace TarkovHelper.Pages
             };
         }
 
-        private (string DisplayName, string Subtitle, bool ShowSubtitle) GetLocalizedNames(HideoutModule module)
+        private (string DisplayName, string Subtitle, bool ShowSubtitle) GetLocalizedNames(HideoutModule? module)
         {
+            if (module == null) return (string.Empty, string.Empty, false);
             var lang = _loc.CurrentLanguage;
             if (lang == AppLanguage.KO && !string.IsNullOrEmpty(module.NameKo))
             {
-                return (module.NameKo, module.Name, true);
+                return (module.NameKo, module.Name ?? string.Empty, true);
             }
             if (lang == AppLanguage.JA && !string.IsNullOrEmpty(module.NameJa))
             {
-                return (module.NameJa, module.Name, true);
+                return (module.NameJa, module.Name ?? string.Empty, true);
             }
 
-            return (module.Name, string.Empty, false);
+            return (module.Name ?? string.Empty, string.Empty, false);
         }
 
         private void RefreshModuleDisplayNames()
@@ -619,44 +631,48 @@ namespace TarkovHelper.Pages
             await Task.WhenAll(tasks);
         }
 
-        private string GetLocalizedItemName(HideoutItemRequirement item)
+        private string GetLocalizedItemName(HideoutItemRequirement? item)
         {
+            if (item == null) return string.Empty;
             var lang = _loc.CurrentLanguage;
             if (lang == AppLanguage.KO && !string.IsNullOrEmpty(item.ItemNameKo))
                 return item.ItemNameKo;
             if (lang == AppLanguage.JA && !string.IsNullOrEmpty(item.ItemNameJa))
                 return item.ItemNameJa;
-            return item.ItemName;
+            return item.ItemName ?? string.Empty;
         }
 
-        private string GetLocalizedTraderName(HideoutTraderRequirement trader)
+        private string GetLocalizedTraderName(HideoutTraderRequirement? trader)
         {
+            if (trader == null) return string.Empty;
             var lang = _loc.CurrentLanguage;
             if (lang == AppLanguage.KO && !string.IsNullOrEmpty(trader.TraderNameKo))
                 return trader.TraderNameKo;
             if (lang == AppLanguage.JA && !string.IsNullOrEmpty(trader.TraderNameJa))
                 return trader.TraderNameJa;
-            return trader.TraderName;
+            return trader.TraderName ?? string.Empty;
         }
 
-        private string GetLocalizedSkillName(HideoutSkillRequirement skill)
+        private string GetLocalizedSkillName(HideoutSkillRequirement? skill)
         {
+            if (skill == null) return string.Empty;
             var lang = _loc.CurrentLanguage;
             if (lang == AppLanguage.KO && !string.IsNullOrEmpty(skill.NameKo))
                 return skill.NameKo;
             if (lang == AppLanguage.JA && !string.IsNullOrEmpty(skill.NameJa))
                 return skill.NameJa;
-            return skill.Name;
+            return skill.Name ?? string.Empty;
         }
 
-        private string GetLocalizedStationName(HideoutStationRequirement station)
+        private string GetLocalizedStationName(HideoutStationRequirement? station)
         {
+            if (station == null) return string.Empty;
             var lang = _loc.CurrentLanguage;
             if (lang == AppLanguage.KO && !string.IsNullOrEmpty(station.StationNameKo))
                 return station.StationNameKo;
             if (lang == AppLanguage.JA && !string.IsNullOrEmpty(station.StationNameJa))
                 return station.StationNameJa;
-            return station.StationName;
+            return station.StationName ?? string.Empty;
         }
 
         private void BtnWiki_Click(object sender, RoutedEventArgs e)

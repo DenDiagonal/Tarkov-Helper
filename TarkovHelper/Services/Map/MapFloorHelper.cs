@@ -33,28 +33,29 @@ public static class MapFloorHelper
         string? currentFloorId,
         string? markerFloorId)
     {
-        if (config?.Floors == null || config.Floors.Count == 0 || string.IsNullOrEmpty(currentFloorId))
+        if (config?.Floors is not { Count: > 0 } || string.IsNullOrEmpty(currentFloorId))
             return null;
+
+        var defaultFloor = config.Floors.FirstOrDefault(f => f.IsDefault)
+                        ?? config.Floors.FirstOrDefault(f => f.Order == 0)
+                        ?? config.Floors[0];
 
         var currentFloor = config.Floors.FirstOrDefault(f =>
             string.Equals(f.LayerId, currentFloorId, StringComparison.OrdinalIgnoreCase));
-        var currentOrder = currentFloor?.Order ?? 0;
-
-        var effectiveMarkerFloorId = string.IsNullOrEmpty(markerFloorId) ? "main" : markerFloorId;
-        var markerFloor = config.Floors.FirstOrDefault(f =>
-            string.Equals(f.LayerId, effectiveMarkerFloorId, StringComparison.OrdinalIgnoreCase));
-        var markerOrder = markerFloor?.Order ?? 0;
-
-        if (currentOrder == markerOrder)
+        if (currentFloor == null)
             return null;
 
-        var isAbove = markerOrder > currentOrder;
-        var arrow = isAbove ? "↑" : "↓";
-        var color = isAbove
-            ? Color.FromRgb(100, 181, 246)  // Sky Blue (#64B5F6) for higher floors
-            : Color.FromRgb(255, 167, 38);   // Amber (#FFA726) for lower floors
+        var markerFloor = string.IsNullOrEmpty(markerFloorId)
+            ? defaultFloor
+            : config.Floors.FirstOrDefault(f => string.Equals(f.LayerId, markerFloorId, StringComparison.OrdinalIgnoreCase));
 
-        string floorText = markerOrder < 0 ? "B" : (markerOrder == 0 ? "G" : $"{markerOrder + 1}F");
+        if (markerFloor == null || currentFloor.Order == markerFloor.Order)
+            return null;
+
+        bool isAbove = markerFloor.Order > currentFloor.Order;
+        string arrow = isAbove ? "↑" : "↓";
+        Color color = isAbove ? Color.FromRgb(100, 181, 246) : Color.FromRgb(255, 167, 38);
+        string floorText = markerFloor.Order < 0 ? "B" : (markerFloor.Order == 0 ? "G" : $"{markerFloor.Order + 1}F");
         return (arrow, floorText, color);
     }
 

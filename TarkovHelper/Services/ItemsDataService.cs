@@ -16,7 +16,6 @@ namespace TarkovHelper.Services
         private QuestProgressService _questProgressService => QuestProgressService.Instance;
         private HideoutProgressService _hideoutProgressService => HideoutProgressService.Instance;
         private QuestGraphService _questGraphService => QuestGraphService.Instance;
-        private LocalizationService _loc => LocalizationService.Instance;
 
         private static readonly HashSet<string> CurrencyItems = new(StringComparer.OrdinalIgnoreCase)
         {

@@ -36,8 +36,19 @@ public sealed class ProfileService
             {
                 System.Diagnostics.Debug.WriteLine($"[ProfileService] Profile Changing: {_currentProfile} -> {value}");
                 _currentProfile = value;
-                // 직접 DB에 마지막 프로필 상태 저장 (전역 영역 null)
-                UserDataDbService.Instance.SetSetting("app.lastProfileType", value.ToString(), null);
+                // 직접 DB에 마지막 프로필 상태 비동기 저장 (전역 영역 null)
+                var profileStr = value.ToString();
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        await UserDataDbService.Instance.SetSettingAsync("app.lastProfileType", profileStr, null).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ProfileService] Failed saving last profile type: {ex.Message}");
+                    }
+                });
                 ProfileChanged?.Invoke(this, value);
             }
         }

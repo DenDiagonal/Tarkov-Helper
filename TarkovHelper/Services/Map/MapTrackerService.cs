@@ -10,8 +10,9 @@ namespace TarkovHelper.Services.Map;
 /// </summary>
 public sealed class MapTrackerService : IDisposable
 {
-    private static MapTrackerService? _instance;
-    public static MapTrackerService Instance => _instance ??= new MapTrackerService();
+    private static readonly Lazy<MapTrackerService> _lazyInstance =
+        new(() => new MapTrackerService(), LazyThreadSafetyMode.ExecutionAndPublication);
+    public static MapTrackerService Instance => _lazyInstance.Value;
 
     private readonly ScreenshotCoordinateParser _parser;
     private readonly MapCoordinateTransformer _transformer;
@@ -20,7 +21,8 @@ public sealed class MapTrackerService : IDisposable
     private readonly QuestObjectiveService _objectiveService;
 
     private MapTrackerSettings _settings;
-    private readonly List<ScreenPosition> _trailPositions = new();
+    private readonly object _stateLock = new();
+    private readonly Queue<ScreenPosition> _trailQueue = new();
     private ScreenPosition? _currentPosition;
     private string? _currentMapKey;
     private string? _currentFloorId;
@@ -43,9 +45,20 @@ public sealed class MapTrackerService : IDisposable
     public ScreenPosition? CurrentPosition => _currentPosition;
 
     /// <summary>
-    /// 이동 경로 목록
+    /// 이동 경로 스냅샷 (스레드 안전)
     /// </summary>
-    public IReadOnlyList<ScreenPosition> TrailPositions => _trailPositions.AsReadOnly();
+    public ScreenPosition[] GetTrailSnapshot()
+    {
+        lock (_stateLock)
+        {
+            return _trailQueue.Count == 0 ? Array.Empty<ScreenPosition>() : _trailQueue.ToArray();
+        }
+    }
+
+    /// <summary>
+    /// 이동 경로 목록 (스레드 안전 스냅샷 래퍼)
+    /// </summary>
+    public IReadOnlyList<ScreenPosition> TrailPositions => GetTrailSnapshot();
 
     /// <summary>
     /// 현재 설정
@@ -147,13 +160,13 @@ public sealed class MapTrackerService : IDisposable
         _watcher.Error += OnWatcherError;
 
         // EFT 게임 로그 맵 감지 이벤트 연결
-        LogMapWatcherService.Instance.MapChanged += (s, e) =>
-        {
-            if (!string.IsNullOrEmpty(e.NewMapKey))
-            {
-                SetCurrentMap(e.NewMapKey, force: true);
-            }
-        };
+        LogMapWatcherService.Instance.MapChanged += OnExternalLogMapChanged;
+    }
+
+    private void OnExternalLogMapChanged(object? sender, MapChangedEventArgs e)
+    {
+        if (!_isDisposed && !string.IsNullOrEmpty(e.NewMapKey))
+            SetCurrentMap(e.NewMapKey, force: false);
     }
 
     /// <summary>
@@ -165,9 +178,19 @@ public sealed class MapTrackerService : IDisposable
         var objectivesLoaded = await _objectiveService.LoadAsync();
 
         if (!extractsLoaded)
-            OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "탈출구 데이터 로드 실패" : "Failed to load extraction data");
+            OnStatusMessage(LocalizationService.Instance.CurrentLanguage switch
+            {
+                AppLanguage.ES => "Fallo al cargar datos de extracciones",
+                AppLanguage.KO => "탈출구 데이터 로드 실패",
+                _ => "Failed to load extraction data"
+            });
         if (!objectivesLoaded)
-            OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "퀘스트 목표 데이터 로드 실패" : "Failed to load quest objective data");
+            OnStatusMessage(LocalizationService.Instance.CurrentLanguage switch
+            {
+                AppLanguage.ES => "Fallo al cargar datos de objetivos de misión",
+                AppLanguage.KO => "퀘스트 목표 데이터 로드 실패",
+                _ => "Failed to load quest objective data"
+            });
 
         return extractsLoaded && objectivesLoaded;
     }
@@ -187,7 +210,12 @@ public sealed class MapTrackerService : IDisposable
     {
         if (_watcher.StartWatching(folderPath))
         {
-            OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? $"스크린샷 감시 시작: {folderPath}" : $"Screenshot monitoring started: {folderPath}");
+            OnStatusMessage(LocalizationService.Instance.CurrentLanguage switch
+            {
+                AppLanguage.ES => $"Monitorización de capturas iniciada: {folderPath}",
+                AppLanguage.KO => $"스크린샷 감시 시작: {folderPath}",
+                _ => $"Screenshot monitoring started: {folderPath}"
+            });
             return true;
         }
         return false;
@@ -199,7 +227,12 @@ public sealed class MapTrackerService : IDisposable
     public void StopTracking()
     {
         _watcher.StopWatching();
-        OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "스크린샷 감시 중지" : "Screenshot monitoring stopped");
+        OnStatusMessage(LocalizationService.Instance.CurrentLanguage switch
+        {
+            AppLanguage.ES => "Monitorización de capturas detenida",
+            AppLanguage.KO => "스크린샷 감시 중지",
+            _ => "Screenshot monitoring stopped"
+        });
     }
 
     /// <summary>
@@ -207,9 +240,17 @@ public sealed class MapTrackerService : IDisposable
     /// </summary>
     public void ClearTrail()
     {
-        _trailPositions.Clear();
-        _currentPosition = null;
-        OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "이동 경로 초기화" : "Path history cleared");
+        lock (_stateLock)
+        {
+            _trailQueue.Clear();
+            _currentPosition = null;
+        }
+        OnStatusMessage(LocalizationService.Instance.CurrentLanguage switch
+        {
+            AppLanguage.ES => "Trayectoria del mapa restablecida",
+            AppLanguage.KO => "이동 경로 초기화",
+            _ => "Path history cleared"
+        });
     }
 
     /// <summary>
@@ -217,13 +258,20 @@ public sealed class MapTrackerService : IDisposable
     /// </summary>
     public void SetCurrentMap(string mapKey, bool force = false)
     {
+        if (string.IsNullOrWhiteSpace(mapKey)) return;
         var canonicalKey = ResolveMapKey(mapKey) ?? mapKey;
-        if (force || !string.Equals(_currentMapKey, canonicalKey, StringComparison.OrdinalIgnoreCase))
+
+        bool changed;
+        lock (_stateLock)
         {
+            changed = force || !string.Equals(_currentMapKey, canonicalKey, StringComparison.OrdinalIgnoreCase);
             _currentMapKey = canonicalKey;
-            _currentFloorId = null;
-            MapChanged?.Invoke(canonicalKey);
+            if (changed)
+                _currentFloorId = null;
         }
+
+        if (changed)
+            MapChanged?.Invoke(canonicalKey);
     }
 
     /// <summary>
@@ -282,7 +330,12 @@ public sealed class MapTrackerService : IDisposable
     {
         if (!Directory.Exists(newPath))
         {
-            OnError(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? $"폴더가 존재하지 않습니다: {newPath}" : $"Folder does not exist: {newPath}");
+            OnError(LocalizationService.Instance.CurrentLanguage switch
+            {
+                AppLanguage.ES => $"La carpeta no existe: {newPath}",
+                AppLanguage.KO => $"폴더가 존재하지 않습니다: {newPath}",
+                _ => $"Folder does not exist: {newPath}"
+            });
             return false;
         }
 
@@ -368,19 +421,25 @@ public sealed class MapTrackerService : IDisposable
 
     private void OnPositionDetected(object? sender, PositionDetectedEventArgs e)
     {
-        var mapKey = string.IsNullOrEmpty(e.Position.MapName) || e.Position.MapName == "Unknown"
+        string? rawMap = string.IsNullOrEmpty(e.Position.MapName) || e.Position.MapName == "Unknown"
             ? _currentMapKey
             : e.Position.MapName;
 
-        if (string.IsNullOrEmpty(mapKey))
+        if (string.IsNullOrEmpty(rawMap))
         {
-            OnError(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "맵이 선택되지 않았습니다." : "No map selected.");
+            OnError(LocalizationService.Instance.CurrentLanguage switch
+            {
+                AppLanguage.ES => "No se ha seleccionado ningún mapa.",
+                AppLanguage.KO => "맵이 선택되지 않았습니다.",
+                _ => "No map selected."
+            });
             return;
         }
+        string canonicalMap = ResolveMapKey(rawMap) ?? rawMap;
 
         var position = new EftPosition
         {
-            MapName = mapKey,
+            MapName = canonicalMap,
             X = e.Position.X,
             Y = e.Position.Y,
             Z = e.Position.Z,
@@ -392,27 +451,42 @@ public sealed class MapTrackerService : IDisposable
         // 플레이어 마커 전용 변환 사용 (playerMarkerTransform 우선)
         if (_transformer.TryTransformPlayerPosition(position, out var screenPos) && screenPos != null)
         {
-            _currentPosition = screenPos;
-
-            if (_settings.ShowTrail)
+            if (screenPos.Angle.HasValue)
             {
-                _trailPositions.Add(screenPos);
-                if (_trailPositions.Count > _settings.MaxTrailPoints)
+                double deg = screenPos.Angle.Value;
+                if (string.Equals(canonicalMap, "Labs", StringComparison.OrdinalIgnoreCase)) deg -= 90.0;
+                else if (string.Equals(canonicalMap, "Factory", StringComparison.OrdinalIgnoreCase)) deg += 90.0;
+                screenPos.Angle = ((deg % 360.0) + 360.0) % 360.0;
+            }
+
+            lock (_stateLock)
+            {
+                _currentPosition = screenPos;
+                if (_settings.ShowTrail)
                 {
-                    _trailPositions.RemoveAt(0);
+                    _trailQueue.Enqueue(screenPos);
+                    int maxPoints = Math.Max(1, _settings.MaxTrailPoints);
+                    while (_trailQueue.Count > maxPoints)
+                        _trailQueue.Dequeue();
                 }
             }
 
-            OnStatusMessage(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO
-                ? $"위치 감지: X={position.X:F1}, Z={position.Z:F1}"
-                : $"Position detected: X={position.X:F1}, Z={position.Z:F1}");
+            OnStatusMessage(LocalizationService.Instance.CurrentLanguage switch
+            {
+                AppLanguage.ES => $"Posición detectada: X={position.X:F1}, Z={position.Z:F1}",
+                AppLanguage.KO => $"위치 감지: X={position.X:F1}, Z={position.Z:F1}",
+                _ => $"Position detected: X={position.X:F1}, Z={position.Z:F1}"
+            });
             PositionUpdated?.Invoke(this, screenPos);
         }
         else
         {
-            OnError(LocalizationService.Instance.CurrentLanguage == AppLanguage.KO
-                ? $"맵 '{mapKey}'의 좌표 변환 실패"
-                : $"Coordinate conversion failed for map '{mapKey}'");
+            OnError(LocalizationService.Instance.CurrentLanguage switch
+            {
+                AppLanguage.ES => $"Fallo en la conversión de coordenadas para el mapa '{canonicalMap}'",
+                AppLanguage.KO => $"맵 '{canonicalMap}'의 좌표 변환 실패",
+                _ => $"Coordinate conversion failed for map '{canonicalMap}'"
+            });
         }
     }
 
@@ -495,6 +569,7 @@ public sealed class MapTrackerService : IDisposable
         if (_isDisposed) return;
         _isDisposed = true;
 
+        LogMapWatcherService.Instance.MapChanged -= OnExternalLogMapChanged;
         _watcher.PositionDetected -= OnPositionDetected;
         _watcher.ParsingFailed -= OnParsingFailed;
         _watcher.StateChanged -= OnWatcherStateChanged;

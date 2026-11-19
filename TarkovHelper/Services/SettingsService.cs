@@ -609,7 +609,12 @@ public class SettingsService
             var logsPath = GetLogsPathFromGameFolder(gameFolder);
             if (logsPath != null)
             {
-                _detectionMethod = LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "BSG 런처" : "BSG Launcher";
+                _detectionMethod = LocalizationService.Instance.CurrentLanguage switch
+                {
+                    AppLanguage.ES => "Lanzador BSG",
+                    AppLanguage.KO => "BSG 런처",
+                    _ => "BSG Launcher"
+                };
                 return logsPath;
             }
         }
@@ -633,7 +638,12 @@ public class SettingsService
             var logsPath = GetLogsPathFromGameFolder(gameFolder);
             if (logsPath != null)
             {
-                _detectionMethod = LocalizationService.Instance.CurrentLanguage == AppLanguage.KO ? "기본 경로" : "Default Path";
+                _detectionMethod = LocalizationService.Instance.CurrentLanguage switch
+                {
+                    AppLanguage.ES => "Ruta Predeterminada",
+                    AppLanguage.KO => "기본 경로",
+                    _ => "Default Path"
+                };
                 return logsPath;
             }
         }
@@ -879,7 +889,7 @@ public class SettingsService
             MigrateFromJsonIfNeeded();
 
             // Batch load from DB in a single query
-            var allSettings = _userDataDb.GetAllSettings(ProfileType.Pvp);
+            var allSettings = _userDataDb.GetAllSettings(ProfileService.Instance.CurrentProfile);
             string? GetBatch(string k) => allSettings.TryGetValue(k, out var v) ? v : null;
 
             if (Enum.TryParse<ProfileType>(GetBatch(KeyLastProfileType), out var profileType))

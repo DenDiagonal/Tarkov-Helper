@@ -14,28 +14,45 @@ namespace TarkovHelper.Services
 
     /// </summary>
 
-    public class QuestProgressService
-
+    public class QuestProgressService : IDisposable
     {
-
         private static QuestProgressService? _instance;
+        private static readonly object _instanceLock = new();
 
-        public static QuestProgressService Instance => _instance ??= new QuestProgressService();
-
-
+        public static QuestProgressService Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    lock (_instanceLock)
+                    {
+                        _instance ??= new QuestProgressService();
+                    }
+                }
+                return _instance;
+            }
+        }
 
         /// <summary>
-
         /// 싱글톤 인스턴스를 파괴합니다. 프로필 전환 시 데이터 잔상을 방지하기 위해 사용합니다.
-
         /// </summary>
-
         public static void ResetInstance()
-
         {
+            QuestProgressService? oldInstance;
+            lock (_instanceLock)
+            {
+                oldInstance = _instance;
+                _instance = null;
+            }
+            oldInstance?.Dispose();
+        }
 
-            _instance = null;
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, QuestStatus> _computedStatusCache = new(StringComparer.OrdinalIgnoreCase);
 
+        public void InvalidateStatusCache()
+        {
+            _computedStatusCache.Clear();
         }
 
 
@@ -104,22 +121,30 @@ namespace TarkovHelper.Services
 
 
 
+        private bool _disposed;
+
         public QuestProgressService()
-
         {
-
-            SettingsService.Instance.PlayerLevelChanged += (s, lvl) => NotifyProgressChanged();
-
+            SettingsService.Instance.PlayerLevelChanged += OnPlayerLevelChanged;
         }
 
+        private void OnPlayerLevelChanged(object? sender, int lvl)
+        {
+            NotifyProgressChanged();
+        }
 
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            SettingsService.Instance.PlayerLevelChanged -= OnPlayerLevelChanged;
+            InvalidateStatusCache();
+        }
 
         public void NotifyProgressChanged()
-
         {
-
+            InvalidateStatusCache();
             ProgressChanged?.Invoke(this, EventArgs.Empty);
-
         }
 
 
@@ -759,147 +784,78 @@ namespace TarkovHelper.Services
             }
 
             if (!string.IsNullOrEmpty(task.NormalizedName) && _questProgress.TryGetValue(task.NormalizedName, out var statusByName))
-
             {
-
                 if (statusByName == QuestStatus.Done || statusByName == QuestStatus.Failed || statusByName == QuestStatus.Locked)
-
                     return statusByName;
-
                 if (statusByName == QuestStatus.Active)
-
                     return QuestStatus.Active;
-
             }
 
-
+            // Check memoized computed status
+            if (_computedStatusCache.TryGetValue(taskKey, out var cachedStatus))
+            {
+                return cachedStatus;
+            }
 
             // Story chapters are decoupled from sequential prerequisites: return QuestStatus.Active (never Locked) unless marked Done
-
             if (string.Equals(task.Trader, "Story", StringComparison.OrdinalIgnoreCase) ||
-
                 string.Equals(task.Trader, "Story Chapters", StringComparison.OrdinalIgnoreCase))
-
             {
-
+                _computedStatusCache[taskKey] = QuestStatus.Active;
                 return QuestStatus.Active;
-
             }
-
-
 
             // Circular reference protection for prerequisite checking
-
             bool isTopLevel = _getStatusVisited == null;
-
             _getStatusVisited ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-
-
             // If already checking this task (circular reference), treat as Active to break the cycle
-
             if (!_getStatusVisited.Add(taskKey))
-
             {
-
                 return QuestStatus.Active;
-
             }
 
-
-
             try
-
             {
-
+                QuestStatus computedStatus;
                 // Check edition requirements first (Unavailable takes precedence)
-
                 if (!IsEditionRequirementMet(task))
-
-                    return QuestStatus.Unavailable;
-
-
-
+                    computedStatus = QuestStatus.Unavailable;
                 // Check prestige level requirement (also Unavailable)
-
-                if (!IsPrestigeLevelRequirementMet(task))
-
-                    return QuestStatus.Unavailable;
-
-
-
+                else if (!IsPrestigeLevelRequirementMet(task))
+                    computedStatus = QuestStatus.Unavailable;
                 // Check faction requirement (Unavailable if player chose different faction)
-
-                if (!IsFactionRequirementMet(task))
-
-                    return QuestStatus.Unavailable;
-
-
-
+                else if (!IsFactionRequirementMet(task))
+                    computedStatus = QuestStatus.Unavailable;
                 // Check DSP Decode Count requirement (Locked, not Unavailable)
-
-                if (!IsDspRequirementMet(task))
-
-                    return QuestStatus.Locked;
-
-
-
+                else if (!IsDspRequirementMet(task))
+                    computedStatus = QuestStatus.Locked;
                 // Check trader gating (TarkovTracker parity: locked trader keeps its quests locked)
-
-                if (!IsTraderUnlocked(task.Trader))
-
-                    return QuestStatus.Locked;
-
+                else if (!IsTraderUnlocked(task.Trader))
+                    computedStatus = QuestStatus.Locked;
                 // Check BTR Driver chain gating (quests from other traders like Prapor/Ragman/Skier that depend on BTR Driver)
-
-                if (RequiresBtrDriver(task) && !IsBtrDriverUnlocked())
-
-                    return QuestStatus.Locked;
-
-
-
+                else if (RequiresBtrDriver(task) && !IsBtrDriverUnlocked())
+                    computedStatus = QuestStatus.Locked;
                 // Check prerequisites
-
-                if (!ArePrerequisitesMet(task))
-
-                    return QuestStatus.Locked;
-
-
-
+                else if (!ArePrerequisitesMet(task))
+                    computedStatus = QuestStatus.Locked;
                 // Check trader loyalty level requirements
-
-                if (!IsTraderRequirementMet(task))
-
-                    return QuestStatus.Locked;
-
-
-
+                else if (!IsTraderRequirementMet(task))
+                    computedStatus = QuestStatus.Locked;
                 // Check quest pool requirements
-
-                if (!IsPoolRequirementMet(task))
-
-                    return QuestStatus.Locked;
-
-
-
+                else if (!IsPoolRequirementMet(task))
+                    computedStatus = QuestStatus.Locked;
                 // Check level requirement
-
-                if (!IsLevelRequirementMet(task))
-
-                    return QuestStatus.LevelLocked;
-
-
-
+                else if (!IsLevelRequirementMet(task))
+                    computedStatus = QuestStatus.LevelLocked;
                 // Check Scav Karma requirement
+                else if (!IsScavKarmaRequirementMet(task))
+                    computedStatus = QuestStatus.LevelLocked;  // Use LevelLocked status for karma-locked quests too
+                else
+                    computedStatus = QuestStatus.Active;
 
-                if (!IsScavKarmaRequirementMet(task))
-
-                    return QuestStatus.LevelLocked;  // Use LevelLocked status for karma-locked quests too
-
-
-
-                return QuestStatus.Active;
-
+                _computedStatusCache[taskKey] = computedStatus;
+                return computedStatus;
             }
 
             finally
@@ -2319,45 +2275,33 @@ namespace TarkovHelper.Services
 
 
             // Complete prerequisites first (recursive) using TaskRequirements
-
             if (completePrerequisites && task.TaskRequirements != null)
-
             {
-
                 foreach (var req in task.TaskRequirements)
-
                 {
+                    // Skip OR groups during recursive auto-complete to prevent corrupting alternative branches
+                    if (req.GroupId > 0)
+                        continue;
+
+                    // Only auto-complete if requirement explicitly demands completion
+                    if (!RequiresCompletion(req.Status))
+                        continue;
 
                     var prevTask = !string.IsNullOrEmpty(req.TaskId)
-
                         ? GetTaskById(req.TaskId)
-
                         : GetTask(req.TaskNormalizedName);
 
-
-
                     if (prevTask != null && GetStatus(prevTask) != QuestStatus.Done)
-
                     {
-
                         // Skip alternative quests - user must choose which one to complete
-
                         if (skipAlternativeQuests && HasAlternativeQuests(prevTask))
-
                         {
-
                             System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Skipping alternative quest: {prevTask.Name}");
-
                             continue;
-
                         }
-
                         CompleteQuestInternalOptimized(prevTask, true, visited, changedQuests, skipAlternativeQuests);
-
                     }
-
                 }
-
             }
 
             // Fallback to Previous list
@@ -2399,9 +2343,13 @@ namespace TarkovHelper.Services
 
 
             _questProgress[taskKey] = QuestStatus.Done;
-
             changedQuests.Add((taskId ?? taskKey, task.NormalizedName, QuestStatus.Done));
+        }
 
+        private static bool RequiresCompletion(List<string>? statuses)
+        {
+            if (statuses == null || statuses.Count == 0) return true;
+            return statuses.Any(s => string.Equals(s, "complete", StringComparison.OrdinalIgnoreCase));
         }
 
 

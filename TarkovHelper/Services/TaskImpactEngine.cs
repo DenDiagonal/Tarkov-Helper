@@ -54,7 +54,10 @@ namespace TarkovHelper.Services
         private readonly Dictionary<string, TarkovTask> _taskLookup = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _completedQuestKeys = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<TarkovTask>> _directParentsLookup = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<TarkovTask>> _parentLookup = new(StringComparer.OrdinalIgnoreCase);
+        private bool _parentLookupBuilt;
         private readonly Dictionary<string, TaskImpactInfo> _impactCache = new(StringComparer.OrdinalIgnoreCase);
+        private IReadOnlyDictionary<string, TaskImpactInfo>? _memoizedAllImpacts;
         private readonly object _cacheLock = new();
         private bool _eventsSubscribed;
 
@@ -84,8 +87,14 @@ namespace TarkovHelper.Services
             _eventsSubscribed = true;
             try
             {
+                // 5 core domain state change events
                 QuestProgressService.Instance.ProgressChanged += (_, _) => InvalidateCache();
                 ObjectiveProgressService.Instance.ObjectiveProgressChanged += (_, _) => InvalidateCache();
+                HideoutProgressService.Instance.ProgressChanged += (_, _) => InvalidateCache();
+                ItemInventoryService.Instance.InventoryChanged += (_, _) => InvalidateCache();
+                ProfileService.Instance.ProfileChanged += (_, _) => InvalidateCache();
+
+                // Player profile settings
                 SettingsService.Instance.PlayerLevelChanged += (_, _) => InvalidateCache();
                 SettingsService.Instance.PlayerFactionChanged += (_, _) => InvalidateCache();
             }
@@ -97,6 +106,10 @@ namespace TarkovHelper.Services
             lock (_cacheLock)
             {
                 _impactCache.Clear();
+                _directParentsLookup.Clear();
+                _parentLookup.Clear();
+                _parentLookupBuilt = false;
+                _memoizedAllImpacts = null;
             }
         }
 
@@ -110,6 +123,9 @@ namespace TarkovHelper.Services
                 _taskLookup.Clear();
                 _completedQuestKeys.Clear();
                 _directParentsLookup.Clear();
+                _parentLookup.Clear();
+                _parentLookupBuilt = false;
+                _memoizedAllImpacts = null;
                 _impactCache.Clear();
             }
             _tasksList = tasks?.ToList() ?? new List<TarkovTask>();
@@ -280,11 +296,17 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
-        /// Calculates impact info for all available quests in the dataset.
+        /// Calculates impact info for all available quests in the dataset (memoized).
         /// </summary>
         public IReadOnlyDictionary<string, TaskImpactInfo> GetAllTaskImpacts()
         {
             EnsureInitialized();
+            lock (_cacheLock)
+            {
+                if (_memoizedAllImpacts != null)
+                    return _memoizedAllImpacts;
+            }
+
             var dict = new Dictionary<string, TaskImpactInfo>(StringComparer.OrdinalIgnoreCase);
             var tasks = GetAllTasks();
 
@@ -297,7 +319,44 @@ namespace TarkovHelper.Services
                 }
             }
 
+            lock (_cacheLock)
+            {
+                _memoizedAllImpacts = dict;
+            }
+
             return dict;
+        }
+
+        /// <summary>
+        /// Alias for GetAllTaskImpacts providing full graph analysis results.
+        /// </summary>
+        public IReadOnlyDictionary<string, TaskImpactInfo> AnalyzeAllTasks() => GetAllTaskImpacts();
+
+        /// <summary>
+        /// O(1) lookup of parent quest names using precalculated inverted index.
+        /// </summary>
+        public IEnumerable<string> GetParentNames(string questNameOrId)
+        {
+            if (string.IsNullOrWhiteSpace(questNameOrId)) return Enumerable.Empty<string>();
+            EnsureInitialized();
+            EnsureParentLookupBuilt();
+
+            lock (_cacheLock)
+            {
+                if (_parentLookup.TryGetValue(questNameOrId, out var parents))
+                {
+                    return parents.Select(p => p.NormalizedName ?? p.Id).Where(n => !string.IsNullOrEmpty(n))!;
+                }
+            }
+
+            var task = FindTask(questNameOrId);
+            if (task != null)
+            {
+                var parents = GetDirectParents(task);
+                return parents.Select(p => p.NormalizedName ?? p.Id).Where(n => !string.IsNullOrEmpty(n))!;
+            }
+
+            return Enumerable.Empty<string>();
         }
 
         /// <summary>
@@ -383,51 +442,100 @@ namespace TarkovHelper.Services
             return result;
         }
 
+        private void EnsureParentLookupBuilt()
+        {
+            if (_parentLookupBuilt) return;
+            lock (_cacheLock)
+            {
+                if (_parentLookupBuilt) return;
+                _parentLookup.Clear();
+
+                var all = GetAllTasks().ToList();
+                void AddParent(string childKey, TarkovTask parent)
+                {
+                    if (string.IsNullOrWhiteSpace(childKey)) return;
+                    if (!_parentLookup.TryGetValue(childKey, out var list))
+                    {
+                        list = new List<TarkovTask>();
+                        _parentLookup[childKey] = list;
+                    }
+                    if (!list.Contains(parent))
+                    {
+                        list.Add(parent);
+                    }
+                }
+
+                foreach (var task in all)
+                {
+                    // 1. Explicit previous in child
+                    if (task.Previous != null)
+                    {
+                        foreach (var parentKey in task.Previous)
+                        {
+                            var parent = FindTask(parentKey);
+                            if (parent != null)
+                            {
+                                if (!string.IsNullOrEmpty(task.NormalizedName)) AddParent(task.NormalizedName, parent);
+                                if (!string.IsNullOrEmpty(task.Id)) AddParent(task.Id, parent);
+                                if (task.Ids != null)
+                                {
+                                    foreach (var id in task.Ids) AddParent(id, parent);
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Reciprocal leadsTo in parent
+                    if (task.LeadsTo != null)
+                    {
+                        foreach (var childKey in task.LeadsTo)
+                        {
+                            var child = FindTask(childKey);
+                            if (child != null)
+                            {
+                                if (!string.IsNullOrEmpty(child.NormalizedName)) AddParent(child.NormalizedName, task);
+                                if (!string.IsNullOrEmpty(child.Id)) AddParent(child.Id, task);
+                                if (child.Ids != null)
+                                {
+                                    foreach (var id in child.Ids) AddParent(id, task);
+                                }
+                            }
+                            else if (!string.IsNullOrWhiteSpace(childKey))
+                            {
+                                AddParent(childKey, task);
+                            }
+                        }
+                    }
+                }
+
+                _parentLookupBuilt = true;
+            }
+        }
+
         private List<TarkovTask> GetDirectParents(TarkovTask child)
         {
+            EnsureParentLookupBuilt();
+
             string childKey = child.NormalizedName ?? child.Id ?? string.Empty;
             if (!string.IsNullOrEmpty(childKey))
             {
                 lock (_cacheLock)
                 {
-                    if (_directParentsLookup.TryGetValue(childKey, out var cachedParents))
-                        return cachedParents;
+                    if (_parentLookup.TryGetValue(childKey, out var parents))
+                        return parents;
                 }
             }
 
-            var result = new List<TarkovTask>();
-            if (child.Previous != null)
-            {
-                foreach (var parentKey in child.Previous)
-                {
-                    var parent = FindTask(parentKey);
-                    if (parent != null)
-                        result.Add(parent);
-                }
-            }
-
-            // Also check reciprocal leadsTo
-            var all = GetAllTasks();
-            foreach (var candidate in all)
-            {
-                if (candidate.LeadsTo != null && candidate.LeadsTo.Any(l =>
-                    string.Equals(l, child.NormalizedName, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(l, child.Id, StringComparison.OrdinalIgnoreCase)))
-                {
-                    if (!result.Contains(candidate))
-                        result.Add(candidate);
-                }
-            }
-
-            if (!string.IsNullOrEmpty(childKey))
+            if (!string.IsNullOrEmpty(child.Id))
             {
                 lock (_cacheLock)
                 {
-                    _directParentsLookup[childKey] = result;
+                    if (_parentLookup.TryGetValue(child.Id, out var parents))
+                        return parents;
                 }
             }
 
-            return result;
+            return new List<TarkovTask>();
         }
 
         private HashSet<string> GetAllIncompleteDownstream(TarkovTask root, Func<string, bool>? isQuestCompletedOverride = null)

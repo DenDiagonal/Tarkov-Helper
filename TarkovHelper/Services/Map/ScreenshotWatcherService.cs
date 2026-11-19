@@ -12,13 +12,16 @@ public sealed class ScreenshotWatcherService : IDisposable
     private FileSystemWatcher? _watcher;
     private readonly IScreenshotCoordinateParser _parser;
     private readonly ConcurrentDictionary<string, DateTime> _recentFiles = new();
+    private readonly SemaphoreSlim _processingLimiter = new(4, 4);
     private readonly object _lock = new();
+    private CancellationTokenSource? _watchCts;
+    private int _cleanupCounter;
     private bool _isDisposed;
 
     /// <summary>
     /// 디바운싱 대기 시간 (밀리초)
     /// </summary>
-    public int DebounceDelayMs { get; set; } = 500;
+    public int DebounceDelayMs { get; set; } = 300;
 
     /// <summary>
     /// 현재 감시 중인 폴더 경로
@@ -73,16 +76,21 @@ public sealed class ScreenshotWatcherService : IDisposable
 
         lock (_lock)
         {
+            if (_isDisposed) return false;
+
             try
             {
-                // 기존 watcher 정리
+                // 기존 watcher 및 취소 토큰 정리
                 StopWatching();
+
+                _watchCts = new CancellationTokenSource();
 
                 _watcher = new FileSystemWatcher(folderPath)
                 {
                     Filter = "*.png",
                     NotifyFilter = NotifyFilters.FileName | NotifyFilters.CreationTime | NotifyFilters.LastWrite,
-                    IncludeSubdirectories = false
+                    IncludeSubdirectories = false,
+                    InternalBufferSize = 65536 // 64KB para evitar desbordamiento del búfer bajo ráfagas
                 };
 
                 _watcher.Created += OnFileCreated;
@@ -110,6 +118,17 @@ public sealed class ScreenshotWatcherService : IDisposable
     {
         lock (_lock)
         {
+            if (_watchCts != null)
+            {
+                try
+                {
+                    _watchCts.Cancel();
+                    _watchCts.Dispose();
+                }
+                catch { }
+                _watchCts = null;
+            }
+
             if (_watcher != null)
             {
                 _watcher.EnableRaisingEvents = false;
@@ -149,42 +168,70 @@ public sealed class ScreenshotWatcherService : IDisposable
 
     private void ProcessFile(string filePath)
     {
-        var fileName = Path.GetFileName(filePath);
+        if (_isDisposed) return;
 
-        // 디바운싱: 최근에 처리한 파일인지 확인
-        var now = DateTime.UtcNow;
-        if (_recentFiles.TryGetValue(fileName, out var lastProcessed))
+        var fileName = Path.GetFileName(filePath);
+        if (string.IsNullOrEmpty(fileName)) return;
+
+        // Fast-path: Si el nombre del archivo no cumple el patrón de coordenadas EFT,
+        // no realizar I/O ni bloquear hilos.
+        if (!_parser.TryParse(fileName, out var position) || position == null)
         {
-            if ((now - lastProcessed).TotalMilliseconds < DebounceDelayMs)
-                return;
+            OnParsingFailed(fileName, "Pattern does not match");
+            return;
         }
 
-        _recentFiles[fileName] = now;
+        var now = DateTime.UtcNow;
+        bool shouldProcess = false;
 
-        // 비동기로 처리 (파일 쓰기 완료 대기)
+        // Operación atómica de actualización para eliminar condición de carrera entre Created y Changed
+        _recentFiles.AddOrUpdate(
+            fileName,
+            addValueFactory: _ =>
+            {
+                shouldProcess = true;
+                return now;
+            },
+            updateValueFactory: (_, lastProcessed) =>
+            {
+                if ((now - lastProcessed).TotalMilliseconds >= DebounceDelayMs)
+                {
+                    shouldProcess = true;
+                    return now;
+                }
+                return lastProcessed;
+            });
+
+        if (!shouldProcess) return;
+
+        var token = _watchCts?.Token ?? CancellationToken.None;
+
         Task.Run(async () =>
         {
+            if (_isDisposed || token.IsCancellationRequested) return;
+
+            // Limitar concurrencia de procesamiento de I/O a un máximo de 4 hilos simultáneos
+            if (!await _processingLimiter.WaitAsync(250, token).ConfigureAwait(false))
+                return;
+
             try
             {
-                // 파일 쓰기 완료 대기
-                await Task.Delay(DebounceDelayMs);
+                if (_isDisposed || token.IsCancellationRequested) return;
 
-                // 파일 접근 가능 여부 확인
-                if (!await WaitForFileAccessAsync(filePath, TimeSpan.FromSeconds(5)))
+                // Esperar a que el archivo tenga tamaño estable y sea accesible en lectura
+                if (!await WaitForStableReadableFileAsync(filePath, TimeSpan.FromSeconds(3), token).ConfigureAwait(false))
                 {
                     OnError($"Cannot access file: {fileName}");
                     return;
                 }
 
-                // 좌표 파싱
-                if (_parser.TryParse(fileName, out var position) && position != null)
-                {
-                    OnPositionDetected(position, filePath);
-                }
-                else
-                {
-                    OnParsingFailed(fileName, "Pattern does not match");
-                }
+                if (_isDisposed || token.IsCancellationRequested) return;
+
+                OnPositionDetected(position, filePath);
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal al detener el watcher o cerrar la aplicación
             }
             catch (Exception ex)
             {
@@ -192,41 +239,60 @@ public sealed class ScreenshotWatcherService : IDisposable
             }
             finally
             {
-                // 오래된 항목 정리
-                CleanupRecentFiles();
+                _processingLimiter.Release();
+
+                // Limpieza amortizada para evitar recolección de basura continua
+                if ((Interlocked.Increment(ref _cleanupCounter) % 32) == 0)
+                {
+                    CleanupRecentFiles();
+                }
             }
-        });
+        }, token);
     }
 
-    private static async Task<bool> WaitForFileAccessAsync(string filePath, TimeSpan timeout)
+    private static async Task<bool> WaitForStableReadableFileAsync(string filePath, TimeSpan timeout, CancellationToken ct)
     {
         var endTime = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < endTime)
+        long lastLen = -1;
+
+        while (DateTime.UtcNow < endTime && !ct.IsCancellationRequested)
         {
             try
             {
-                using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                return true;
+                if (File.Exists(filePath))
+                {
+                    using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    long currentLen = fs.Length;
+                    if (currentLen > 0 && currentLen == lastLen)
+                    {
+                        return true;
+                    }
+                    lastLen = currentLen;
+                }
             }
             catch (IOException)
             {
-                await Task.Delay(100);
+                // El archivo está bloqueado por el proceso de escritura de EFT
             }
+            catch (UnauthorizedAccessException)
+            {
+            }
+
+            await Task.Delay(50, ct).ConfigureAwait(false);
         }
+
         return false;
     }
 
     private void CleanupRecentFiles()
     {
         var threshold = DateTime.UtcNow.AddMinutes(-1);
-        var keysToRemove = _recentFiles
-            .Where(kvp => kvp.Value < threshold)
-            .Select(kvp => kvp.Key)
-            .ToList();
-
-        foreach (var key in keysToRemove)
+        foreach (var kvp in _recentFiles)
         {
-            _recentFiles.TryRemove(key, out _);
+            if (kvp.Value < threshold)
+            {
+                _recentFiles.TryRemove(kvp.Key, out _);
+            }
         }
     }
 
@@ -234,15 +300,32 @@ public sealed class ScreenshotWatcherService : IDisposable
     {
         OnError($"FileSystemWatcher error: {e.GetException().Message}");
 
-        // 자동 복구 시도
-        if (CurrentWatchPath != null)
+        if (_isDisposed) return;
+
+        var currentPath = CurrentWatchPath;
+        if (string.IsNullOrWhiteSpace(currentPath)) return;
+
+        var token = _watchCts?.Token ?? CancellationToken.None;
+
+        Task.Run(async () =>
         {
-            Task.Run(async () =>
+            try
             {
-                await Task.Delay(1000);
-                StartWatching(CurrentWatchPath);
-            });
-        }
+                await Task.Delay(1000, token).ConfigureAwait(false);
+                if (_isDisposed || token.IsCancellationRequested) return;
+
+                lock (_lock)
+                {
+                    if (_isDisposed || token.IsCancellationRequested) return;
+                    StartWatching(currentPath);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                OnError($"Watcher auto-recovery failed: {ex.Message}");
+            }
+        }, token);
     }
 
     private void OnPositionDetected(EftPosition position, string filePath)
@@ -270,6 +353,7 @@ public sealed class ScreenshotWatcherService : IDisposable
         if (_isDisposed) return;
         _isDisposed = true;
         StopWatching();
+        _processingLimiter.Dispose();
     }
 }
 

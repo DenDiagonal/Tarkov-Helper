@@ -123,18 +123,6 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private readonly MapCalibrationService _calibrationService = MapCalibrationService.Instance;
 
-	private bool _isCalibrationMode;
-
-	private FrameworkElement? _draggingExtractMarker;
-
-	private System.Windows.Point _extractDragStartPoint;
-
-	private double _extractMarkerOriginalLeft;
-
-	private double _extractMarkerOriginalTop;
-
-	private MapExtract? _draggingExtract;
-
 	private string? _currentFloorId;
 
 	private MapQuestMarkerManager? _questMarkerManager;
@@ -331,14 +319,6 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		{
 			InitializeComponent();
 			_trackerService = MapTrackerService.Instance;
-			_trackerService.PositionUpdated += OnPositionUpdated;
-			_trackerService.ErrorOccurred += OnErrorOccurred;
-			_trackerService.StatusMessage += OnStatusMessage;
-			_trackerService.WatchingStateChanged += OnWatchingStateChanged;
-			_trackerService.FloorChanged += OnTrackerFloorChanged;
-			_trackerService.MapChanged += OnTrackerMapChanged;
-			_trackerService.PinnedObjectiveChanged += OnTrackerPinnedObjectiveChanged;
-			_loc.LanguageChanged += OnLanguageChanged;
 			base.Loaded += MapTrackerPage_Loaded;
 			base.Unloaded += MapTrackerPage_Unloaded;
 			InitializeZoomComboBox();
@@ -348,6 +328,113 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		catch (Exception ex)
 		{
 			System.Windows.MessageBox.Show((_loc.CurrentLanguage == AppLanguage.KO) ? ("지도 추적 페이지 초기화 오류: " + ex.Message) : ("Map tracker initialization error: " + ex.Message), (_loc.CurrentLanguage == AppLanguage.KO) ? "오류" : "Error", MessageBoxButton.OK, MessageBoxImage.Hand);
+		}
+	}
+
+	private bool _isSubscribed;
+	private bool _isUnloaded;
+	private string? _currentTempSvgPath;
+
+	private void DeleteCurrentTempSvg()
+	{
+		if (!string.IsNullOrEmpty(_currentTempSvgPath))
+		{
+			try
+			{
+				if (File.Exists(_currentTempSvgPath))
+				{
+					File.Delete(_currentTempSvgPath);
+				}
+			}
+			catch { }
+			_currentTempSvgPath = null;
+		}
+	}
+
+	private void SubscribePageEvents()
+	{
+		if (_isSubscribed) return;
+		_isSubscribed = true;
+
+		if (_trackerService != null)
+		{
+			_trackerService.PositionUpdated -= OnPositionUpdated;
+			_trackerService.PositionUpdated += OnPositionUpdated;
+			_trackerService.ErrorOccurred -= OnErrorOccurred;
+			_trackerService.ErrorOccurred += OnErrorOccurred;
+			_trackerService.StatusMessage -= OnStatusMessage;
+			_trackerService.StatusMessage += OnStatusMessage;
+			_trackerService.WatchingStateChanged -= OnWatchingStateChanged;
+			_trackerService.WatchingStateChanged += OnWatchingStateChanged;
+			_trackerService.FloorChanged -= OnTrackerFloorChanged;
+			_trackerService.FloorChanged += OnTrackerFloorChanged;
+			_trackerService.MapChanged -= OnTrackerMapChanged;
+			_trackerService.MapChanged += OnTrackerMapChanged;
+			_trackerService.PinnedObjectiveChanged -= OnTrackerPinnedObjectiveChanged;
+			_trackerService.PinnedObjectiveChanged += OnTrackerPinnedObjectiveChanged;
+		}
+
+		_loc.LanguageChanged -= OnLanguageChanged;
+		_loc.LanguageChanged += OnLanguageChanged;
+
+		_progressService.ProgressChanged -= OnQuestProgressChanged;
+		_progressService.ProgressChanged += OnQuestProgressChanged;
+
+		MapSettings.Instance.HiddenQuestsChanged -= OnHiddenQuestsChanged;
+		MapSettings.Instance.HiddenQuestsChanged += OnHiddenQuestsChanged;
+
+		ObjectiveProgressService.Instance.ObjectiveProgressChanged -= OnObjectiveProgressChanged;
+		ObjectiveProgressService.Instance.ObjectiveProgressChanged += OnObjectiveProgressChanged;
+
+		MapMarkerDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+		MapMarkerDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+
+		QuestObjectiveDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+		QuestObjectiveDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+
+		QuestObjectiveRelocationService.Instance.PlacementStateChanged -= OnPlacementStateChanged;
+		QuestObjectiveRelocationService.Instance.PlacementStateChanged += OnPlacementStateChanged;
+
+		if (!_isEmbedded)
+		{
+			GlobalKeyboardHookService.Instance.FloorKeyPressed -= OnFloorKeyPressed;
+			GlobalKeyboardHookService.Instance.FloorKeyPressed += OnFloorKeyPressed;
+
+			_overlayService.OverlayVisibilityChanged -= OnOverlayVisibilityChanged;
+			_overlayService.OverlayVisibilityChanged += OnOverlayVisibilityChanged;
+		}
+	}
+
+	private void UnsubscribePageEvents()
+	{
+		if (!_isSubscribed) return;
+		_isSubscribed = false;
+
+		if (_trackerService != null)
+		{
+			_trackerService.PositionUpdated -= OnPositionUpdated;
+			_trackerService.ErrorOccurred -= OnErrorOccurred;
+			_trackerService.StatusMessage -= OnStatusMessage;
+			_trackerService.WatchingStateChanged -= OnWatchingStateChanged;
+			_trackerService.FloorChanged -= OnTrackerFloorChanged;
+			_trackerService.MapChanged -= OnTrackerMapChanged;
+			_trackerService.PinnedObjectiveChanged -= OnTrackerPinnedObjectiveChanged;
+		}
+
+		_loc.LanguageChanged -= OnLanguageChanged;
+		_progressService.ProgressChanged -= OnQuestProgressChanged;
+		MapSettings.Instance.HiddenQuestsChanged -= OnHiddenQuestsChanged;
+		ObjectiveProgressService.Instance.ObjectiveProgressChanged -= OnObjectiveProgressChanged;
+		MapMarkerDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+		QuestObjectiveDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+		QuestObjectiveRelocationService.Instance.PlacementStateChanged -= OnPlacementStateChanged;
+
+		if (!_isEmbedded)
+		{
+			GlobalKeyboardHookService.Instance.FloorKeyPressed -= OnFloorKeyPressed;
+			_overlayService.OverlayVisibilityChanged -= OnOverlayVisibilityChanged;
+			StopAutoTracking();
+			StopRaidEventMonitoring();
 		}
 	}
 
@@ -443,6 +530,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		_ = 9;
 		try
 		{
+			_isUnloaded = false;
 			_loadingCts?.Cancel();
 			_loadingCts?.Dispose();
 			_loadingCts = new CancellationTokenSource();
@@ -468,22 +556,13 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			await LoadMapMarkersAsync(ct);
 			await Task.Delay(20, ct);
 			await FloorDetectionService.Instance.LoadFloorRangesAsync().WaitAsync(ct);
-			OpenQuestDrawer();
-			_progressService.ProgressChanged += OnQuestProgressChanged;
-			MapSettings.Instance.HiddenQuestsChanged += OnHiddenQuestsChanged;
-			ObjectiveProgressService.Instance.ObjectiveProgressChanged += OnObjectiveProgressChanged;
-			GlobalKeyboardHookService.Instance.FloorKeyPressed += OnFloorKeyPressed;
-			GlobalKeyboardHookService.Instance.IsEnabled = true;
-			await InitializeOverlayServiceAsync().WaitAsync(ct);
-			_overlayService.OverlayVisibilityChanged += OnOverlayVisibilityChanged;
-			UpdateMinimapButtonState(_overlayService.IsOverlayVisible);
-			StartAutoTracking();
-			MapMarkerDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
-			MapMarkerDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
-			QuestObjectiveDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
-			QuestObjectiveDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
-			QuestObjectiveRelocationService.Instance.PlacementStateChanged -= OnPlacementStateChanged;
-			QuestObjectiveRelocationService.Instance.PlacementStateChanged += OnPlacementStateChanged;
+			SubscribePageEvents();
+			if (!_isEmbedded)
+			{
+				await InitializeOverlayServiceAsync().WaitAsync(ct);
+				UpdateMinimapButtonState(_overlayService.IsOverlayVisible);
+				StartAutoTracking();
+			}
 			base.PreviewKeyDown -= MapPage_PreviewKeyDown;
 			base.PreviewKeyDown += MapPage_PreviewKeyDown;
 			if (QuestObjectiveRelocationService.Instance.IsPlacementActive)
@@ -515,28 +594,14 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void MapTrackerPage_Unloaded(object sender, RoutedEventArgs e)
 	{
+		_isUnloaded = true;
 		_clockTimer?.Stop();
 		_loadingCts?.Cancel();
 		SaveMapState();
 		base.PreviewKeyDown -= MapPage_PreviewKeyDown;
-		_progressService.ProgressChanged -= OnQuestProgressChanged;
-		MapSettings.Instance.HiddenQuestsChanged -= OnHiddenQuestsChanged;
-		ObjectiveProgressService.Instance.ObjectiveProgressChanged -= OnObjectiveProgressChanged;
-		MapMarkerDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
-		QuestObjectiveDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
-		QuestObjectiveRelocationService.Instance.PlacementStateChanged -= OnPlacementStateChanged;
-		if (_trackerService != null)
-		{
-			_trackerService.FloorChanged -= OnTrackerFloorChanged;
-			_trackerService.MapChanged -= OnTrackerMapChanged;
-			_trackerService.PinnedObjectiveChanged -= OnTrackerPinnedObjectiveChanged;
-		}
-		GlobalKeyboardHookService.Instance.FloorKeyPressed -= OnFloorKeyPressed;
-		GlobalKeyboardHookService.Instance.IsEnabled = false;
-		_overlayService.OverlayVisibilityChanged -= OnOverlayVisibilityChanged;
-		_overlayService.HideOverlay();
-		StopAutoTracking();
-		StopRaidEventMonitoring();
+		UnsubscribePageEvents();
+		DeleteCurrentTempSvg();
+		MapImage.Source = null;
 	}
 
 	private void SaveMapState()
@@ -566,7 +631,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void RestoreMapState()
 	{
-		string mapLastSelectedMap = SettingsService.Instance.MapLastSelectedMap;
+		string? mapLastSelectedMap = SettingsService.Instance.MapLastSelectedMap;
 		if (!string.IsNullOrEmpty(_currentMapKey) || string.IsNullOrEmpty(mapLastSelectedMap))
 		{
 			return;
@@ -588,90 +653,107 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void OnLanguageChanged(object? sender, AppLanguage e)
 	{
-		UpdateLocalizedText();
+		Dispatcher.InvokeAsync(() =>
+		{
+			if (_isUnloaded) return;
+			UpdateLocalizedText();
+		});
 	}
 
 	private void UpdateLocalizedText()
 	{
-		TxtPageTitle.Text = _loc.MapPositionTracker;
-		TxtMapLabel.Text = _loc.MapLabel;
-		ChkShowQuestMarkers.Content = _loc.QuestMarkers;
-		ChkShowExtractMarkers.Content = _loc.Extracts;
-		ChkFixedView.Content = _loc.FixedView;
-		BtnClearTrail.Content = _loc.ClearTrail;
-		BtnFullScreen.Content = _loc.FullScreen;
-		BtnExitFullScreen.Content = _loc.ExitFullScreen;
-		BtnMinimap.Content = _loc.Minimap;
-		BtnSettings.Content = _loc.Settings;
-		MenuAddCustomMarker.Header = _loc.AddCustomMarker;
-		bool flag = _trackerService?.IsWatching ?? false;
-		BtnToggleTracking.Content = (flag ? _loc.StopTracking : _loc.StartTracking);
-		if (!flag)
+		try
 		{
-			TxtStatus.Text = _loc.StatusWaiting;
-		}
-		TxtPositionLabel.Text = _loc.PositionLabel;
-		TxtLastUpdateLabel.Text = _loc.LastUpdateLabel;
-		TxtSettingsTitle.Text = _loc.Settings;
-		TxtScreenshotFolderLabel.Text = _loc.ScreenshotFolder;
-		BtnAutoDetect.Content = _loc.AutoDetect;
-		BtnBrowseFolder.Content = _loc.Browse;
-		TxtMarkerSettingsLabel.Text = _loc.MarkerSettings;
-		ChkHideCompletedObjectives.Content = _loc.HideCompletedObjectives;
-		TxtQuestStyleLabel.Text = _loc.QuestStyle;
-		TxtQuestNameSizeLabel.Text = _loc.QuestNameSize;
-		TxtQuestMarkerSizeLabel.Text = _loc.QuestMarkerSize;
-		TxtPlayerMarkerSizeLabel.Text = _loc.PlayerMarkerSize;
-		TxtExtractSettingsLabel.Text = _loc.ExtractSettings;
-		if (TxtPmcExtractsLabel != null)
-		{
-			TxtPmcExtractsLabel.Text = _loc.PmcExtracts;
-		}
-		if (TxtScavExtractsLabel != null)
-		{
-			TxtScavExtractsLabel.Text = _loc.ScavExtracts;
-		}
-		ChkShowPmcExtracts.Content = null;
-		ChkShowScavExtracts.Content = null;
-		TxtExtractNameSizeLabel.Text = _loc.ExtractNameSize;
-		TxtMarkerOpacityLabel.Text = _loc.MarkerOpacity;
-		TxtMarkerColorsLabel.Text = _loc.MarkerColors;
-		TxtColorVisit.Text = _loc.FilterVisit;
-		TxtColorMark.Text = _loc.FilterMark;
-		TxtColorPlant.Text = _loc.FilterPlant;
-		TxtColorExtract.Text = _loc.FilterExtract;
-		TxtColorFind.Text = _loc.FilterFind;
-		BtnResetColors.Content = _loc.ResetColors;
-		CmbStyleIconOnly.Content = _loc.StyleIconOnly;
-		CmbStyleGreenCircle.Content = _loc.StyleGreenCircle;
-		CmbStyleIconWithName.Content = _loc.StyleIconWithName;
-		CmbStyleCircleWithName.Content = _loc.StyleCircleWithName;
-		TxtNoMapImage.Text = _loc.NoMapImage;
-		TxtAddMapImageHint.Text = _loc.AddMapImageHint;
-		TxtSetImagePathHint.Text = _loc.SetImagePathHint;
-		BtnZoomIn.ToolTip = _loc.ZoomInTooltip;
-		BtnZoomOut.ToolTip = _loc.ZoomOutTooltip;
-		BtnResetView.ToolTip = _loc.ResetViewTooltip;
-		string text = (CmbMapSelect.SelectedItem as ComboBoxItem)?.Tag as string;
-		PopulateMapComboBox();
-		if (string.IsNullOrEmpty(text))
-		{
-			return;
-		}
-		for (int i = 0; i < CmbMapSelect.Items.Count; i++)
-		{
-			if (CmbMapSelect.Items[i] is ComboBoxItem comboBoxItem && string.Equals(comboBoxItem.Tag as string, text, StringComparison.OrdinalIgnoreCase))
+			TxtPageTitle.Text = _loc.MapPositionTracker;
+			TxtMapLabel.Text = _loc.MapLabel;
+			ChkShowQuestMarkers.Content = _loc.QuestMarkers;
+			ChkShowExtractMarkers.Content = _loc.Extracts;
+			ChkFixedView.Content = _loc.FixedView;
+			BtnClearTrail.Content = _loc.ClearTrail;
+			BtnFullScreen.Content = _loc.FullScreen;
+			BtnExitFullScreen.Content = _loc.ExitFullScreen;
+			BtnMinimap.Content = _loc.Minimap;
+			BtnSettings.Content = _loc.Settings;
+			MenuAddCustomMarker.Header = _loc.AddCustomMarker;
+			bool flag = _trackerService?.IsWatching ?? false;
+			BtnToggleTracking.Content = (flag ? _loc.StopTracking : _loc.StartTracking);
+			if (!flag)
 			{
-				CmbMapSelect.SelectedIndex = i;
-				break;
+				TxtStatus.Text = _loc.StatusWaiting;
 			}
+			TxtPositionLabel.Text = _loc.PositionLabel;
+			TxtLastUpdateLabel.Text = _loc.LastUpdateLabel;
+			TxtSettingsTitle.Text = _loc.Settings;
+			TxtScreenshotFolderLabel.Text = _loc.ScreenshotFolder;
+			BtnAutoDetect.Content = _loc.AutoDetect;
+			BtnBrowseFolder.Content = _loc.Browse;
+			TxtMarkerSettingsLabel.Text = _loc.MarkerSettings;
+			ChkHideCompletedObjectives.Content = _loc.HideCompletedObjectives;
+			TxtQuestStyleLabel.Text = _loc.QuestStyle;
+			TxtQuestNameSizeLabel.Text = _loc.QuestNameSize;
+			TxtQuestMarkerSizeLabel.Text = _loc.QuestMarkerSize;
+			TxtPlayerMarkerSizeLabel.Text = _loc.PlayerMarkerSize;
+			TxtExtractSettingsLabel.Text = _loc.ExtractSettings;
+			if (TxtPmcExtractsLabel != null)
+			{
+				TxtPmcExtractsLabel.Text = _loc.PmcExtracts;
+			}
+			if (TxtScavExtractsLabel != null)
+			{
+				TxtScavExtractsLabel.Text = _loc.ScavExtracts;
+			}
+			ChkShowPmcExtracts.Content = null;
+			ChkShowScavExtracts.Content = null;
+			TxtExtractNameSizeLabel.Text = _loc.ExtractNameSize;
+			TxtMarkerOpacityLabel.Text = _loc.MarkerOpacity;
+			TxtMarkerColorsLabel.Text = _loc.MarkerColors;
+			TxtColorVisit.Text = _loc.FilterVisit;
+			TxtColorMark.Text = _loc.FilterMark;
+			TxtColorPlant.Text = _loc.FilterPlant;
+			TxtColorExtract.Text = _loc.FilterExtract;
+			TxtColorFind.Text = _loc.FilterFind;
+			BtnResetColors.Content = _loc.ResetColors;
+			CmbStyleIconOnly.Content = _loc.StyleIconOnly;
+			CmbStyleGreenCircle.Content = _loc.StyleGreenCircle;
+			CmbStyleIconWithName.Content = _loc.StyleIconWithName;
+			CmbStyleCircleWithName.Content = _loc.StyleCircleWithName;
+			TxtNoMapImage.Text = _loc.NoMapImage;
+			TxtAddMapImageHint.Text = _loc.AddMapImageHint;
+			TxtSetImagePathHint.Text = _loc.SetImagePathHint;
+			BtnZoomIn.ToolTip = _loc.ZoomInTooltip;
+			BtnZoomOut.ToolTip = _loc.ZoomOutTooltip;
+			BtnResetView.ToolTip = _loc.ResetViewTooltip;
+
+			PopulateMapComboBox();
+
+			_ = Dispatcher.InvokeAsync(async () =>
+			{
+				try
+				{
+					if (_isUnloaded) return;
+					CancellationToken ct = GetNewCancellationToken();
+					await RefreshQuestMarkers(ct);
+					await RefreshExtractMarkers(ct);
+					await RefreshMapMarkers(ct);
+					RefreshQuestDrawer();
+				}
+				catch (OperationCanceledException) { }
+				catch (Exception ex)
+				{
+					_log.Warning($"Error refreshing map markers on localized text update: {ex.Message}");
+				}
+			});
+		}
+		catch (Exception ex)
+		{
+			_log.Error($"Error updating localized text in MapPage: {ex.Message}");
 		}
 	}
 
 	private void LoadSettings()
 	{
 		SettingsService instance = SettingsService.Instance;
-		string text = instance.MapScreenshotPath;
+		string? text = instance.MapScreenshotPath;
 		if (string.IsNullOrEmpty(text))
 		{
 			text = MapTrackerSettings.TryDetectScreenshotFolder() ?? (Environment.GetFolderPath(Environment.SpecialFolder.Personal) + "\\Escape from Tarkov\\Screenshots");
@@ -786,25 +868,49 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		}
 	}
 
-	private void PopulateMapComboBox()
+	private void PopulateMapComboBox(string? preferredKey = null)
 	{
 		if (_trackerService == null)
 		{
 			return;
 		}
-		CmbMapSelect.Items.Clear();
-		foreach (ComboBoxItem item in (from mapKey in _trackerService.GetAllMapKeys()
-			select new ComboBoxItem
+
+		var targetMapKey = preferredKey ?? (CmbMapSelect.SelectedItem as ComboBoxItem)?.Tag as string ?? _currentMapKey;
+
+		CmbMapSelect.SelectionChanged -= CmbMapSelect_SelectionChanged;
+		try
+		{
+			CmbMapSelect.Items.Clear();
+			var items = (from mapKey in _trackerService.GetAllMapKeys()
+				select new ComboBoxItem
+				{
+					Content = _loc.GetLocalizedMapName(mapKey),
+					Tag = mapKey
+				}).OrderBy(item => item.Content?.ToString() ?? string.Empty, StringComparer.CurrentCultureIgnoreCase).ToList();
+
+			int selectedIndex = -1;
+			for (int i = 0; i < items.Count; i++)
 			{
-				Content = _loc.GetLocalizedMapName(mapKey),
-				Tag = mapKey
-			}).OrderBy<ComboBoxItem, string>((ComboBoxItem item) => item.Content?.ToString(), StringComparer.CurrentCultureIgnoreCase).ToList())
-		{
-			CmbMapSelect.Items.Add(item);
+				CmbMapSelect.Items.Add(items[i]);
+				if (selectedIndex < 0 && !string.IsNullOrEmpty(targetMapKey) &&
+				    string.Equals(items[i].Tag as string, targetMapKey, StringComparison.OrdinalIgnoreCase))
+				{
+					selectedIndex = i;
+				}
+			}
+
+			if (selectedIndex >= 0)
+			{
+				CmbMapSelect.SelectedIndex = selectedIndex;
+			}
+			else if (CmbMapSelect.Items.Count > 0)
+			{
+				CmbMapSelect.SelectedIndex = 0;
+			}
 		}
-		if (CmbMapSelect.Items.Count > 0 && CmbMapSelect.SelectedIndex < 0)
+		finally
 		{
-			CmbMapSelect.SelectedIndex = 0;
+			CmbMapSelect.SelectionChanged += CmbMapSelect_SelectionChanged;
 		}
 	}
 
@@ -821,7 +927,8 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void OnPositionUpdated(object? sender, ScreenPosition position)
 	{
-		base.Dispatcher.Invoke(delegate
+		if (base.Dispatcher.HasShutdownStarted || base.Dispatcher.HasShutdownFinished) return;
+		base.Dispatcher.BeginInvoke((Action)delegate
 		{
 			UpdateMarkerPosition(position);
 			UpdateTrailPath();
@@ -851,12 +958,12 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		{
 			return;
 		}
-		EftPosition originalPosition = position.OriginalPosition;
+		EftPosition? originalPosition = position.OriginalPosition;
 		if (originalPosition == null)
 		{
 			return;
 		}
-		string text = FloorDetectionService.Instance.DetectFloor(_currentMapKey, originalPosition.X, originalPosition.Y, originalPosition.Z.GetValueOrDefault());
+		string? text = FloorDetectionService.Instance.DetectFloor(_currentMapKey, originalPosition.X, originalPosition.Y, originalPosition.Z.GetValueOrDefault());
 		if (string.IsNullOrEmpty(text))
 		{
 			text = "main";
@@ -1129,8 +1236,8 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			{
 				if (CmbMapSelect.Items[i] is ComboBoxItem comboBoxItem)
 				{
-					string text2 = comboBoxItem.Tag as string;
-					string a = comboBoxItem.Content as string;
+					string? text2 = comboBoxItem.Tag as string;
+					string? a = comboBoxItem.Content as string;
 					if (string.Equals(text2, text, StringComparison.OrdinalIgnoreCase) || string.Equals(text2, mapKey, StringComparison.OrdinalIgnoreCase) || string.Equals(ResolveCanonicalMapKey(text2), text, StringComparison.OrdinalIgnoreCase) || string.Equals(a, mapKey, StringComparison.OrdinalIgnoreCase))
 					{
 						num = i;
@@ -1165,13 +1272,19 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		_ = 3;
 		try
 		{
+			ct.ThrowIfCancellationRequested();
 			await LoadMapImageAsync(canonicalKey, centerView, ct);
+			ct.ThrowIfCancellationRequested();
 			LoadCurrentMapSettings();
 			int size = _trackerService?.Settings.PlayerMarkerSize ?? 16;
 			UpdatePlayerMarkerSize(size);
+			ct.ThrowIfCancellationRequested();
 			await RefreshExtractMarkers(ct);
+			ct.ThrowIfCancellationRequested();
 			await RefreshMapMarkers(ct);
+			ct.ThrowIfCancellationRequested();
 			await RefreshQuestMarkers(ct);
+			ct.ThrowIfCancellationRequested();
 			UpdateMapPillSelection(canonicalKey);
 			UpdateRequiredStripsForCurrentMap();
 		}
@@ -1234,7 +1347,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		{
 			return;
 		}
-		string targetObjectiveId = service.TargetObjectiveId;
+		string? targetObjectiveId = service.TargetObjectiveId;
 		string targetDesc = service.TargetObjectiveDescription ?? service.TargetQuestName ?? "Objective";
 		if (string.IsNullOrEmpty(_currentMapKey) || string.IsNullOrEmpty(targetObjectiveId))
 		{
@@ -1243,21 +1356,36 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		}
 		try
 		{
-			if (service.TryCalculateWorldCoordinates(_currentMapKey, canvasPos, _currentFloorId, out LocationPoint locPoint) && locPoint != null)
+			if (service.TryCalculateWorldCoordinates(_currentMapKey, canvasPos, _currentFloorId, out LocationPoint? locPoint) && locPoint != null)
 			{
 				if (await service.SaveObjectiveLocationAsync(targetObjectiveId, locPoint))
 				{
 					service.CancelPlacement();
-					TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? $"목표 위치가 설정되었습니다: {targetDesc} (X={locPoint.X:F1}, Z={locPoint.Z:F1})" : $"Objective location saved: {targetDesc} (X={locPoint.X:F1}, Z={locPoint.Z:F1})");
+					TxtStatus.Text = _loc.CurrentLanguage switch
+					{
+						AppLanguage.ES => $"Ubicación de objetivo guardada: {targetDesc} (X={locPoint.X:F1}, Z={locPoint.Z:F1})",
+						AppLanguage.KO => $"목표 위치가 설정되었습니다: {targetDesc} (X={locPoint.X:F1}, Z={locPoint.Z:F1})",
+						_ => $"Objective location saved: {targetDesc} (X={locPoint.X:F1}, Z={locPoint.Z:F1})"
+					};
 				}
 				else
 				{
-					TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? "목표 위치 저장 실패" : "Failed to save objective location");
+					TxtStatus.Text = _loc.CurrentLanguage switch
+					{
+						AppLanguage.ES => "Fallo al guardar la ubicación del objetivo",
+						AppLanguage.KO => "목표 위치 저장 실패",
+						_ => "Failed to save objective location"
+					};
 				}
 			}
 			else
 			{
-				TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? "좌표 변환 실패" : "Coordinate calculation failed for current map");
+				TxtStatus.Text = _loc.CurrentLanguage switch
+				{
+					AppLanguage.ES => "Fallo de cálculo de coordenadas para el mapa actual",
+					AppLanguage.KO => "좌표 변환 실패",
+					_ => "Coordinate calculation failed for current map"
+				};
 			}
 		}
 		catch (Exception ex)
@@ -1269,7 +1397,8 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void OnErrorOccurred(object? sender, string message)
 	{
-		base.Dispatcher.Invoke(delegate
+		if (base.Dispatcher.HasShutdownStarted || base.Dispatcher.HasShutdownFinished) return;
+		base.Dispatcher.BeginInvoke((Action)delegate
 		{
 			TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? ("오류: " + message) : ("Error: " + message));
 			TxtStatus.Foreground = (TryFindResource("WarningBrush") as System.Windows.Media.Brush) ?? System.Windows.Media.Brushes.Orange;
@@ -1278,7 +1407,8 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void OnStatusMessage(object? sender, string message)
 	{
-		base.Dispatcher.Invoke(delegate
+		if (base.Dispatcher.HasShutdownStarted || base.Dispatcher.HasShutdownFinished) return;
+		base.Dispatcher.BeginInvoke((Action)delegate
 		{
 			TxtStatus.Text = message;
 			TxtStatus.Foreground = (TryFindResource("TextSecondaryBrush") as System.Windows.Media.Brush) ?? System.Windows.Media.Brushes.Gray;
@@ -1287,7 +1417,8 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void OnWatchingStateChanged(object? sender, bool isWatching)
 	{
-		base.Dispatcher.Invoke(UpdateUI);
+		if (base.Dispatcher.HasShutdownStarted || base.Dispatcher.HasShutdownFinished) return;
+		base.Dispatcher.BeginInvoke((Action)UpdateUI);
 	}
 
 	private void StartAutoTracking()
@@ -1309,7 +1440,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 	private void StartRaidEventMonitoring()
 	{
 		_raidEventService.RaidEvent += OnRaidEvent;
-		string logFolderPath = SettingsService.Instance.LogFolderPath;
+		string? logFolderPath = SettingsService.Instance.LogFolderPath;
 		_raidEventService.StartMonitoring(logFolderPath);
 	}
 
@@ -1340,7 +1471,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void HandleRaidStarted(EftRaidEventArgs e)
 	{
-		string text = e.RaidInfo?.MapKey;
+		string? text = e.RaidInfo?.MapKey;
 		if (string.IsNullOrEmpty(text))
 		{
 			return;
@@ -1351,7 +1482,12 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		{
 			ClearTrailAndMarkers();
 			string value = ((raidType == RaidType.PMC) ? "PMC" : "SCAV");
-			TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? $"레이드 시작: {text} ({value})" : $"Raid started: {text} ({value})");
+			TxtStatus.Text = _loc.CurrentLanguage switch
+			{
+				AppLanguage.ES => $"Raid iniciada: {text} ({value})",
+				AppLanguage.KO => $"레이드 시작: {text} ({value})",
+				_ => $"Raid started: {text} ({value})"
+			};
 			return;
 		}
 		for (int i = 0; i < CmbMapSelect.Items.Count; i++)
@@ -1368,7 +1504,12 @@ public partial class MapPage : System.Windows.Controls.UserControl
 				SetZoom(zoom);
 				CenterMapInView();
 				string value2 = ((raidType == RaidType.PMC) ? "PMC" : "SCAV");
-				TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? $"레이드 시작: {text} ({value2})" : $"Raid started: {text} ({value2})");
+				TxtStatus.Text = _loc.CurrentLanguage switch
+				{
+					AppLanguage.ES => $"Raid iniciada: {text} ({value2})",
+					AppLanguage.KO => $"레이드 시작: {text} ({value2})",
+					_ => $"Raid started: {text} ({value2})"
+				};
 				break;
 			}
 		}
@@ -1416,10 +1557,15 @@ public partial class MapPage : System.Windows.Controls.UserControl
 	private void HandleRaidEnded(EftRaidEventArgs e)
 	{
 		ClearTrailAndMarkers();
-		string text = e.RaidInfo?.MapKey ?? _currentMapKey;
+		string? text = e.RaidInfo?.MapKey ?? _currentMapKey;
 		TimeSpan? timeSpan = e.RaidInfo?.Duration;
 		string text2 = ((!timeSpan.HasValue) ? "" : ((_loc.CurrentLanguage == AppLanguage.KO) ? $" ({timeSpan.Value.Minutes}분 {timeSpan.Value.Seconds}초)" : $" ({timeSpan.Value.Minutes}m {timeSpan.Value.Seconds}s)"));
-		TxtStatus.Text = ((_loc.CurrentLanguage == AppLanguage.KO) ? ("레이드 종료: " + text + text2) : ("Raid ended: " + text + text2));
+		TxtStatus.Text = _loc.CurrentLanguage switch
+		{
+			AppLanguage.ES => "Raid finalizada: " + text + text2,
+			AppLanguage.KO => "레이드 종료: " + text + text2,
+			_ => "Raid ended: " + text + text2
+		};
 	}
 
 	private void ClearTrailAndMarkers()
@@ -1457,7 +1603,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		try
 		{
 			string key = "map.zoomLevel." + mapKey;
-			string setting = UserDataDbService.Instance.GetSetting(key, null);
+			string? setting = UserDataDbService.Instance.GetSetting(key, null);
 			if (!string.IsNullOrEmpty(setting) && double.TryParse(setting, out var result))
 			{
 				_mapZoomLevelCache[mapKey] = result;
@@ -1587,6 +1733,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		{
 			return;
 		}
+		_isSwitchingMap = true;
 		try
 		{
 			CancellationToken ct = GetNewCancellationToken();
@@ -1629,6 +1776,10 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		catch (Exception exception)
 		{
 			_log.Error("Error in CmbMapSelect_SelectionChanged", exception);
+		}
+		finally
+		{
+			_isSwitchingMap = false;
 		}
 	}
 
@@ -1674,7 +1825,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void UpdateFloorComboBox(string mapKey)
 	{
-		List<MapFloorConfig> list = (_trackerService?.GetMapConfig(mapKey))?.Floors;
+		List<MapFloorConfig>? list = (_trackerService?.GetMapConfig(mapKey))?.Floors;
 		CmbFloorSelect.SelectionChanged -= CmbFloorSelect_SelectionChanged;
 		try
 		{
@@ -1718,24 +1869,60 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void BtnAutoDetect_Click(object sender, RoutedEventArgs e)
 	{
-		string text = MapTrackerSettings.TryDetectScreenshotFolder();
+		string? text = MapTrackerSettings.TryDetectScreenshotFolder();
 		if (!string.IsNullOrEmpty(text))
 		{
 			TxtScreenshotFolder.Text = text;
 			_trackerService?.ChangeScreenshotFolder(text);
 			SettingsService.Instance.MapScreenshotPath = text;
-			System.Windows.MessageBox.Show((_loc.CurrentLanguage == AppLanguage.KO) ? ("스크린샷 폴더를 찾았습니다:\n" + text) : ("Screenshot folder found:\n" + text), (_loc.CurrentLanguage == AppLanguage.KO) ? "자동 탐지 성공" : "Auto Detect Success", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+			string msg = _loc.CurrentLanguage switch
+			{
+				AppLanguage.ES => "Carpeta de capturas encontrada:\n" + text,
+				AppLanguage.KO => "스크린샷 폴더를 찾았습니다:\n" + text,
+				_ => "Screenshot folder found:\n" + text
+			};
+			string title = _loc.CurrentLanguage switch
+			{
+				AppLanguage.ES => "Detección Exitosa",
+				AppLanguage.KO => "자동 탐지 성공",
+				_ => "Auto Detect Success"
+			};
+			System.Windows.MessageBox.Show(msg, title, MessageBoxButton.OK, MessageBoxImage.Asterisk);
 			return;
 		}
 		List<string> possibleScreenshotPaths = MapTrackerSettings.GetPossibleScreenshotPaths();
 		if (possibleScreenshotPaths.Count > 0)
 		{
 			string text2 = string.Join("\n", possibleScreenshotPaths);
-			System.Windows.MessageBox.Show((_loc.CurrentLanguage == AppLanguage.KO) ? ("스크린샷 폴더를 자동으로 찾지 못했습니다.\n\n발견된 EFT 폴더:\n" + text2 + "\n\n수동으로 선택해주세요.") : ("Could not automatically find screenshot folder.\n\nFound EFT folder:\n" + text2 + "\n\nPlease select manually."), "Auto Detect Failed", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+			string msg = _loc.CurrentLanguage switch
+			{
+				AppLanguage.ES => "No se pudo encontrar automáticamente la carpeta de capturas.\n\nCarpetas de EFT detectadas:\n" + text2 + "\n\nPor favor, selecciona manualmente.",
+				AppLanguage.KO => "스크린샷 폴더를 자동으로 찾지 못했습니다.\n\n발견된 EFT 폴더:\n" + text2 + "\n\n수동으로 선택해주세요.",
+				_ => "Could not automatically find screenshot folder.\n\nFound EFT folder:\n" + text2 + "\n\nPlease select manually."
+			};
+			string title = _loc.CurrentLanguage switch
+			{
+				AppLanguage.ES => "Fallo de Detección",
+				AppLanguage.KO => "자동 탐지 실패",
+				_ => "Auto Detect Failed"
+			};
+			System.Windows.MessageBox.Show(msg, title, MessageBoxButton.OK, MessageBoxImage.Exclamation);
 		}
 		else
 		{
-			System.Windows.MessageBox.Show((_loc.CurrentLanguage == AppLanguage.KO) ? "EFT 스크린샷 폴더를 찾을 수 없습니다.\n수동으로 폴더를 선택해주세요." : "Could not find EFT screenshot folder.\nPlease select folder manually.", "Auto Detect Failed", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+			string msg = _loc.CurrentLanguage switch
+			{
+				AppLanguage.ES => "No se pudo encontrar la carpeta de capturas de EFT.\nPor favor, selecciona la carpeta manualmente.",
+				AppLanguage.KO => "EFT 스크린샷 폴더를 찾을 수 없습니다.\n수동으로 폴더를 선택해주세요.",
+				_ => "Could not find EFT screenshot folder.\nPlease select folder manually."
+			};
+			string title = _loc.CurrentLanguage switch
+			{
+				AppLanguage.ES => "Fallo de Detección",
+				AppLanguage.KO => "자동 탐지 실패",
+				_ => "Auto Detect Failed"
+			};
+			System.Windows.MessageBox.Show(msg, title, MessageBoxButton.OK, MessageBoxImage.Exclamation);
 		}
 	}
 
@@ -1972,7 +2159,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 	private async Task LoadMapImageAsync(string mapKey, bool centerView = true, CancellationToken ct = default(CancellationToken))
 	{
 		ct.ThrowIfCancellationRequested();
-		MapConfig config = _trackerService?.GetMapConfig(mapKey);
+		MapConfig? config = _trackerService?.GetMapConfig(mapKey);
 		if (config == null)
 		{
 			ShowNoMapPanel(show: true);
@@ -1999,16 +2186,16 @@ public partial class MapPage : System.Windows.Controls.UserControl
 				MapImage.Visibility = Visibility.Collapsed;
 				MapSvg.Visibility = Visibility.Visible;
 				MapSvg.Source = null;
-				IEnumerable<string> visibleFloors = null;
-				IEnumerable<string> allFloors = null;
-				string backgroundFloorId = null;
+				IEnumerable<string>? visibleFloors = null;
+				IEnumerable<string>? allFloors = null;
+				string? backgroundFloorId = null;
 				double backgroundOpacity = 0.3;
 				if (config.Floors != null && config.Floors.Count > 0 && !string.IsNullOrEmpty(_currentFloorId))
 				{
 					allFloors = config.Floors.Select((MapFloorConfig f) => f.LayerId);
 					visibleFloors = new string[1] { _currentFloorId };
-					MapFloorConfig mapFloorConfig = config.Floors.FirstOrDefault((MapFloorConfig f) => f.IsDefault);
-					MapFloorConfig mapFloorConfig2 = config.Floors.FirstOrDefault((MapFloorConfig f) => string.Equals(f.LayerId, _currentFloorId, StringComparison.OrdinalIgnoreCase));
+					MapFloorConfig? mapFloorConfig = config.Floors.FirstOrDefault((MapFloorConfig f) => f.IsDefault);
+					MapFloorConfig? mapFloorConfig2 = config.Floors.FirstOrDefault((MapFloorConfig f) => string.Equals(f.LayerId, _currentFloorId, StringComparison.OrdinalIgnoreCase));
 					if (mapFloorConfig != null && !string.Equals(_currentFloorId, mapFloorConfig.LayerId, StringComparison.OrdinalIgnoreCase))
 					{
 						backgroundFloorId = mapFloorConfig.LayerId;
@@ -2020,6 +2207,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 				}
 				if (visibleFloors != null)
 				{
+					string? previousTempSvg = _currentTempSvgPath;
 					string uriString = await Task.Run(delegate
 					{
 						string contents = new SvgStylePreprocessor().ProcessSvgFile(imagePath, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity);
@@ -2028,10 +2216,18 @@ public partial class MapPage : System.Windows.Controls.UserControl
 						return text;
 					}, ct);
 					ct.ThrowIfCancellationRequested();
+
+					if (!string.IsNullOrEmpty(previousTempSvg) && !string.Equals(previousTempSvg, uriString, StringComparison.OrdinalIgnoreCase))
+					{
+						try { if (File.Exists(previousTempSvg)) File.Delete(previousTempSvg); } catch { }
+					}
+					_currentTempSvgPath = uriString;
+
 					MapSvg.Source = new Uri(uriString, UriKind.Absolute);
 				}
 				else
 				{
+					DeleteCurrentTempSvg();
 					MapSvg.Source = new Uri(imagePath, UriKind.Absolute);
 				}
 				MapSvg.Width = config.ImageWidth;
@@ -2043,6 +2239,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			}
 			else
 			{
+				DeleteCurrentTempSvg();
 				MapSvg.Visibility = Visibility.Collapsed;
 				MapImage.Visibility = Visibility.Visible;
 				BitmapImage bitmapImage = new BitmapImage();
@@ -2050,6 +2247,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 				bitmapImage.UriSource = new Uri(imagePath, UriKind.Absolute);
 				bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
 				bitmapImage.EndInit();
+				bitmapImage.Freeze();
 				MapImage.Source = bitmapImage;
 				MapCanvas.Width = bitmapImage.PixelWidth;
 				MapCanvas.Height = bitmapImage.PixelHeight;
@@ -2174,7 +2372,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void UpdateCoordinatesDisplay(ScreenPosition position)
 	{
-		EftPosition originalPosition = position.OriginalPosition;
+		EftPosition? originalPosition = position.OriginalPosition;
 		if (originalPosition != null)
 		{
 			string value = (originalPosition.Angle.HasValue ? $", Angle: {originalPosition.Angle:F1}°" : "");
@@ -2224,7 +2422,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 	{
 		if (_trackerService != null)
 		{
-			ScreenPosition currentPosition = _trackerService.CurrentPosition;
+			ScreenPosition? currentPosition = _trackerService.CurrentPosition;
 			if (currentPosition == null)
 			{
 				PlayerMarker.Visibility = Visibility.Collapsed;
@@ -2239,6 +2437,18 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		}
 	}
 
+	private bool _isMarkerScalesUpdateScheduled;
+	private void ScheduleCoalescedMarkerScalesUpdate()
+	{
+		if (_isMarkerScalesUpdateScheduled) return;
+		_isMarkerScalesUpdateScheduled = true;
+		base.Dispatcher.BeginInvoke((Action)(() =>
+		{
+			_isMarkerScalesUpdateScheduled = false;
+			UpdateMarkerScales();
+		}), DispatcherPriority.Render);
+	}
+
 	private void SetZoom(double zoom)
 	{
 		_zoomLevel = Math.Clamp(zoom, 0.1, 5.0);
@@ -2247,7 +2457,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		CmbZoomLevel.SelectionChanged -= CmbZoomLevel_SelectionChanged;
 		CmbZoomLevel.Text = $"{_zoomLevel * 100.0:F0}%";
 		CmbZoomLevel.SelectionChanged += CmbZoomLevel_SelectionChanged;
-		UpdateMarkerScales();
+		ScheduleCoalescedMarkerScalesUpdate();
 	}
 
 	private void UpdateMarkerScales()
@@ -2557,7 +2767,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		{
 			return;
 		}
-		QuestObjectiveLocation questObjectiveLocation = objective.Locations.FirstOrDefault((QuestObjectiveLocation l) => !string.IsNullOrEmpty(_currentMapKey) && (l.MapName.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) || (l.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) ?? false)));
+		QuestObjectiveLocation? questObjectiveLocation = objective.Locations.FirstOrDefault((QuestObjectiveLocation l) => !string.IsNullOrEmpty(_currentMapKey) && (l.MapName.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) || (l.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) ?? false)));
 		if (questObjectiveLocation == null)
 		{
 			questObjectiveLocation = objective.Locations.FirstOrDefault();
@@ -2580,7 +2790,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 	{
 		if (selectedObjective != null)
 		{
-			TaskObjectiveWithLocation taskObjectiveWithLocation = _currentMapObjectives.FirstOrDefault((TaskObjectiveWithLocation o) => o.ObjectiveId == selectedObjective.ObjectiveId);
+			TaskObjectiveWithLocation? taskObjectiveWithLocation = _currentMapObjectives.FirstOrDefault((TaskObjectiveWithLocation o) => o.ObjectiveId == selectedObjective.ObjectiveId);
 			_selectedObjective = taskObjectiveWithLocation ?? selectedObjective;
 		}
 		else
@@ -2594,10 +2804,6 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		}
 	}
 
-	private void OpenQuestDrawer()
-	{
-	}
-
 	private void CloseQuestDrawer()
 	{
 		_selectedObjective = null;
@@ -2606,12 +2812,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void QuestObjectiveItem_Click(object sender, MouseButtonEventArgs e)
 	{
-		if (!(sender is FrameworkElement { DataContext: var dataContext }))
-		{
-			return;
-		}
-		QuestObjectiveViewModel vm = dataContext as QuestObjectiveViewModel;
-		if (vm != null)
+		if (sender is FrameworkElement { DataContext: QuestObjectiveViewModel vm })
 		{
 			_selectedObjective = _currentMapObjectives.FirstOrDefault((TaskObjectiveWithLocation o) => o.ObjectiveId == vm.Objective.ObjectiveId) ?? vm.Objective;
 			SelectFloorForObjective(_selectedObjective);
@@ -2655,7 +2856,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 	private void MenuCardRelocate_Click(object sender, RoutedEventArgs e)
 	{
 		e.Handled = true;
-		QuestObjectiveViewModel objectiveVmFromSender = GetObjectiveVmFromSender(sender);
+		QuestObjectiveViewModel? objectiveVmFromSender = GetObjectiveVmFromSender(sender);
 		if (objectiveVmFromSender != null && objectiveVmFromSender.CanRelocate)
 		{
 			QuestObjectiveRelocationService.Instance.StartPlacement(objectiveVmFromSender.ObjectiveId, objectiveVmFromSender.Description, objectiveVmFromSender.QuestName, _currentMapKey);
@@ -2665,7 +2866,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 	private async void MenuCardRevert_Click(object sender, RoutedEventArgs e)
 	{
 		e.Handled = true;
-		QuestObjectiveViewModel objectiveVmFromSender = GetObjectiveVmFromSender(sender);
+		QuestObjectiveViewModel? objectiveVmFromSender = GetObjectiveVmFromSender(sender);
 		if (objectiveVmFromSender != null)
 		{
 			QuestObjectiveRelocationService instance = QuestObjectiveRelocationService.Instance;
@@ -2686,7 +2887,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 	private void MenuCardCenter_Click(object sender, RoutedEventArgs e)
 	{
 		e.Handled = true;
-		QuestObjectiveViewModel vm = GetObjectiveVmFromSender(sender);
+		QuestObjectiveViewModel? vm = GetObjectiveVmFromSender(sender);
 		if (vm != null)
 		{
 			_selectedObjective = _currentMapObjectives.FirstOrDefault((TaskObjectiveWithLocation o) => o.ObjectiveId == vm.Objective.ObjectiveId) ?? vm.Objective;
@@ -2786,7 +2987,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void MapPill_Click(object sender, RoutedEventArgs e)
 	{
-		string text = (sender as FrameworkElement)?.Tag as string;
+		string? text = (sender as FrameworkElement)?.Tag as string;
 		if (text != null || ((sender as FrameworkElement)?.DataContext is MapPillItem mapPillItem && !string.IsNullOrEmpty(text = mapPillItem.MapKey)))
 		{
 			SelectMap(text);
@@ -2891,7 +3092,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			int selectedIndex = CmbFloorSelect.SelectedIndex;
 			if (selectedIndex >= 0 && selectedIndex < CmbFloorSelect.Items.Count)
 			{
-				ComboBoxItem comboBoxItem = CmbFloorSelect.Items[selectedIndex] as ComboBoxItem;
+				ComboBoxItem? comboBoxItem = CmbFloorSelect.Items[selectedIndex] as ComboBoxItem;
 				string text = comboBoxItem?.Content?.ToString() ?? "";
 				string layerId = comboBoxItem?.Tag?.ToString() ?? "";
 				string floorShortCode = MapFloorHelper.GetFloorShortCode(_trackerService.GetMapConfig(_currentMapKey ?? "")?.Floors?.FirstOrDefault((MapFloorConfig f) => string.Equals(f.LayerId, layerId, StringComparison.OrdinalIgnoreCase)), text, layerId);
@@ -2961,7 +3162,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			{
 				return true;
 			}
-			string text = _trackerService?.ResolveMapKey(map);
+			string? text = _trackerService?.ResolveMapKey(map);
 			if (!string.IsNullOrEmpty(text) && (string.Equals(text, b, StringComparison.OrdinalIgnoreCase) || string.Equals(text, mapKey, StringComparison.OrdinalIgnoreCase)))
 			{
 				return true;
@@ -3037,7 +3238,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			int num = 0;
 			foreach (string qName in value3.Item4)
 			{
-				TarkovTask tarkovTask = list.FirstOrDefault((TarkovTask x) => x.Name == qName);
+				TarkovTask? tarkovTask = list.FirstOrDefault((TarkovTask x) => x.Name == qName);
 				if (tarkovTask != null)
 				{
 					string questItemKey = NeededItemProgressService.GetQuestItemKey(tarkovTask.NormalizedName ?? tarkovTask.Id, key, null);
@@ -3140,20 +3341,29 @@ public partial class MapPage : System.Windows.Controls.UserControl
 	{
 		List<TarkovTask> list = QuestDbService.Instance.AllQuests.Where((TarkovTask q) => _progressService.GetStatus(q) == QuestStatus.Active && q.RequiredItems != null && q.RequiredItems.Any((QuestItem r) => string.Equals(r.ItemNormalizedName, item.ItemNormalizedName, StringComparison.OrdinalIgnoreCase) || string.Equals(r.ItemDisplayName, item.ItemName, StringComparison.OrdinalIgnoreCase))).ToList();
 		int num = item.CurrentCount;
-		foreach (TarkovTask item2 in list)
+		foreach (var quest in list)
 		{
-			QuestItem questItem = item2.RequiredItems.First((QuestItem r) => string.Equals(r.ItemNormalizedName, item.ItemNormalizedName, StringComparison.OrdinalIgnoreCase) || string.Equals(r.ItemDisplayName, item.ItemName, StringComparison.OrdinalIgnoreCase));
-			string questItemKey = NeededItemProgressService.GetQuestItemKey(item2.NormalizedName ?? item2.Id, questItem.ItemNormalizedName, null);
-			int num2 = Math.Min(num, questItem.Amount);
-			NeededItemProgressService.Instance.SetCount(questItemKey, num2, questItem.Amount);
-			num -= num2;
+			if (quest.RequiredItems?.FirstOrDefault(r =>
+					string.Equals(r.ItemNormalizedName, item.ItemNormalizedName, StringComparison.OrdinalIgnoreCase) ||
+					string.Equals(r.ItemDisplayName, item.ItemName, StringComparison.OrdinalIgnoreCase)) is not { } questItem)
+			{
+				continue;
+			}
+
+			string questItemKey = NeededItemProgressService.GetQuestItemKey(
+				quest.NormalizedName ?? quest.Id ?? string.Empty,
+				questItem.ItemNormalizedName,
+				null);
+			int assigned = Math.Min(num, questItem.Amount);
+			NeededItemProgressService.Instance.SetCount(questItemKey, assigned, questItem.Amount);
+			num -= assigned;
 		}
 	}
 
 	private void BtnLocateObjective_Click(object sender, RoutedEventArgs e)
 	{
 		e.Handled = true;
-		QuestObjectiveViewModel objectiveVmFromSender = GetObjectiveVmFromSender(sender);
+		QuestObjectiveViewModel? objectiveVmFromSender = GetObjectiveVmFromSender(sender);
 		if (objectiveVmFromSender != null && objectiveVmFromSender.HasLocation)
 		{
 			PinAndLocateObjective(objectiveVmFromSender.Objective);
@@ -3246,12 +3456,12 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		{
 			return;
 		}
-		MapConfig mapConfig = _trackerService?.GetMapConfig(_currentMapKey);
+		MapConfig? mapConfig = _trackerService?.GetMapConfig(_currentMapKey);
 		if (mapConfig == null)
 		{
 			return;
 		}
-		QuestObjectiveLocation questObjectiveLocation = objective.Locations.FirstOrDefault(delegate(QuestObjectiveLocation l)
+		QuestObjectiveLocation? questObjectiveLocation = objective.Locations.FirstOrDefault(delegate(QuestObjectiveLocation l)
 		{
 			if (!l.MapName.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase))
 			{
@@ -3365,7 +3575,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		{
 			return null;
 		}
-		MapConfig mapConfig = _trackerService?.GetMapConfig(_currentMapKey);
+		MapConfig? mapConfig = _trackerService?.GetMapConfig(_currentMapKey);
 		if (mapConfig?.Floors == null || mapConfig.Floors.Count == 0)
 		{
 			return null;
@@ -3450,7 +3660,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		{
 			return;
 		}
-		MapConfig mapConfig = _trackerService.GetMapConfig(_currentMapKey ?? "");
+		MapConfig? mapConfig = _trackerService.GetMapConfig(_currentMapKey ?? "");
 		if (mapConfig?.CalibrationPoints != null && mapConfig.CalibrationPoints.Count >= 3)
 		{
 			mapConfig.CalibratedTransform = _calibrationService.CalculateAffineTransform(mapConfig.CalibrationPoints);
@@ -3470,83 +3680,6 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		{
 			_trackerService.SaveSettings();
 		}
-	}
-
-	private void SetupExtractMarkerForCalibration(FrameworkElement marker, MapExtract extract)
-	{
-		marker.Tag = extract;
-		marker.Cursor = System.Windows.Input.Cursors.SizeAll;
-		marker.MouseLeftButtonDown += ExtractMarker_CalibrationMouseDown;
-		marker.MouseMove += ExtractMarker_CalibrationMouseMove;
-		marker.MouseLeftButtonUp += ExtractMarker_CalibrationMouseUp;
-	}
-
-	private void ExtractMarker_CalibrationMouseDown(object sender, MouseButtonEventArgs e)
-	{
-		if (_isCalibrationMode && sender is FrameworkElement frameworkElement)
-		{
-			_draggingExtractMarker = frameworkElement;
-			_draggingExtract = frameworkElement.Tag as MapExtract;
-			_extractDragStartPoint = e.GetPosition(ExtractMarkersContainer);
-			_extractMarkerOriginalLeft = Canvas.GetLeft(frameworkElement);
-			_extractMarkerOriginalTop = Canvas.GetTop(frameworkElement);
-			frameworkElement.CaptureMouse();
-			e.Handled = true;
-		}
-	}
-
-	private void ExtractMarker_CalibrationMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
-	{
-		if (_isCalibrationMode && _draggingExtractMarker != null)
-		{
-			System.Windows.Point position = e.GetPosition(ExtractMarkersContainer);
-			double num = position.X - _extractDragStartPoint.X;
-			double num2 = position.Y - _extractDragStartPoint.Y;
-			Canvas.SetLeft(_draggingExtractMarker, _extractMarkerOriginalLeft + num);
-			Canvas.SetTop(_draggingExtractMarker, _extractMarkerOriginalTop + num2);
-		}
-	}
-
-	private void ExtractMarker_CalibrationMouseUp(object sender, MouseButtonEventArgs e)
-	{
-		if (!_isCalibrationMode || _draggingExtractMarker == null || _draggingExtract == null)
-		{
-			return;
-		}
-		_draggingExtractMarker.ReleaseMouseCapture();
-		double left = Canvas.GetLeft(_draggingExtractMarker);
-		double top = Canvas.GetTop(_draggingExtractMarker);
-		double num = ((_draggingExtractMarker.ActualWidth > 0.0) ? _draggingExtractMarker.ActualWidth : 20.0);
-		double num2 = ((_draggingExtractMarker.ActualHeight > 0.0) ? _draggingExtractMarker.ActualHeight : 20.0);
-		double screenX = left + num / 2.0;
-		double screenY = top + num2 / 2.0;
-		MapConfig mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
-		if (mapConfig != null)
-		{
-			CalibrationPoint point = new CalibrationPoint
-			{
-				Id = _draggingExtract.Id,
-				Name = _draggingExtract.Name,
-				GameX = _draggingExtract.X,
-				GameZ = _draggingExtract.Z,
-				ScreenX = screenX,
-				ScreenY = screenY
-			};
-			_calibrationService.AddCalibrationPoint(mapConfig, point);
-			int num3 = mapConfig.CalibrationPoints?.Count ?? 0;
-			TxtStatus.Text = $"Calibration point set: {_draggingExtract.Name} ({num3} points)";
-			if (num3 >= 3)
-			{
-				TxtStatus.Text += " - Ready to apply!";
-			}
-			else
-			{
-				TxtStatus.Text += $" - Need {3 - num3} more points";
-			}
-		}
-		_draggingExtractMarker = null;
-		_draggingExtract = null;
-		e.Handled = true;
 	}
 
 	private async void ChkShowExtractMarkers_Changed(object sender, RoutedEventArgs e)
@@ -3841,7 +3974,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			return;
 		}
 		MapTrackerService? trackerService = _trackerService;
-		if (trackerService != null && trackerService.Transformer.TryTransform(_currentMapKey, marker.X, marker.Z, null, out ScreenPosition screenPosition) && screenPosition != null)
+		if (trackerService != null && trackerService.Transformer.TryTransform(_currentMapKey, marker.X, marker.Z, null, out ScreenPosition? screenPosition) && screenPosition != null)
 		{
 			double actualWidth = MapViewerGrid.ActualWidth;
 			double actualHeight = MapViewerGrid.ActualHeight;

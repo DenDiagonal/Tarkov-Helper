@@ -10,8 +10,6 @@ namespace TarkovHelper.Windows;
 /// </summary>
 public partial class MigrationResultDialog : Window
 {
-    private readonly LocalizationService _loc = LocalizationService.Instance;
-
     public MigrationResultDialog()
     {
         InitializeComponent();

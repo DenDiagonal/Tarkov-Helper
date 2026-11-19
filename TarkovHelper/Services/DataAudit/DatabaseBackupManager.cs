@@ -191,11 +191,46 @@ namespace TarkovHelper.Services.DataAudit
                 }
 
                 _log.Info($"Database backup successfully created and verified: {backupPath} ({fileInfo.Length:N0} bytes)");
+                PruneOldBackups(dir, maxRetainedBackups: 5);
                 return backupPath;
             }
             finally
             {
                 _backupLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Automatically prunes old database backups, keeping only the most recent <paramref name="maxRetainedBackups"/> copies.
+        /// </summary>
+        public void PruneOldBackups(string? dbDirectory = null, int maxRetainedBackups = 5)
+        {
+            try
+            {
+                if (maxRetainedBackups <= 0) return;
+                var backups = GetAvailableBackups(dbDirectory);
+                if (backups.Count <= maxRetainedBackups) return;
+
+                var toDelete = backups.Skip(maxRetainedBackups).ToList();
+                foreach (var oldBackup in toDelete)
+                {
+                    try
+                    {
+                        if (File.Exists(oldBackup))
+                        {
+                            File.Delete(oldBackup);
+                            _log.Info($"Pruned old database backup: {oldBackup}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.Warning($"Failed to prune old backup '{oldBackup}': {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Error while pruning database backups: {ex.Message}");
             }
         }
 

@@ -24,7 +24,7 @@ public sealed class ScreenPosition
     /// <summary>
     /// 플레이어가 바라보는 방향 (0~360도, 선택적)
     /// </summary>
-    public double? Angle { get; init; }
+    public double? Angle { get; set; }
 
     /// <summary>
     /// 원본 월드 좌표

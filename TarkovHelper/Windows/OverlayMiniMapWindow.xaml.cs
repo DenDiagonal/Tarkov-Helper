@@ -522,23 +522,47 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
+	private const int WS_EX_TOOLWINDOW = 0x00000080;
+	private const int WS_EX_NOACTIVATE = 0x08000000;
+
+	private const uint SWP_NOSIZE = 0x0001;
+	private const uint SWP_NOMOVE = 0x0002;
+	private const uint SWP_NOZORDER = 0x0004;
+	private const uint SWP_NOACTIVATE = 0x0010;
+	private const uint SWP_FRAMECHANGED = 0x0020;
+
+	private const int WM_MOUSEACTIVATE = 0x0021;
+	private const int MA_NOACTIVATE = 3;
+
+	[DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")]
+	private static extern nint GetWindowLongPtr64(nint hwnd, int index);
+
+	[DllImport("user32.dll", EntryPoint = "GetWindowLong")]
+	private static extern int GetWindowLong32(nint hwnd, int index);
+
+	[DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")]
+	private static extern nint SetWindowLongPtr64(nint hwnd, int index, nint newStyle);
+
+	[DllImport("user32.dll", EntryPoint = "SetWindowLong")]
+	private static extern int SetWindowLong32(nint hwnd, int index, int newStyle);
+
 	[DllImport("user32.dll")]
+	[return: MarshalAs(UnmanagedType.Bool)]
+	private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
+	private static nint GetWindowLongPtrSafe(nint hwnd, int index)
+	{
+		return (IntPtr.Size == 8)
+			? GetWindowLongPtr64(hwnd, index)
+			: (nint)GetWindowLong32(hwnd, index);
+	}
 
-
-	private static extern int GetWindowLong(nint hwnd, int index);
-
-
-
-
-
-
-
-	[DllImport("user32.dll")]
-
-
-
-	private static extern int SetWindowLong(nint hwnd, int index, int newStyle);
+	private static nint SetWindowLongPtrSafe(nint hwnd, int index, nint newStyle)
+	{
+		return (IntPtr.Size == 8)
+			? SetWindowLongPtr64(hwnd, index, newStyle)
+			: (nint)SetWindowLong32(hwnd, index, (int)newStyle);
+	}
 
 
 
@@ -742,37 +766,70 @@ public partial class OverlayMiniMapWindow : Window
 
 		Loaded += OnLoaded;
 
-
-
 		Closing += OnClosing;
-
-
 
 		SizeChanged += OnSizeChanged;
 
-
-
 		LocationChanged += OnLocationChanged;
 
-
+		IsVisibleChanged += OnOverlayIsVisibleChanged;
 
 	}
 
+	protected override void OnSourceInitialized(EventArgs e)
+	{
+		base.OnSourceInitialized(e);
+		_hwnd = new WindowInteropHelper(this).Handle;
+		if (_hwnd != IntPtr.Zero)
+		{
+			var source = HwndSource.FromHwnd(_hwnd);
+			source?.AddHook(WndProc);
 
+			nint exStyle = GetWindowLongPtrSafe(_hwnd, GWL_EXSTYLE);
+			exStyle |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+			SetWindowLongPtrSafe(_hwnd, GWL_EXSTYLE, exStyle);
+			SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
+				SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		}
+	}
 
+	private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+	{
+		if (msg == WM_MOUSEACTIVATE)
+		{
+			handled = true;
+			return new IntPtr(MA_NOACTIVATE);
+		}
+		return IntPtr.Zero;
+	}
 
-
-
+	private void OnOverlayIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+	{
+		if (!(bool)e.NewValue)
+		{
+			if (QuestMarkersContainer != null)
+			{
+				foreach (UIElement child in QuestMarkersContainer.Children)
+				{
+					if (child is FrameworkElement fe && fe.Tag as string == "MinimapPinnedBeacon")
+					{
+						if (fe.RenderTransform is TransformGroup tg && tg.Children.Count > 1)
+						{
+							tg.Children[1].BeginAnimation(ScaleTransform.ScaleXProperty, null);
+							tg.Children[1].BeginAnimation(ScaleTransform.ScaleYProperty, null);
+						}
+					}
+				}
+			}
+		}
+	}
 
 	private void OnLoaded(object sender, RoutedEventArgs e)
 
-
-
 	{
 
-
-
-		_hwnd = new WindowInteropHelper(this).Handle;
+		if (_hwnd == IntPtr.Zero)
+			_hwnd = new WindowInteropHelper(this).Handle;
 
 
 
@@ -870,12 +927,19 @@ public partial class OverlayMiniMapWindow : Window
 
 		LocalizationService.Instance.LanguageChanged += OnMiniMapLanguageChanged;
 
-
-
 		_log.Info("OverlayMiniMapWindow loaded");
 
+	}
 
+	public void RebindProfileServices()
+	{
+		QuestProgressService.Instance.ProgressChanged -= OnQuestProgressChanged;
+		QuestProgressService.Instance.ProgressChanged += OnQuestProgressChanged;
 
+		ObjectiveProgressService.Instance.ObjectiveProgressChanged -= OnObjectiveProgressChanged;
+		ObjectiveProgressService.Instance.ObjectiveProgressChanged += OnObjectiveProgressChanged;
+
+		OnQuestProgressChanged(null, EventArgs.Empty);
 	}
 
 
@@ -885,11 +949,15 @@ public partial class OverlayMiniMapWindow : Window
 
 
 	private void OnMiniMapLanguageChanged(object? sender, AppLanguage lang)
-
 	{
-
-		UpdateOpenAppButtonTooltip();
-
+		if (Dispatcher.CheckAccess())
+		{
+			UpdateOpenAppButtonTooltip();
+		}
+		else
+		{
+			Dispatcher.BeginInvoke((Action)UpdateOpenAppButtonTooltip);
+		}
 	}
 
 
@@ -906,7 +974,7 @@ public partial class OverlayMiniMapWindow : Window
 
 			{
 
-				AppLanguage.ES => "Open Tarkov Helper (Bring app to front)",
+				AppLanguage.ES => "Abrir Tarkov Helper (Traer app al frente)",
 
 				AppLanguage.KO => "Tarkov Helper 열기 (앱 호출)",
 
@@ -1304,7 +1372,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-		ScreenPosition validPlayerPosition = GetValidPlayerPosition();
+		ScreenPosition? validPlayerPosition = GetValidPlayerPosition();
 
 
 
@@ -1876,7 +1944,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-			string currentMapKey = _trackerService.CurrentMapKey;
+			string? currentMapKey = _trackerService.CurrentMapKey;
 
 
 
@@ -1932,7 +2000,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-			ScreenPosition validPlayerPosition = GetValidPlayerPosition();
+			ScreenPosition? validPlayerPosition = GetValidPlayerPosition();
 
 
 
@@ -2028,7 +2096,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-				string text = FloorDetectionService.Instance.DetectFloor(position.MapKey, position.OriginalPosition.X, position.OriginalPosition.Y, position.OriginalPosition.Z.GetValueOrDefault());
+				string? text = FloorDetectionService.Instance.DetectFloor(position.MapKey, position.OriginalPosition.X, position.OriginalPosition.Y, position.OriginalPosition.Z.GetValueOrDefault());
 
 
 
@@ -2236,7 +2304,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-				ScreenPosition validPlayerPosition = GetValidPlayerPosition();
+				ScreenPosition? validPlayerPosition = GetValidPlayerPosition();
 
 
 
@@ -2409,17 +2477,24 @@ public partial class OverlayMiniMapWindow : Window
 
 
 		foreach (var el in toRemove)
-
-
-
 		{
-
-
-
+			if (el is FrameworkElement fe)
+			{
+				if (fe.RenderTransform is TransformGroup tg)
+				{
+					foreach (var childTransform in tg.Children)
+					{
+						childTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+						childTransform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+					}
+				}
+				else if (fe.RenderTransform != null)
+				{
+					fe.RenderTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+					fe.RenderTransform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+				}
+			}
 			QuestMarkersContainer.Children.Remove(el);
-
-
-
 		}
 
 
@@ -2542,61 +2617,35 @@ public partial class OverlayMiniMapWindow : Window
 
 		double scale = Math.Max(0.001, GetEffectiveScale());
 
+		var transformGroup = new TransformGroup();
+		var baseScale = new ScaleTransform(1.0 / scale, 1.0 / scale, beaconSize / 2.0, beaconSize / 2.0);
+		var pulseScale = new ScaleTransform(1.0, 1.0, beaconSize / 2.0, beaconSize / 2.0);
+		transformGroup.Children.Add(baseScale);
+		transformGroup.Children.Add(pulseScale);
 
+		beacon.RenderTransform = transformGroup;
 
-		var st = new ScaleTransform(1.0 / scale, 1.0 / scale, beaconSize / 2.0, beaconSize / 2.0);
-
-
-
-		beacon.RenderTransform = st;
-
-
-
-		_markerScales.Add(st);
-
-
-
-
-
-
+		_markerScales.Add(baseScale);
 
 		var pulse = new System.Windows.Media.Animation.DoubleAnimation
 
-
-
 		{
 
+			From = 0.8,
 
-
-			From = 0.8 / scale,
-
-
-
-			To = 1.3 / scale,
-
-
+			To = 1.3,
 
 			Duration = TimeSpan.FromMilliseconds(700),
 
-
-
 			AutoReverse = true,
-
-
 
 			RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever
 
-
-
 		};
 
+		pulseScale.BeginAnimation(ScaleTransform.ScaleXProperty, pulse);
 
-
-		st.BeginAnimation(ScaleTransform.ScaleXProperty, pulse);
-
-
-
-		st.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
+		pulseScale.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
 
 
 
@@ -2950,7 +2999,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-		ScreenPosition validPlayerPosition = GetValidPlayerPosition();
+		ScreenPosition? validPlayerPosition = GetValidPlayerPosition();
 
 
 
@@ -3384,15 +3433,15 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-					IEnumerable<string> visibleFloorIds = null;
+					IEnumerable<string>? visibleFloorIds = null;
 
 
 
-					IEnumerable<string> allFloorIds = null;
+					IEnumerable<string>? allFloorIds = null;
 
 
 
-					string backgroundFloorId = null;
+					string? backgroundFloorId = null;
 
 
 
@@ -3440,11 +3489,11 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-							MapFloorConfig mapFloorConfig = _currentMapConfig.Floors.FirstOrDefault((MapFloorConfig f) => f.IsDefault);
+							MapFloorConfig? mapFloorConfig = _currentMapConfig.Floors.FirstOrDefault((MapFloorConfig f) => f.IsDefault);
 
 
 
-							MapFloorConfig mapFloorConfig2 = _currentMapConfig.Floors.FirstOrDefault((MapFloorConfig f) => string.Equals(f.LayerId, _currentFloorId, StringComparison.OrdinalIgnoreCase));
+							MapFloorConfig? mapFloorConfig2 = _currentMapConfig.Floors.FirstOrDefault((MapFloorConfig f) => string.Equals(f.LayerId, _currentFloorId, StringComparison.OrdinalIgnoreCase));
 
 
 
@@ -3504,7 +3553,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-					string currentTempSvgPath = _currentTempSvgPath;
+					string? currentTempSvgPath = _currentTempSvgPath;
 
 
 
@@ -4280,7 +4329,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-		double num = Math.Max(val3, val4);
+		double num = Math.Min(val3, val4);
 
 
 
@@ -5972,6 +6021,9 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
+		if (string.IsNullOrEmpty(_currentMapKey) || _currentMapConfig is null)
+			return;
+
 		List<MapExtract> extracts = extractService.GetExtractsForMap(_currentMapKey, _currentMapConfig);
 
 
@@ -6799,7 +6851,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-		string text = location.MapNormalizedName?.Replace(" ", "").Replace("-", "").ToLowerInvariant();
+		string? text = location.MapNormalizedName?.Replace(" ", "").Replace("-", "").ToLowerInvariant();
 
 
 
@@ -7007,7 +7059,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-				if (_trackerService?.Transformer != null && _trackerService.Transformer.TryTransform(_currentMapKey, marker.X, marker.Z, null, out ScreenPosition screenPos) && screenPos != null)
+				if (_trackerService?.Transformer != null && _trackerService.Transformer.TryTransform(_currentMapKey, marker.X, marker.Z, null, out ScreenPosition? screenPos) && screenPos != null)
 
 
 
@@ -7520,61 +7572,25 @@ public partial class OverlayMiniMapWindow : Window
 
 
 	private static Brush GetColorBrush(string? colorHex)
-
-
-
 	{
-
-
-
-		if (string.IsNullOrEmpty(colorHex))
-
-
-
+		if (!string.IsNullOrWhiteSpace(colorHex))
 		{
-
-
-
-			return new SolidColorBrush(Color.FromRgb(byte.MaxValue, 215, 0));
-
-
-
+			try
+			{
+				if (ColorConverter.ConvertFromString(colorHex) is Color parsedColor)
+				{
+					var brush = new SolidColorBrush(parsedColor);
+					brush.Freeze();
+					return brush;
+				}
+			}
+			catch
+			{
+			}
 		}
-
-
-
-		try
-
-
-
-		{
-
-
-
-			return (Brush)new BrushConverter().ConvertFromString(colorHex);
-
-
-
-		}
-
-
-
-		catch
-
-
-
-		{
-
-
-
-			return new SolidColorBrush(Color.FromRgb(byte.MaxValue, 215, 0));
-
-
-
-		}
-
-
-
+		var fallback = new SolidColorBrush(Color.FromRgb(255, 215, 0));
+		fallback.Freeze();
+		return fallback;
 	}
 
 
@@ -7827,7 +7843,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-		ScreenPosition screenPosition = _trackerService?.LastPosition;
+		ScreenPosition? screenPosition = _trackerService?.LastPosition;
 
 
 
@@ -8165,51 +8181,32 @@ public partial class OverlayMiniMapWindow : Window
 
 	private void EnableClickThrough()
 
-
-
 	{
-
-
 
 		if (_hwnd != IntPtr.Zero)
 
-
-
 		{
 
+			nint windowLong = GetWindowLongPtrSafe(_hwnd, GWL_EXSTYLE);
 
+			nint newStyle = windowLong | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
 
-			int windowLong = GetWindowLong(_hwnd, -20);
+			SetWindowLongPtrSafe(_hwnd, GWL_EXSTYLE, newStyle);
 
-
-
-			SetWindowLong(_hwnd, -20, windowLong | 0x20 | 0x80000);
-
-
+			SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
+				SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
 			_isClickThrough = true;
 
-
-
 			_settings.ClickThrough = true;
-
-
 
 			UpdateFloatingButtonsVisuals();
 
-
-
 			_log.Debug("Click-through mode enabled");
-
-
 
 			SettingsChanged?.Invoke(_settings);
 
-
-
 		}
-
-
 
 	}
 
@@ -8221,47 +8218,30 @@ public partial class OverlayMiniMapWindow : Window
 
 	private void DisableClickThrough()
 
-
-
 	{
-
-
 
 		if (_hwnd != IntPtr.Zero)
 
-
-
 		{
 
+			nint windowLong = GetWindowLongPtrSafe(_hwnd, GWL_EXSTYLE);
 
+			nint newStyle = (windowLong & ~WS_EX_TRANSPARENT) | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
 
-			int windowLong = GetWindowLong(_hwnd, -20);
+			SetWindowLongPtrSafe(_hwnd, GWL_EXSTYLE, newStyle);
 
-
-
-			SetWindowLong(_hwnd, -20, windowLong & -33);
-
-
+			SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
+				SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
 			_isClickThrough = false;
 
-
-
 			_settings.ClickThrough = false;
-
-
 
 			UpdateFloatingButtonsVisuals();
 
-
-
 			_log.Debug("Click-through mode disabled");
 
-
-
 			SettingsChanged?.Invoke(_settings);
-
-
 
 		}
 
@@ -8647,7 +8627,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-			ScreenPosition validPlayerPosition = GetValidPlayerPosition();
+			ScreenPosition? validPlayerPosition = GetValidPlayerPosition();
 
 
 
@@ -9231,7 +9211,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-		if (_trackerService?.Transformer != null && _trackerService.Transformer.TryTransformToWorld(_currentMapKey, canvasX, canvasY, out EftPosition pos) && pos != null)
+		if (_trackerService?.Transformer != null && _trackerService.Transformer.TryTransformToWorld(_currentMapKey, canvasX, canvasY, out EftPosition? pos) && pos != null)
 
 
 
@@ -10593,7 +10573,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-		ScreenPosition validPlayerPosition = GetValidPlayerPosition();
+		ScreenPosition? validPlayerPosition = GetValidPlayerPosition();
 
 
 
@@ -10833,7 +10813,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-		ScreenPosition validPlayerPosition = GetValidPlayerPosition();
+		ScreenPosition? validPlayerPosition = GetValidPlayerPosition();
 
 
 

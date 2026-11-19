@@ -17,12 +17,13 @@ public sealed class QuestDbService
     public static QuestDbService Instance => _instance ??= new QuestDbService();
 
     private readonly string _databasePath;
+    private readonly SemaphoreSlim _reloadLock = new(1, 1);
     private List<TarkovTask> _allQuests = new();
     private Dictionary<string, TarkovTask> _questsById = new(StringComparer.OrdinalIgnoreCase);
     private bool _isLoaded;
 
-    public bool IsLoaded => _isLoaded;
-    public int QuestCount => _allQuests.Count;
+    public bool IsLoaded => Volatile.Read(ref _isLoaded);
+    public int QuestCount => Volatile.Read(ref _allQuests).Count;
 
     /// <summary>
     /// 데이터가 새로고침되었을 때 발생하는 이벤트.
@@ -43,8 +44,15 @@ public sealed class QuestDbService
     /// </summary>
     private async void OnDatabaseUpdated(object? sender, EventArgs e)
     {
-        _log.Info("Database updated, reloading data...");
-        await RefreshAsync();
+        try
+        {
+            _log.Info("Database updated, reloading data...");
+            await RefreshAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Error reloading quest data after DB update: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -55,14 +63,14 @@ public sealed class QuestDbService
     /// <summary>
     /// 모든 퀘스트 반환
     /// </summary>
-    public IReadOnlyList<TarkovTask> AllQuests => _allQuests;
+    public IReadOnlyList<TarkovTask> AllQuests => Volatile.Read(ref _allQuests);
 
     /// <summary>
     /// ID로 퀘스트 조회
     /// </summary>
     public TarkovTask? GetQuestById(string id)
     {
-        return _questsById.TryGetValue(id, out var quest) ? quest : null;
+        return Volatile.Read(ref _questsById).TryGetValue(id, out var quest) ? quest : null;
     }
 
     /// <summary>
@@ -70,13 +78,13 @@ public sealed class QuestDbService
     /// </summary>
     public TarkovTask? GetQuestByNormalizedName(string normalizedName)
     {
-        return _questsById.TryGetValue(normalizedName, out var quest) ? quest : null;
+        return Volatile.Read(ref _questsById).TryGetValue(normalizedName, out var quest) ? quest : null;
     }
 
     /// <summary>
     /// DB에서 모든 퀘스트를 로드합니다.
     /// </summary>
-    public async Task<bool> LoadQuestsAsync()
+    public async Task<bool> LoadQuestsAsync(CancellationToken ct = default)
     {
         if (!DatabaseExists)
         {
@@ -84,14 +92,21 @@ public sealed class QuestDbService
             return false;
         }
 
+        await _reloadLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
-            await using var connection = new SqliteConnection(connectionString);
-            await connection.OpenAsync();
+            var csb = new SqliteConnectionStringBuilder
+            {
+                DataSource = _databasePath,
+                Mode = SqliteOpenMode.ReadOnly,
+                Pooling = true,
+                DefaultTimeout = 10
+            };
+            await using var connection = new SqliteConnection(csb.ConnectionString);
+            await connection.OpenAsync(ct).ConfigureAwait(false);
 
             // Quests 테이블 존재 여부 확인
-            if (!await TableExistsAsync(connection, "Quests"))
+            if (!await TableExistsAsync(connection, "Quests").ConfigureAwait(false))
             {
                 _log.Warning("Quests table not found");
                 return false;
@@ -173,9 +188,9 @@ public sealed class QuestDbService
             }
 
             // Atomic swap
-            _allQuests = quests;
-            _questsById = newQuestsById;
-            _isLoaded = true;
+            Interlocked.Exchange(ref _allQuests, quests);
+            Interlocked.Exchange(ref _questsById, newQuestsById);
+            Volatile.Write(ref _isLoaded, true);
             _log.Info($"Loaded {quests.Count} quests from DB");
             return true;
         }
@@ -183,6 +198,10 @@ public sealed class QuestDbService
         {
             _log.Error($"Error loading quests: {ex.Message}");
             return false;
+        }
+        finally
+        {
+            _reloadLock.Release();
         }
     }
 
@@ -610,11 +629,11 @@ public sealed class QuestDbService
     /// <summary>
     /// 데이터 새로고침 (기존 데이터를 유지하면서 새 데이터로 atomic swap)
     /// </summary>
-    public async Task RefreshAsync()
+    public async Task RefreshAsync(CancellationToken ct = default)
     {
         _log.Debug("Refreshing quest data...");
         // 기존 데이터를 클리어하지 않음 - LoadQuestsAsync()에서 atomic swap으로 교체
-        await LoadQuestsAsync();
+        await LoadQuestsAsync(ct).ConfigureAwait(false);
 
         // 데이터 새로고침 완료 이벤트 발생
         OnDataRefreshed();

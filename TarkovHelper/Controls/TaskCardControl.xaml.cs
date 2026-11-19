@@ -184,13 +184,23 @@ namespace TarkovHelper.Controls
             ? TacticalBrushes.ActiveFg
             : TacticalBrushes.TextSecondary;
 
+        private static readonly Brush CompletedRowBg = Freeze(new SolidColorBrush(Color.FromArgb(28, 74, 222, 128)));
+        private static readonly Brush CompletedRowBorder = Freeze(new SolidColorBrush(Color.FromArgb(70, 74, 222, 128)));
+        private static readonly Brush IncompleteRowBorder = Freeze(new SolidColorBrush(Color.FromArgb(255, 24, 27, 34)));
+
+        private static SolidColorBrush Freeze(SolidColorBrush brush)
+        {
+            brush.Freeze();
+            return brush;
+        }
+
         public Brush RowBackground => CurrentCount >= MaxCount
-            ? new SolidColorBrush(Color.FromArgb(28, 74, 222, 128))
+            ? CompletedRowBg
             : Brushes.Transparent;
 
         public Brush RowBorderBrush => CurrentCount >= MaxCount
-            ? new SolidColorBrush(Color.FromArgb(70, 74, 222, 128))
-            : new SolidColorBrush(Color.FromArgb(255, 24, 27, 34));
+            ? CompletedRowBorder
+            : IncompleteRowBorder;
 
         public Brush ItemNameForeground => CurrentCount >= MaxCount
             ? TacticalBrushes.ActiveFg
@@ -346,16 +356,24 @@ namespace TarkovHelper.Controls
     /// </summary>
 
     public class TraderRepRewardItem
-
     {
+        private static readonly Brush DefaultBgBrush = Freeze(new SolidColorBrush(Color.FromRgb(30, 40, 50)));
+        private static readonly Brush DefaultBorderBrush = Freeze(new SolidColorBrush(Color.FromRgb(50, 70, 90)));
+        private static readonly Brush DefaultTextBrush = Freeze(new SolidColorBrush(Color.FromRgb(144, 202, 249)));
+
+        private static SolidColorBrush Freeze(SolidColorBrush brush)
+        {
+            brush.Freeze();
+            return brush;
+        }
 
         public string Text { get; set; } = string.Empty;
 
-        public Brush BackgroundBrush { get; set; } = new SolidColorBrush(Color.FromRgb(30, 40, 50));
+        public Brush BackgroundBrush { get; set; } = DefaultBgBrush;
 
-        public Brush BorderBrush { get; set; } = new SolidColorBrush(Color.FromRgb(50, 70, 90));
+        public Brush BorderBrush { get; set; } = DefaultBorderBrush;
 
-        public Brush TextBrush { get; set; } = new SolidColorBrush(Color.FromRgb(144, 202, 249));
+        public Brush TextBrush { get; set; } = DefaultTextBrush;
 
     }
 
@@ -1011,15 +1029,33 @@ namespace TarkovHelper.Controls
 
         public Visibility RequirementsPillVisibility => TotalRequirements > 0 ? Visibility.Visible : Visibility.Collapsed;
 
+        private static SolidColorBrush Freeze(SolidColorBrush brush)
+        {
+            brush.Freeze();
+            return brush;
+        }
+
+        private static readonly Brush ReqPillBgMetAll = Freeze(new SolidColorBrush(Color.FromArgb(45, 46, 125, 78)));
+        private static readonly Brush ReqPillBgMetSome = Freeze(new SolidColorBrush(Color.FromArgb(45, 197, 168, 74)));
+        private static readonly Brush ReqPillBgMetNone = Freeze(new SolidColorBrush(Color.FromArgb(255, 26, 30, 38)));
+
+        private static readonly Brush ReqPillBorderMetAll = Freeze(new SolidColorBrush(Color.FromArgb(255, 46, 125, 78)));
+        private static readonly Brush ReqPillBorderMetSome = Freeze(new SolidColorBrush(Color.FromArgb(255, 197, 168, 74)));
+        private static readonly Brush ReqPillBorderMetNone = Freeze(new SolidColorBrush(Color.FromArgb(255, 54, 62, 78)));
+
+        private static readonly Brush ReqPillFgMetAll = Freeze(new SolidColorBrush(Color.FromArgb(255, 78, 202, 120)));
+        private static readonly Brush ReqPillFgMetSome = Freeze(new SolidColorBrush(Color.FromArgb(255, 229, 184, 105)));
+        private static readonly Brush ReqPillFgMetNone = Freeze(new SolidColorBrush(Color.FromArgb(255, 215, 220, 230)));
+
         public Brush RequirementsPillBackground
         {
             get
             {
                 if (TotalRequirements > 0 && MetRequirements >= TotalRequirements)
-                    return new SolidColorBrush(Color.FromArgb(45, 46, 125, 78));
+                    return ReqPillBgMetAll;
                 if (MetRequirements > 0)
-                    return new SolidColorBrush(Color.FromArgb(45, 197, 168, 74));
-                return new SolidColorBrush(Color.FromArgb(255, 26, 30, 38));
+                    return ReqPillBgMetSome;
+                return ReqPillBgMetNone;
             }
         }
 
@@ -1028,10 +1064,10 @@ namespace TarkovHelper.Controls
             get
             {
                 if (TotalRequirements > 0 && MetRequirements >= TotalRequirements)
-                    return new SolidColorBrush(Color.FromArgb(255, 46, 125, 78));
+                    return ReqPillBorderMetAll;
                 if (MetRequirements > 0)
-                    return new SolidColorBrush(Color.FromArgb(255, 197, 168, 74));
-                return new SolidColorBrush(Color.FromArgb(255, 54, 62, 78));
+                    return ReqPillBorderMetSome;
+                return ReqPillBorderMetNone;
             }
         }
 
@@ -1040,10 +1076,10 @@ namespace TarkovHelper.Controls
             get
             {
                 if (TotalRequirements > 0 && MetRequirements >= TotalRequirements)
-                    return new SolidColorBrush(Color.FromArgb(255, 78, 202, 120));
+                    return ReqPillFgMetAll;
                 if (MetRequirements > 0)
-                    return new SolidColorBrush(Color.FromArgb(255, 229, 184, 105));
-                return new SolidColorBrush(Color.FromArgb(255, 215, 220, 230));
+                    return ReqPillFgMetSome;
+                return ReqPillFgMetNone;
             }
         }
 
@@ -1317,6 +1353,7 @@ namespace TarkovHelper.Controls
         public void LoadFromTask(TarkovTask task, QuestStatus status = QuestStatus.Active)
 
         {
+            if (task == null) return;
 
             _task = task;
 
@@ -2161,27 +2198,29 @@ namespace TarkovHelper.Controls
 
         private void BtnMap_Click(object sender, RoutedEventArgs e)
         {
-            var targetMap = CardModel.Task?.Maps?.FirstOrDefault(m => !string.Equals(m, "any", StringComparison.OrdinalIgnoreCase));
+            if (CardModel.Task is not { } task)
+                return;
+
+            var targetMap = task.Maps?.FirstOrDefault(m => !string.Equals(m, "any", StringComparison.OrdinalIgnoreCase));
             if (string.IsNullOrEmpty(targetMap))
             {
-                var objs = TarkovHelper.Services.Map.QuestObjectiveService.Instance.GetObjectivesForTaskById(CardModel.Task?.Id ?? "");
+                var objs = TarkovHelper.Services.Map.QuestObjectiveService.Instance.GetObjectivesForTaskById(task.Id ?? "");
                 targetMap = objs?.FirstOrDefault(o => o.Locations.Count > 0 && !string.IsNullOrEmpty(o.Locations[0].MapName) && !string.Equals(o.Locations[0].MapName, "any", StringComparison.OrdinalIgnoreCase))?.Locations[0].MapName;
             }
             if (string.IsNullOrEmpty(targetMap))
             {
-                targetMap = CardModel.Task?.Maps?.FirstOrDefault() ?? "customs";
+                targetMap = task.Maps?.FirstOrDefault() ?? "customs";
             }
 
-            var questListPage = FindVisualParent<QuestListPage>(this);
-            if (questListPage != null)
+            if (FindVisualParent<QuestListPage>(this) is { } questListPage)
             {
-                questListPage.NavigateToTaskOnMap(CardModel.Task, targetMap);
+                questListPage.NavigateToTaskOnMap(task, targetMap);
                 return;
             }
 
             if (Application.Current?.MainWindow is MainWindow mainWin)
             {
-                mainWin.NavigateToTaskOnMap(CardModel.Task, targetMap);
+                mainWin.NavigateToTaskOnMap(task, targetMap);
             }
         }
 

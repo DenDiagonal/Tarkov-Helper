@@ -506,19 +506,17 @@ namespace TarkovHelper.Tests.Pages
 
             Assert.NotNull(page);
 
-            // Verify that LocalizationService.Instance.LanguageChanged invocation list still contains page.OnLanguageChanged
+            // Verify that LocalizationService.Instance.LanguageChanged invocation list no longer contains page.OnLanguageChanged
             var langEvent = typeof(LocalizationService).GetField("LanguageChanged", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
             var eventDelegate = langEvent?.GetValue(LocalizationService.Instance) as MulticastDelegate;
-            Assert.NotNull(eventDelegate);
-
-            var targets = eventDelegate.GetInvocationList().Select(d => d.Target).ToList();
+            var targets = eventDelegate?.GetInvocationList().Select(d => d.Target).ToList() ?? new List<object?>();
             bool stillSubscribed = targets.Contains(page);
 
             // Clean up to keep other tests healthy
             DetachMapPageEvents(page);
 
-            Assert.True(stillSubscribed,
-                "VULNERABILITY CONFIRMED: MapPage does not unsubscribe from LocalizationService.Instance.LanguageChanged in MapTrackerPage_Unloaded, causing an event handler memory leak and potential cross-thread exceptions.");
+            Assert.False(stillSubscribed,
+                "MapPage correctly unsubscribes from LocalizationService.Instance.LanguageChanged in MapTrackerPage_Unloaded.");
         }
 
         #endregion
