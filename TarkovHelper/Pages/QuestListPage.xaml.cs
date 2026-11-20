@@ -1654,9 +1654,13 @@ namespace TarkovHelper.Pages
                 {
                     EmbeddedMapContainer.Child = _embeddedMapPage;
                 }
+                var activeRaidMap = TarkovHelper.Services.Map.LogMapWatcherService.Instance.LastDetectedMap
+                    ?? MapTrackerService.Instance.CurrentMapKey;
                 var mapToSelect = !string.IsNullOrEmpty(_pendingMapKeyToSelect)
                     ? _pendingMapKeyToSelect
-                    : (string.IsNullOrEmpty(_selectedTarget) ? "customs" : _selectedTarget);
+                    : (!string.IsNullOrEmpty(activeRaidMap)
+                        ? activeRaidMap
+                        : (string.IsNullOrEmpty(_selectedTarget) ? "customs" : _selectedTarget));
                 _pendingMapKeyToSelect = null;
                 _embeddedMapPage.SelectMap(mapToSelect);
                 MapTrackerService.Instance.SetCurrentMap(mapToSelect);

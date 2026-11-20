@@ -377,6 +377,9 @@ public partial class MainWindow : Window
                 OverlayMiniMapService.Instance.OverlayVisibilityChanged -= OnOverlayVisibilityChanged;
                 OverlayMiniMapService.Instance.OverlayVisibilityChanged += OnOverlayVisibilityChanged;
                 OnOverlayVisibilityChanged(OverlayMiniMapService.Instance.IsOverlayVisible);
+
+                // Iniciar monitorización global de capturas de pantalla
+                TarkovHelper.Services.Map.MapTrackerService.Instance.StartTracking();
             }
             catch (Exception ex)
             {
@@ -1022,12 +1025,6 @@ public partial class MainWindow : Window
 
     {
 
-        if (!_settingsService.LogMonitoringEnabled)
-
-            return;
-
-
-
         // Try to get log folder path (auto-detect if not set)
 
         var logPath = _settingsService.LogFolderPath;
@@ -1058,15 +1055,25 @@ public partial class MainWindow : Window
 
         {
 
-            _logSyncService.StartMonitoring(logPath);
+            if (_settingsService.LogMonitoringEnabled)
+            {
+                _logSyncService.StartMonitoring(logPath);
 
-            _logSyncService.QuestEventDetected -= OnQuestEventDetected;
+                _logSyncService.QuestEventDetected -= OnQuestEventDetected;
 
-            _logSyncService.QuestEventDetected += OnQuestEventDetected;
+                _logSyncService.QuestEventDetected += OnQuestEventDetected;
 
-            _log.Info($"Auto-started log monitoring: {logPath}");
+                _log.Info($"Auto-started log monitoring: {logPath}");
+            }
+
+            // Iniciar detección de mapas desde logs de EFT y eventos de incursión
+            TarkovHelper.Services.Map.LogMapWatcherService.Instance.StartWatching(logPath);
+            EftRaidEventService.Instance.StartMonitoring(logPath);
 
         }
+
+        // Iniciar rastreo de capturas de pantalla para minimapa y mapa
+        TarkovHelper.Services.Map.MapTrackerService.Instance.StartTracking();
 
 
 
@@ -2771,6 +2778,13 @@ public partial class MainWindow : Window
 
             UpdateSettingsUI();
 
+            TarkovHelper.Services.Map.LogMapWatcherService.Instance.StartWatching(detectedPath);
+            EftRaidEventService.Instance.StartMonitoring(detectedPath);
+            if (_settingsService.LogMonitoringEnabled)
+            {
+                _logSyncService.StartMonitoring(detectedPath);
+            }
+
 
 
             var message = $"Found log folder:\n{detectedPath}";
@@ -2846,6 +2860,13 @@ public partial class MainWindow : Window
                 _settingsService.LogFolderPath = selectedPath;
 
                 UpdateSettingsUI();
+
+                TarkovHelper.Services.Map.LogMapWatcherService.Instance.StartWatching(selectedPath);
+                EftRaidEventService.Instance.StartMonitoring(selectedPath);
+                if (_settingsService.LogMonitoringEnabled)
+                {
+                    _logSyncService.StartMonitoring(selectedPath);
+                }
 
             }
 

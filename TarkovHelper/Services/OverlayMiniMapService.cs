@@ -85,6 +85,9 @@ public class OverlayMiniMapService : IDisposable
             _isInitialized = true;
             _log.Info("OverlayMiniMapService initialized");
 
+            // Asegurar que el rastreo de capturas de pantalla esté activo
+            TarkovHelper.Services.Map.MapTrackerService.Instance.StartTracking();
+
             // 이전 상태가 활성화였다면 오버레이 표시
             if (_settings.Enabled)
             {
@@ -110,6 +113,9 @@ public class OverlayMiniMapService : IDisposable
             {
                 CreateOverlayWindow();
             }
+
+            // Asegurar que MapTrackerService esté vigilando capturas
+            TarkovHelper.Services.Map.MapTrackerService.Instance.StartTracking();
 
             if (_overlayWindow != null && _overlayWindow.WindowState == System.Windows.WindowState.Minimized)
             {

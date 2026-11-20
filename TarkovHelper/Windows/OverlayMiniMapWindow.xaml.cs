@@ -1922,31 +1922,32 @@ public partial class OverlayMiniMapWindow : Window
 
 			_trackerService = MapTrackerService.Instance;
 
-
-
+			_trackerService.PositionUpdated -= OnPositionUpdated;
 			_trackerService.PositionUpdated += OnPositionUpdated;
 
-
-
+			_trackerService.MapChanged -= OnMapChanged;
 			_trackerService.MapChanged += OnMapChanged;
 
-
-
+			_trackerService.FloorChanged -= OnFloorChanged;
 			_trackerService.FloorChanged += OnFloorChanged;
 
-
-
+			_trackerService.PinnedObjectiveChanged -= OnPinnedObjectiveChanged;
 			_trackerService.PinnedObjectiveChanged += OnPinnedObjectiveChanged;
 
-
-
+			LogMapWatcherService.Instance.MapChanged -= OnLogMapWatcherMapChanged;
 			LogMapWatcherService.Instance.MapChanged += OnLogMapWatcherMapChanged;
 
-
+			_trackerService.StartTracking();
 
 			string? currentMapKey = _trackerService.CurrentMapKey;
-
-
+			if (string.IsNullOrEmpty(currentMapKey))
+			{
+				currentMapKey = LogMapWatcherService.Instance.LastDetectedMap;
+				if (!string.IsNullOrEmpty(currentMapKey))
+				{
+					_trackerService.SetCurrentMap(currentMapKey);
+				}
+			}
 
 			_log.Info("ConnectToMapTracker: CurrentMapKey = '" + currentMapKey + "'");
 
@@ -2078,7 +2079,10 @@ public partial class OverlayMiniMapWindow : Window
 
 		{
 
-
+			if (!string.IsNullOrEmpty(position.MapKey) && !string.Equals(position.MapKey, _currentMapKey, StringComparison.OrdinalIgnoreCase))
+			{
+				LoadMap(position.MapKey);
+			}
 
 			UpdatePlayerMarker(position);
 

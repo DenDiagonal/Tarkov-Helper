@@ -200,7 +200,30 @@ public sealed class MapTrackerService : IDisposable
     /// </summary>
     public bool StartTracking()
     {
-        return StartTracking(_settings.ScreenshotFolderPath);
+        var path = _settings.ScreenshotFolderPath;
+        if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+        {
+            var userSettingPath = SettingsService.Instance.MapScreenshotPath;
+            if (!string.IsNullOrEmpty(userSettingPath) && Directory.Exists(userSettingPath))
+            {
+                path = userSettingPath;
+            }
+            else
+            {
+                var detected = MapTrackerSettings.TryDetectScreenshotFolder();
+                if (!string.IsNullOrEmpty(detected) && Directory.Exists(detected))
+                {
+                    path = detected;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(path))
+            {
+                _settings.ScreenshotFolderPath = path;
+            }
+        }
+
+        return StartTracking(path);
     }
 
     /// <summary>
@@ -208,6 +231,12 @@ public sealed class MapTrackerService : IDisposable
     /// </summary>
     public bool StartTracking(string folderPath)
     {
+        if (string.IsNullOrWhiteSpace(folderPath))
+            return false;
+
+        if (IsWatching && string.Equals(_watcher.CurrentWatchPath, folderPath, StringComparison.OrdinalIgnoreCase))
+            return true;
+
         if (_watcher.StartWatching(folderPath))
         {
             OnStatusMessage(LocalizationService.Instance.CurrentLanguage switch
@@ -427,6 +456,20 @@ public sealed class MapTrackerService : IDisposable
 
         if (string.IsNullOrEmpty(rawMap))
         {
+            rawMap = LogMapWatcherService.Instance.LastDetectedMap;
+            if (!string.IsNullOrEmpty(rawMap))
+            {
+                SetCurrentMap(rawMap, force: false);
+            }
+        }
+
+        if (string.IsNullOrEmpty(rawMap))
+        {
+            rawMap = TarkovHelper.Services.Settings.MapSettings.Instance.LastSelectedMap;
+        }
+
+        if (string.IsNullOrEmpty(rawMap))
+        {
             OnError(LocalizationService.Instance.CurrentLanguage switch
             {
                 AppLanguage.ES => "No se ha seleccionado ningún mapa.",
@@ -436,6 +479,11 @@ public sealed class MapTrackerService : IDisposable
             return;
         }
         string canonicalMap = ResolveMapKey(rawMap) ?? rawMap;
+
+        if (!string.Equals(_currentMapKey, canonicalMap, StringComparison.OrdinalIgnoreCase))
+        {
+            SetCurrentMap(canonicalMap, force: false);
+        }
 
         var position = new EftPosition
         {
@@ -519,7 +567,27 @@ public sealed class MapTrackerService : IDisposable
     {
         var settings = new MapTrackerSettings();
 
-        // map_configs.json에서 맵 설정 로드
+        // 1. legacy_map_settings.json에서 기존 설정 로드 시도
+        try
+        {
+            var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var settingsPath = Path.Combine(appDataPath, "TarkovHelper", "legacy_map_settings.json");
+            if (File.Exists(settingsPath))
+            {
+                var json = File.ReadAllText(settingsPath);
+                var loaded = JsonSerializer.Deserialize<MapTrackerSettings>(json, JsonOptions);
+                if (loaded != null)
+                {
+                    settings = loaded;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LegacyMapTracker] legacy_map_settings.json 로드 실패: {ex.Message}");
+        }
+
+        // 2. map_configs.json에서 맵 설정 로드
         if (File.Exists(MapConfigsPath))
         {
             try
@@ -535,6 +603,16 @@ public sealed class MapTrackerService : IDisposable
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[LegacyMapTracker] map_configs.json 로드 실패: {ex.Message}");
+            }
+        }
+
+        // 3. 스크린샷 폴더 유효성 검증 및 자동 감지 폴백
+        if (string.IsNullOrEmpty(settings.ScreenshotFolderPath) || !Directory.Exists(settings.ScreenshotFolderPath))
+        {
+            var detected = MapTrackerSettings.TryDetectScreenshotFolder();
+            if (!string.IsNullOrEmpty(detected))
+            {
+                settings.ScreenshotFolderPath = detected;
             }
         }
 

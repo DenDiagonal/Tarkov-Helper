@@ -95,12 +95,29 @@ public sealed class ScreenshotWatcherService : IDisposable
 
                 _watcher.Created += OnFileCreated;
                 _watcher.Changed += OnFileChanged;
+                _watcher.Renamed += OnFileRenamed;
                 _watcher.Error += OnWatcherError;
 
                 _watcher.EnableRaisingEvents = true;
                 CurrentWatchPath = folderPath;
 
                 OnStateChanged(true, folderPath);
+
+                // Procesar la captura más reciente existente si ya hay capturas en la carpeta
+                var token = _watchCts.Token;
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(150, token).ConfigureAwait(false);
+                        if (!token.IsCancellationRequested)
+                        {
+                            ProcessLatestExistingFile(folderPath);
+                        }
+                    }
+                    catch { }
+                }, token);
+
                 return true;
             }
             catch (Exception ex)
@@ -134,6 +151,7 @@ public sealed class ScreenshotWatcherService : IDisposable
                 _watcher.EnableRaisingEvents = false;
                 _watcher.Created -= OnFileCreated;
                 _watcher.Changed -= OnFileChanged;
+                _watcher.Renamed -= OnFileRenamed;
                 _watcher.Error -= OnWatcherError;
                 _watcher.Dispose();
                 _watcher = null;
@@ -164,6 +182,32 @@ public sealed class ScreenshotWatcherService : IDisposable
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
         ProcessFile(e.FullPath);
+    }
+
+    private void OnFileRenamed(object sender, RenamedEventArgs e)
+    {
+        ProcessFile(e.FullPath);
+    }
+
+    private void ProcessLatestExistingFile(string folderPath)
+    {
+        try
+        {
+            if (!Directory.Exists(folderPath)) return;
+            var directoryInfo = new DirectoryInfo(folderPath);
+            var latestFile = directoryInfo.GetFiles("*.png")
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .FirstOrDefault();
+
+            if (latestFile != null && latestFile.Exists)
+            {
+                if (_parser.TryParse(latestFile.Name, out var position) && position != null)
+                {
+                    OnPositionDetected(position, latestFile.FullName);
+                }
+            }
+        }
+        catch { }
     }
 
     private void ProcessFile(string filePath)
@@ -211,7 +255,7 @@ public sealed class ScreenshotWatcherService : IDisposable
             if (_isDisposed || token.IsCancellationRequested) return;
 
             // Limitar concurrencia de procesamiento de I/O a un máximo de 4 hilos simultáneos
-            if (!await _processingLimiter.WaitAsync(250, token).ConfigureAwait(false))
+            if (!await _processingLimiter.WaitAsync(2000, token).ConfigureAwait(false))
                 return;
 
             try
@@ -280,6 +324,19 @@ public sealed class ScreenshotWatcherService : IDisposable
 
             await Task.Delay(50, ct).ConfigureAwait(false);
         }
+
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                if (fs.Length > 0)
+                {
+                    return true;
+                }
+            }
+        }
+        catch { }
 
         return false;
     }

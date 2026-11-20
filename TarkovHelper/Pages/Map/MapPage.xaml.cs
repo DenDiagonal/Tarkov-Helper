@@ -561,7 +561,13 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			{
 				await InitializeOverlayServiceAsync().WaitAsync(ct);
 				UpdateMinimapButtonState(_overlayService.IsOverlayVisible);
-				StartAutoTracking();
+			}
+			StartAutoTracking();
+			if (_trackerService?.CurrentPosition != null)
+			{
+				UpdateMarkerPosition(_trackerService.CurrentPosition);
+				UpdateTrailPath();
+				UpdateCoordinatesDisplay(_trackerService.CurrentPosition);
 			}
 			base.PreviewKeyDown -= MapPage_PreviewKeyDown;
 			base.PreviewKeyDown += MapPage_PreviewKeyDown;
@@ -930,6 +936,10 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		if (base.Dispatcher.HasShutdownStarted || base.Dispatcher.HasShutdownFinished) return;
 		base.Dispatcher.BeginInvoke((Action)delegate
 		{
+			if (!string.IsNullOrEmpty(position.MapKey) && !string.Equals(position.MapKey, _currentMapKey, StringComparison.OrdinalIgnoreCase))
+			{
+				SelectMap(position.MapKey);
+			}
 			UpdateMarkerPosition(position);
 			UpdateTrailPath();
 			UpdateCoordinatesDisplay(position);
@@ -1423,9 +1433,22 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void StartAutoTracking()
 	{
-		if (_trackerService != null && !_trackerService.IsWatching && !string.IsNullOrEmpty(_trackerService.Settings.ScreenshotFolderPath))
+		if (_trackerService != null)
 		{
-			_trackerService.StartTracking();
+			string? folder = !string.IsNullOrEmpty(TxtScreenshotFolder?.Text) && Directory.Exists(TxtScreenshotFolder.Text)
+				? TxtScreenshotFolder.Text
+				: (!string.IsNullOrEmpty(_trackerService.Settings.ScreenshotFolderPath) && Directory.Exists(_trackerService.Settings.ScreenshotFolderPath)
+					? _trackerService.Settings.ScreenshotFolderPath
+					: (SettingsService.Instance.MapScreenshotPath ?? MapTrackerSettings.TryDetectScreenshotFolder()));
+
+			if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder))
+			{
+				_trackerService.StartTracking(folder);
+			}
+			else
+			{
+				_trackerService.StartTracking();
+			}
 		}
 	}
 
