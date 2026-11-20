@@ -331,33 +331,49 @@ namespace TarkovHelper.ViewModels
             get => _searchText;
             set
             {
-                if (_searchText != value)
+                var normalizedValue = value ?? string.Empty;
+                if (_searchText != normalizedValue)
                 {
-                    _searchText = value;
+                    _searchText = normalizedValue;
                     OnPropertyChanged();
 
-                    _searchDebounceCts?.Cancel();
-                    _searchDebounceCts?.Dispose();
+                    var previousCts = Interlocked.Exchange(ref _searchDebounceCts, null);
+                    if (previousCts != null)
+                    {
+                        try { previousCts.Cancel(); } catch (ObjectDisposedException) { }
+                        previousCts.Dispose();
+                    }
 
-                    if (string.IsNullOrEmpty(value) || !EnableSearchDebounce || Application.Current == null)
+                    if (string.IsNullOrEmpty(normalizedValue) || !EnableSearchDebounce || Application.Current == null)
                     {
                         ApplyFilters();
                     }
                     else
                     {
                         var cts = new CancellationTokenSource();
-                        _searchDebounceCts = cts;
+                        var replaced = Interlocked.Exchange(ref _searchDebounceCts, cts);
+                        if (replaced != null)
+                        {
+                            try { replaced.Cancel(); } catch (ObjectDisposedException) { }
+                            replaced.Dispose();
+                        }
+
+                        var token = cts.Token;
                         _ = Task.Run(async () =>
                         {
                             try
                             {
-                                await Task.Delay(120, cts.Token);
-                                if (!cts.Token.IsCancellationRequested)
+                                await Task.Delay(120, token);
+                                if (!token.IsCancellationRequested)
                                 {
                                     var dispatcher = Application.Current?.Dispatcher;
                                     if (dispatcher != null && !dispatcher.HasShutdownStarted && dispatcher.Thread.IsAlive)
                                     {
-                                        dispatcher.Invoke(() => ApplyFilters());
+                                        dispatcher.Invoke(() =>
+                                        {
+                                            if (!token.IsCancellationRequested)
+                                                ApplyFilters();
+                                        });
                                     }
                                     else
                                     {
@@ -366,6 +382,7 @@ namespace TarkovHelper.ViewModels
                                 }
                             }
                             catch (OperationCanceledException) { }
+                            catch (ObjectDisposedException) { }
                         });
                     }
                 }

@@ -45,8 +45,14 @@ namespace TarkovHelper.Services
 
         // Trailing debounce timer for push notification logs to prevent dropped events
         private Timer? _pushLogDebounceTimer;
+        private Timer? _pushLogPollTimer;
         private readonly object _pushDebounceLock = new();
         private string? _pendingPushLogFile;
+        private string? _monitoredLogFolderPath;
+        private string? _activePushLogFile;
+        private DateTime _lastActiveLogScanUtc = DateTime.MinValue;
+        private string? _pendingLiveLogFile;
+        private int _reprocessRequested;
 
         /// <summary>
         /// Event fired when a quest event is detected from logs
@@ -184,6 +190,7 @@ namespace TarkovHelper.Services
 
                 try
                 {
+                    _monitoredLogFolderPath = logFolderPath;
                     _monitoringCts = new CancellationTokenSource();
                     var ct = _monitoringCts.Token;
 
@@ -205,7 +212,7 @@ namespace TarkovHelper.Services
 
                     _isWatching = true;
 
-                    // Seed initial events before enabling live watcher notifications
+                    // Seed initial events before enabling live watcher notifications + NTFS open-handle fallback poller
                     _ = Task.Run(async () =>
                     {
                         await SeedLatestPushNotificationEventsAsync(logFolderPath, ct).ConfigureAwait(false);
@@ -214,6 +221,8 @@ namespace TarkovHelper.Services
                             if (!ct.IsCancellationRequested && _logWatcher != null && _isWatching)
                             {
                                 _logWatcher.EnableRaisingEvents = true;
+                                _pushLogPollTimer?.Dispose();
+                                _pushLogPollTimer = new Timer(OnPushPollTick, null, 2500, 2500);
                             }
                         }
                     }, ct);
@@ -235,21 +244,103 @@ namespace TarkovHelper.Services
             _log.Warning($"Push log FileSystemWatcher buffer overflow or error: {ex.Message}");
         }
 
+        private string? ResolveLatestPushLogFile(string logFolderPath)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(logFolderPath) || !Directory.Exists(logFolderPath))
+                    return null;
+
+                return Directory.EnumerateFiles(logFolderPath, "*push-notifications*.log", SearchOption.AllDirectories)
+                    .Select(f =>
+                    {
+                        DateTime created = DateTime.MinValue;
+                        DateTime written = DateTime.MinValue;
+                        try { created = File.GetCreationTimeUtc(f); } catch { }
+                        try { written = File.GetLastWriteTimeUtc(f); } catch { }
+                        return (Path: f, SortKey: created > written ? created : written);
+                    })
+                    .OrderByDescending(x => x.SortKey)
+                    .Select(x => x.Path)
+                    .FirstOrDefault();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private void OnPushPollTick(object? state)
+        {
+            if (!_isWatching || _isDisposed) return;
+            var folder = _monitoredLogFolderPath;
+            if (string.IsNullOrEmpty(folder)) return;
+
+            try
+            {
+                if (_activePushLogFile == null ||
+                    !File.Exists(_activePushLogFile) ||
+                    (DateTime.UtcNow - _lastActiveLogScanUtc).TotalSeconds >= 10)
+                {
+                    _activePushLogFile = ResolveLatestPushLogFile(folder);
+                    _lastActiveLogScanUtc = DateTime.UtcNow;
+                }
+
+                var targetFile = _activePushLogFile;
+                if (string.IsNullOrEmpty(targetFile) || !File.Exists(targetFile))
+                    return;
+
+                long actualLength;
+                using (var fs = new FileStream(targetFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                {
+                    actualLength = fs.Length;
+                }
+
+                long lastOffset = _pushLogOffsets.GetValueOrDefault(targetFile, 0L);
+                if (actualLength != lastOffset)
+                {
+                    _ = ProcessLatestLogEvents(targetFile);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLog($"Poll tick error: {ex.Message}");
+            }
+        }
+
         private async Task SeedLatestPushNotificationEventsAsync(string logFolderPath, CancellationToken ct)
         {
             try
             {
-                var latestLog = Directory.GetFiles(logFolderPath, "*push-notifications*.log", SearchOption.AllDirectories)
-                    .OrderByDescending(f => File.GetLastWriteTime(f))
-                    .FirstOrDefault();
+                var latestLog = ResolveLatestPushLogFile(logFolderPath);
 
                 if (latestLog != null && File.Exists(latestLog))
                 {
-                    var fileInfo = new FileInfo(latestLog);
-                    _pushLogOffsets[latestLog] = fileInfo.Length;
+                    _activePushLogFile = latestLog;
+                    _lastActiveLogScanUtc = DateTime.UtcNow;
 
-                    var initialEvents = ParseLogFile(latestLog, tailOnly: false);
+                    long streamLength;
+                    string content;
+                    using (var stream = new FileStream(latestLog, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    using (var reader = new StreamReader(stream, Encoding.UTF8))
+                    {
+                        content = await reader.ReadToEndAsync().ConfigureAwait(false);
+                        streamLength = stream.Position;
+                    }
+
+                    int safeLen = FindSafeCompleteJsonBoundary(content);
+                    if (safeLen < content.Length)
+                    {
+                        var trailingBytes = Encoding.UTF8.GetByteCount(content.AsSpan(safeLen));
+                        streamLength = Math.Max(0L, streamLength - trailingBytes);
+                        content = content.Substring(0, safeLen);
+                    }
+
+                    _pushLogOffsets[latestLog] = streamLength;
+
+                    var initialEvents = ParseLogContent(content, Path.GetFileName(latestLog));
                     var progressService = QuestProgressService.Instance;
+                    var lookup = BuildQuestIdLookup(progressService.AllTasks);
 
                     foreach (var evt in initialEvents)
                     {
@@ -271,21 +362,31 @@ namespace TarkovHelper.Services
                             }
                         }
 
-                        if (isNew && evt.EventType == QuestEventType.Completed && Math.Abs((DateTime.Now - evt.Timestamp).TotalHours) < 24)
+                        if (isNew &&
+                            (evt.EventType == QuestEventType.Completed || evt.EventType == QuestEventType.Failed) &&
+                            Math.Abs((DateTime.Now - evt.Timestamp).TotalHours) < 24)
                         {
-                            var cleanId = evt.QuestId?.Trim() ?? "";
-                            if (cleanId.Contains(' ')) cleanId = cleanId.Split(' ')[0];
-
-                            var task = progressService.GetTask(cleanId) ??
-                                       progressService.AllTasks.FirstOrDefault(t =>
-                                           string.Equals(t.BsgId, cleanId, StringComparison.OrdinalIgnoreCase) ||
-                                           string.Equals(t.Id, cleanId, StringComparison.OrdinalIgnoreCase) ||
-                                           (t.Ids != null && t.Ids.Contains(cleanId, StringComparer.OrdinalIgnoreCase)));
-
-                            if (task != null && progressService.GetStatus(task) != QuestStatus.Done)
+                            var task = FindTaskByQuestId(lookup, evt.QuestId ?? string.Empty);
+                            if (task == null)
                             {
-                                DebugLog($"Startup auto-sync: Catching missed completed quest: {task.Name} ({cleanId})");
-                                RaiseEventSafe(QuestEventDetected, evt);
+                                var cleanId = evt.QuestId?.Trim() ?? "";
+                                if (cleanId.Contains(' ')) cleanId = cleanId.Split(' ')[0];
+                                task = progressService.AllTasks.FirstOrDefault(t =>
+                                    string.Equals(t.BsgId, cleanId, StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(t.Id, cleanId, StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(t.NormalizedName, cleanId, StringComparison.OrdinalIgnoreCase) ||
+                                    (t.Ids != null && t.Ids.Contains(cleanId, StringComparer.OrdinalIgnoreCase)));
+                            }
+
+                            if (task != null)
+                            {
+                                var status = progressService.GetStatus(task);
+                                if ((evt.EventType == QuestEventType.Completed && status != QuestStatus.Done) ||
+                                    (evt.EventType == QuestEventType.Failed && status != QuestStatus.Failed))
+                                {
+                                    _log.Info($"Startup auto-sync: Catching missed quest event {evt.EventType}: {task.Name} ({evt.QuestId})");
+                                    RaiseEventSafe(QuestEventDetected, evt);
+                                }
                             }
                         }
                     }
@@ -294,7 +395,7 @@ namespace TarkovHelper.Services
             }
             catch (Exception ex)
             {
-                DebugLog($"Error initializing push-notifications events: {ex.Message}");
+                _log.Warning($"Error initializing push-notifications events: {ex.Message}");
             }
         }
 
@@ -328,6 +429,13 @@ namespace TarkovHelper.Services
                 }
 
                 _pushLogOffsets.Clear();
+
+                _pushLogPollTimer?.Dispose();
+                _pushLogPollTimer = null;
+                _monitoredLogFolderPath = null;
+                _activePushLogFile = null;
+                _pendingLiveLogFile = null;
+                Interlocked.Exchange(ref _reprocessRequested, 0);
 
                 lock (_pushDebounceLock)
                 {
@@ -479,45 +587,54 @@ namespace TarkovHelper.Services
 
         private async Task ProcessLatestLogEvents(string filePath)
         {
+            Volatile.Write(ref _pendingLiveLogFile, filePath);
+            Interlocked.Exchange(ref _reprocessRequested, 1);
+
             if (!await _pushProcessGate.WaitAsync(0).ConfigureAwait(false))
                 return;
 
             try
             {
-                await Task.Delay(100).ConfigureAwait(false);
-                if (!File.Exists(filePath)) return;
-
-                long lastOffset = _pushLogOffsets.GetValueOrDefault(filePath, 0L);
-                var (events, newOffset) = await ParsePushLogIncrementalAsync(filePath, lastOffset).ConfigureAwait(false);
-                _pushLogOffsets[filePath] = newOffset;
-
-                foreach (var evt in events)
+                while (Interlocked.Exchange(ref _reprocessRequested, 0) == 1)
                 {
-                    var eventKey = $"{evt.QuestId}_{evt.EventType}_{evt.Timestamp.Ticks}";
+                    if (!_isWatching || _isDisposed) return;
 
-                    lock (_processedEventKeys)
+                    var targetPath = Volatile.Read(ref _pendingLiveLogFile) ?? filePath;
+                    await Task.Delay(100).ConfigureAwait(false);
+                    if (!File.Exists(targetPath)) continue;
+
+                    long lastOffset = _pushLogOffsets.GetValueOrDefault(targetPath, 0L);
+                    var (events, newOffset) = await ParsePushLogIncrementalAsync(targetPath, lastOffset).ConfigureAwait(false);
+                    _pushLogOffsets[targetPath] = newOffset;
+
+                    foreach (var evt in events)
                     {
-                        if (!_processedEventKeys.Add(eventKey))
-                            continue;
+                        var eventKey = $"{evt.QuestId}_{evt.EventType}_{evt.Timestamp.Ticks}";
 
-                        _processedEventOrder.Enqueue(eventKey);
-                        while (_processedEventOrder.Count > MaxProcessedKeys)
+                        lock (_processedEventKeys)
                         {
-                            var oldest = _processedEventOrder.Dequeue();
-                            _processedEventKeys.Remove(oldest);
-                        }
-                    }
+                            if (!_processedEventKeys.Add(eventKey))
+                                continue;
 
-                    if (Math.Abs((DateTime.Now - evt.Timestamp).TotalHours) < 24)
-                    {
-                        DebugLog($"Live quest event detected: {evt.QuestId} ({evt.EventType}) at {evt.Timestamp}");
-                        RaiseEventSafe(QuestEventDetected, evt);
+                            _processedEventOrder.Enqueue(eventKey);
+                            while (_processedEventOrder.Count > MaxProcessedKeys)
+                            {
+                                var oldest = _processedEventOrder.Dequeue();
+                                _processedEventKeys.Remove(oldest);
+                            }
+                        }
+
+                        if (Math.Abs((DateTime.Now - evt.Timestamp).TotalHours) < 24)
+                        {
+                            _log.Info($"Live quest event detected: {evt.QuestId} ({evt.EventType}) at {evt.Timestamp}");
+                            RaiseEventSafe(QuestEventDetected, evt);
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
-                DebugLog($"Error in ProcessLatestLogEvents: {ex.Message}");
+                _log.Warning($"Error in ProcessLatestLogEvents: {ex.Message}");
             }
             finally
             {
@@ -546,7 +663,19 @@ namespace TarkovHelper.Services
                 stream.Seek(currentOffset, SeekOrigin.Begin);
                 using var reader = new StreamReader(stream, Encoding.UTF8);
                 var content = await reader.ReadToEndAsync().ConfigureAwait(false);
-                currentOffset = stream.Position;
+                long endStreamPos = stream.Position;
+
+                int safeParseLength = FindSafeCompleteJsonBoundary(content);
+                if (safeParseLength < content.Length)
+                {
+                    var trailingBytes = Encoding.UTF8.GetByteCount(content.AsSpan(safeParseLength));
+                    currentOffset = Math.Max(currentOffset, endStreamPos - trailingBytes);
+                    content = content.Substring(0, safeParseLength);
+                }
+                else
+                {
+                    currentOffset = endStreamPos;
+                }
 
                 var fileName = Path.GetFileName(filePath);
                 events = ParseLogContent(content, fileName);
@@ -557,6 +686,62 @@ namespace TarkovHelper.Services
             }
 
             return (events, currentOffset);
+        }
+
+        private static int FindSafeCompleteJsonBoundary(string content)
+        {
+            int i = 0;
+            while (i < content.Length)
+            {
+                if (content[i] == '{' && (i == 0 || content[i - 1] == '\n' || content[i - 1] == ' ' || content[i - 1] == '\t' || content[i - 1] == '\r'))
+                {
+                    int start = i;
+                    int depth = 0;
+                    bool inString = false;
+                    bool escaped = false;
+                    bool closed = false;
+                    const int maxChars = 256 * 1024;
+
+                    for (int j = i; j < content.Length && (j - start) < maxChars; j++)
+                    {
+                        char c = content[j];
+                        if (inString)
+                        {
+                            if (escaped) escaped = false;
+                            else if (c == '\\') escaped = true;
+                            else if (c == '"') inString = false;
+                        }
+                        else
+                        {
+                            if (c == '"') inString = true;
+                            else if (c == '{') depth++;
+                            else if (c == '}')
+                            {
+                                depth--;
+                                if (depth == 0)
+                                {
+                                    i = j + 1;
+                                    closed = true;
+                                    break;
+                                }
+                                if (depth < 0) break;
+                            }
+                        }
+                    }
+
+                    if (closed) continue;
+                    if ((content.Length - start) < maxChars)
+                    {
+                        return start;
+                    }
+                }
+
+                int nextNl = content.IndexOf('\n', i);
+                if (nextNl < 0) break;
+                i = nextNl + 1;
+            }
+
+            return content.Length;
         }
 
         #endregion

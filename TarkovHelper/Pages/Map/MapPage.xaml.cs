@@ -2360,16 +2360,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			PlayerDot.Visibility = Visibility.Collapsed;
 			MarkerTranslation.X = position.X;
 			MarkerTranslation.Y = position.Y;
-			double num = position.Angle.GetValueOrDefault();
-			if (string.Equals(_currentMapKey, "Labs", StringComparison.OrdinalIgnoreCase))
-			{
-				num -= 90.0;
-			}
-			else if (string.Equals(_currentMapKey, "Factory", StringComparison.OrdinalIgnoreCase))
-			{
-				num += 90.0;
-			}
-			MarkerRotation.Angle = num;
+			MarkerRotation.Angle = position.Angle.GetValueOrDefault();
 		}
 		else
 		{
@@ -2425,15 +2416,14 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		}
 	}
 
+	private double _playerMarkerSizeFactor = 1.0;
+
 	private void UpdatePlayerMarkerSize(int size)
 	{
 		double num = (double)size / 16.0;
 		double num2 = (_trackerService?.GetMapConfig(_currentMapKey ?? ""))?.MarkerScale ?? 1.0;
-		double num3 = num * num2;
-		MarkerScale.ScaleX = num3;
-		MarkerScale.ScaleY = num3;
-		DotScale.ScaleX = num3;
-		DotScale.ScaleY = num3;
+		_playerMarkerSizeFactor = num * num2;
+		UpdatePlayerMarkerScale(1.0 / _zoomLevel);
 		if (_trackerService != null)
 		{
 			_trackerService.Settings.PlayerMarkerSize = size;
@@ -2517,15 +2507,16 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void UpdatePlayerMarkerScale(double inverseScale)
 	{
+		double combinedScale = _playerMarkerSizeFactor * inverseScale;
 		if (MarkerScale != null)
 		{
-			MarkerScale.ScaleX = inverseScale;
-			MarkerScale.ScaleY = inverseScale;
+			MarkerScale.ScaleX = combinedScale;
+			MarkerScale.ScaleY = combinedScale;
 		}
 		if (DotScale != null)
 		{
-			DotScale.ScaleX = inverseScale;
-			DotScale.ScaleY = inverseScale;
+			DotScale.ScaleX = combinedScale;
+			DotScale.ScaleY = combinedScale;
 		}
 	}
 

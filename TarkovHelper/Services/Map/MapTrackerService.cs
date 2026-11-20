@@ -501,10 +501,7 @@ public sealed class MapTrackerService : IDisposable
         {
             if (screenPos.Angle.HasValue)
             {
-                double deg = screenPos.Angle.Value;
-                if (string.Equals(canonicalMap, "Labs", StringComparison.OrdinalIgnoreCase)) deg -= 90.0;
-                else if (string.Equals(canonicalMap, "Factory", StringComparison.OrdinalIgnoreCase)) deg += 90.0;
-                screenPos.Angle = ((deg % 360.0) + 360.0) % 360.0;
+                screenPos.Angle = ((screenPos.Angle.Value % 360.0) + 360.0) % 360.0;
             }
 
             lock (_stateLock)

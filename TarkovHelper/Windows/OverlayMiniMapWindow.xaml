@@ -807,55 +807,45 @@
 
                         <Canvas.RenderTransform>
 
-                            <ScaleTransform x:Name="PlayerMarkerScale" ScaleX="1" ScaleY="1" CenterX="10" CenterY="10"/>
+                            <ScaleTransform x:Name="PlayerMarkerScale" ScaleX="1" ScaleY="1" CenterX="0" CenterY="0"/>
 
                         </Canvas.RenderTransform>
 
-                        
-
-                        <!-- 외곽 원 (테두리) -->
-
+                        <!-- 외곽 글로우 효과 (MapPage와 동일) -->
                         <Ellipse x:Name="PlayerOuterCircle"
+                                 Width="28" Height="28"
+                                 Canvas.Left="-14" Canvas.Top="-14"
+                                 Fill="#40FF5722"/>
 
-                                 Width="20" Height="20"
-
-                                 Fill="#442196F3"
-
-                                 Stroke="#2196F3"
-
+                        <!-- 중앙 원 (MapPage와 동일) -->
+                        <Ellipse x:Name="PlayerInnerCircle"
+                                 Width="16" Height="16"
+                                 Canvas.Left="-8" Canvas.Top="-8"
+                                 Fill="#FFFF5722"
+                                 Stroke="#FFFFFFFF"
                                  StrokeThickness="2"/>
 
-
-
-                        <!-- 내부 원 -->
-
-                        <Ellipse x:Name="PlayerInnerCircle"
-
-                                 Width="10" Height="10"
-
-                                 Fill="#2196F3"
-
-                                 Canvas.Left="5" Canvas.Top="5"/>
-
-
-
-                        <!-- 방향 화살표 -->
-
-                        <Polygon x:Name="PlayerDirectionArrow"
-
-                                 Points="0,0 5,-12 10,0"
-
-                                 Fill="#882196F3"
-
-                                 Canvas.Left="5" Canvas.Top="-8">
-
-                            <Polygon.RenderTransform>
-
-                                <RotateTransform x:Name="PlayerRotation" Angle="0" CenterX="5" CenterY="18"/>
-
-                            </Polygon.RenderTransform>
-
-                        </Polygon>
+                        <!-- 방향 화살표 (MapPage와 동일) -->
+                        <Path x:Name="PlayerDirectionArrow"
+                              Fill="#FFFF5722"
+                              Stroke="#FFFFFFFF"
+                              StrokeThickness="1">
+                            <Path.Data>
+                                <PathGeometry>
+                                    <PathFigure StartPoint="0,-24" IsClosed="True">
+                                        <LineSegment Point="6,-12"/>
+                                        <LineSegment Point="2,-12"/>
+                                        <LineSegment Point="2,-8"/>
+                                        <LineSegment Point="-2,-8"/>
+                                        <LineSegment Point="-2,-12"/>
+                                        <LineSegment Point="-6,-12"/>
+                                    </PathFigure>
+                                </PathGeometry>
+                            </Path.Data>
+                            <Path.RenderTransform>
+                                <RotateTransform x:Name="PlayerRotation" Angle="0" CenterX="0" CenterY="0"/>
+                            </Path.RenderTransform>
+                        </Path>
 
                     </Canvas>
 

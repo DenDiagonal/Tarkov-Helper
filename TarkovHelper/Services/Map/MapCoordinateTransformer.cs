@@ -89,6 +89,7 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
         try
         {
             double finalX, finalY;
+            double? screenAngle = angle;
 
             // playerMarkerTransform이 있으면 우선 사용
             if (config.PlayerMarkerTransform != null && config.PlayerMarkerTransform.Length >= 6)
@@ -102,6 +103,20 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
 
                 finalX = a * gameX + b * (gameZ ?? 0) + tx;
                 finalY = c * gameX + d * (gameZ ?? 0) + ty;
+
+                if (angle.HasValue)
+                {
+                    double rad = angle.Value * Math.PI / 180.0;
+                    double dxGame = -Math.Sin(rad);
+                    double dzGame = -Math.Cos(rad);
+                    double sx = a * dxGame + b * dzGame;
+                    double sy = c * dxGame + d * dzGame;
+                    if (Math.Abs(sx) > 1e-9 || Math.Abs(sy) > 1e-9)
+                    {
+                        double deg = Math.Atan2(sx, -sy) * 180.0 / Math.PI;
+                        screenAngle = ((deg % 360.0) + 360.0) % 360.0;
+                    }
+                }
             }
             // calibratedTransform이 있으면 IDW 보정을 적용한 변환 사용
             else if (config.CalibratedTransform != null && config.CalibratedTransform.Length >= 6)
@@ -124,7 +139,7 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
                 MapKey = config.Key,
                 X = finalX,
                 Y = finalY,
-                Angle = angle,
+                Angle = screenAngle,
                 OriginalPosition = new EftPosition
                 {
                     MapName = mapKey,

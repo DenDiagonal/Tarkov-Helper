@@ -1057,11 +1057,7 @@ public partial class MainWindow : Window
 
             if (_settingsService.LogMonitoringEnabled)
             {
-                _logSyncService.StartMonitoring(logPath);
-
-                _logSyncService.QuestEventDetected -= OnQuestEventDetected;
-
-                _logSyncService.QuestEventDetected += OnQuestEventDetected;
+                StartQuestLogMonitoring(logPath);
 
                 _log.Info($"Auto-started log monitoring: {logPath}");
             }
@@ -2782,7 +2778,7 @@ public partial class MainWindow : Window
             EftRaidEventService.Instance.StartMonitoring(detectedPath);
             if (_settingsService.LogMonitoringEnabled)
             {
-                _logSyncService.StartMonitoring(detectedPath);
+                StartQuestLogMonitoring(detectedPath);
             }
 
 
@@ -2865,7 +2861,7 @@ public partial class MainWindow : Window
                 EftRaidEventService.Instance.StartMonitoring(selectedPath);
                 if (_settingsService.LogMonitoringEnabled)
                 {
-                    _logSyncService.StartMonitoring(selectedPath);
+                    StartQuestLogMonitoring(selectedPath);
                 }
 
             }
@@ -3432,15 +3428,7 @@ public partial class MainWindow : Window
 
             {
 
-                _logSyncService.StartMonitoring(logPath);
-
-
-
-                // Subscribe to quest events
-
-                _logSyncService.QuestEventDetected -= OnQuestEventDetected;
-
-                _logSyncService.QuestEventDetected += OnQuestEventDetected;
+                StartQuestLogMonitoring(logPath);
 
             }
 
@@ -3453,6 +3441,16 @@ public partial class MainWindow : Window
     }
 
 
+
+    private void StartQuestLogMonitoring(string logPath)
+    {
+        if (string.IsNullOrEmpty(logPath) || !Directory.Exists(logPath))
+            return;
+
+        _logSyncService.QuestEventDetected -= OnQuestEventDetected;
+        _logSyncService.QuestEventDetected += OnQuestEventDetected;
+        _logSyncService.StartMonitoring(logPath);
+    }
 
     /// <summary>
 

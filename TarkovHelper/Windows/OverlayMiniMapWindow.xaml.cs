@@ -7649,87 +7649,29 @@ public partial class OverlayMiniMapWindow : Window
 
 		PlayerMarkerContainer.Visibility = Visibility.Visible;
 
+		Canvas.SetLeft(PlayerMarkerContainer, position.X);
 
+		Canvas.SetTop(PlayerMarkerContainer, position.Y);
 
-		Canvas.SetLeft(PlayerMarkerContainer, position.X - 10.0);
+		bool showDirection = _trackerService == null || _trackerService.Settings.ShowDirection;
 
-
-
-		Canvas.SetTop(PlayerMarkerContainer, position.Y - 10.0);
-
-
-
-		if (position.Angle.HasValue)
-
-
+		if (showDirection && position.Angle.HasValue)
 
 		{
 
-
-
-			double num = position.Angle.Value;
-
-
-
-			if (string.Equals(_currentMapKey, "Labs", StringComparison.OrdinalIgnoreCase))
-
-
-
-			{
-
-
-
-				num -= 90.0;
-
-
-
-			}
-
-
-
-			else if (string.Equals(_currentMapKey, "Factory", StringComparison.OrdinalIgnoreCase))
-
-
-
-			{
-
-
-
-				num += 90.0;
-
-
-
-			}
-
-
-
-			PlayerRotation.Angle = num;
-
-
+			PlayerRotation.Angle = position.Angle.Value;
 
 			PlayerDirectionArrow.Visibility = Visibility.Visible;
 
-
-
 		}
-
-
 
 		else
 
-
-
 		{
-
-
 
 			PlayerDirectionArrow.Visibility = Visibility.Collapsed;
 
-
-
 		}
-
-
 
 	}
 
