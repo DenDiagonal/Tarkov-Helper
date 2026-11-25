@@ -108,6 +108,69 @@ namespace TarkovHelper.Services.DataAudit
             { "69e0d6cc77b63940375b9173", "Survivor" }
         };
 
+        /// <summary>
+        /// Standard BSG Trader normalizedName (kebab-case) to English Trader Name lookup.
+        /// </summary>
+        public static readonly Dictionary<string, string> TraderNormalizedNameToName = new(StringComparer.OrdinalIgnoreCase)
+        {
+            { "prapor", "Prapor" },
+            { "therapist", "Therapist" },
+            { "fence", "Fence" },
+            { "skier", "Skier" },
+            { "peacekeeper", "Peacekeeper" },
+            { "mechanic", "Mechanic" },
+            { "ragman", "Ragman" },
+            { "jaeger", "Jaeger" },
+            { "lightkeeper", "Lightkeeper" },
+            { "btr-driver", "BTR Driver" },
+            { "ref", "Ref" },
+            { "taran", "Taran" },
+            { "radio-station", "Radio station" },
+            { "mr-kerman", "Mr. Kerman" },
+            { "voevoda", "Voevoda" },
+            { "survivor", "Survivor" }
+        };
+
+        /// <summary>
+        /// Resiliently resolves the clean English Trader name from a TarkovTrackerTraderRef object,
+        /// checking Trader ID, regex extraction from @tt: localization templates, normalizedName,
+        /// or direct clean name. Returns null if unresolvable.
+        /// </summary>
+        public static string? ResolveTraderName(TarkovTrackerTraderRef? traderRef)
+        {
+            if (traderRef == null) return null;
+
+            // 1. By ID
+            if (!string.IsNullOrEmpty(traderRef.Id) && TraderIdToName.TryGetValue(traderRef.Id, out var nameById))
+            {
+                return nameById;
+            }
+
+            // 2. By Name if it contains BSG trader ID (e.g. "@tt:regular:traders:5ac3b934156ae10c4430e83c Nickname")
+            if (!string.IsNullOrEmpty(traderRef.Name))
+            {
+                var match = Regex.Match(traderRef.Name, @"traders:([a-f0-9]{24})", RegexOptions.IgnoreCase);
+                if (match.Success && TraderIdToName.TryGetValue(match.Groups[1].Value, out var nameByRegex))
+                {
+                    return nameByRegex;
+                }
+            }
+
+            // 3. By NormalizedName (e.g. "ragman", "btr-driver")
+            if (!string.IsNullOrEmpty(traderRef.NormalizedName) && TraderNormalizedNameToName.TryGetValue(traderRef.NormalizedName, out var nameByNorm))
+            {
+                return nameByNorm;
+            }
+
+            // 4. By clean Name (if not template starting with @tt:)
+            if (!string.IsNullOrEmpty(traderRef.Name) && !traderRef.Name.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
+            {
+                return traderRef.Name;
+            }
+
+            return null;
+        }
+
         #endregion
 
         #region Constructors & Lifecycle
@@ -275,11 +338,16 @@ namespace TarkovHelper.Services.DataAudit
                 throw new InvalidOperationException("Failed to deserialize TarkovTrackerCoreResponse: 'data' property is null.");
             }
 
+            var tasks = root.Data.Tasks ?? new List<TarkovTrackerTask>();
+
+            // Post-process tasks: clean titles, sanitize wikilinks, resolve trader names, map 27 global variable pool thresholds
+            PostProcessTasks(tasks);
+
             return new RawTarkovTrackerData
             {
                 ExtractedAt = DateTime.UtcNow,
                 Source = "TarkovTracker API",
-                Tasks = root.Data.Tasks ?? new List<TarkovTrackerTask>(),
+                Tasks = tasks,
                 Traders = root.Data.Traders ?? new List<TarkovTrackerTrader>(),
                 Maps = root.Data.Maps ?? new List<TarkovTrackerMap>(),
                 OverlayMetadata = root.DataOverlay
@@ -333,7 +401,6 @@ namespace TarkovHelper.Services.DataAudit
             }
 
             var tasks = new List<TarkovTrackerTask>();
-            var tasksById = new Dictionary<string, TarkovTrackerTask>(StringComparer.OrdinalIgnoreCase);
 
             // In fallback, data.tasks is a dictionary/object keyed by task ID
             if (tasksElem.ValueKind == JsonValueKind.Object)
@@ -347,7 +414,6 @@ namespace TarkovHelper.Services.DataAudit
                         {
                             if (string.IsNullOrEmpty(task.Id)) task.Id = prop.Name;
                             tasks.Add(task);
-                            tasksById[task.Id] = task;
                         }
                     }
                     catch
@@ -364,39 +430,119 @@ namespace TarkovHelper.Services.DataAudit
                     if (task != null)
                     {
                         tasks.Add(task);
-                        if (!string.IsNullOrEmpty(task.Id))
-                            tasksById[task.Id] = task;
                     }
                 }
             }
 
             // Post-process fallback tasks: clean titles, resolve trader names, map 27 global variable pool thresholds
+            PostProcessTasks(tasks);
+
+            return new RawTarkovTrackerData
+            {
+                ExtractedAt = DateTime.UtcNow,
+                Source = "json.tarkov.dev Fallback",
+                Tasks = tasks
+            };
+        }
+
+        /// <summary>
+        /// Post-processes tasks from either tasks-core or json.tarkov.dev fallback:
+        /// resolves trader names from BSG ID / regex / normalizedName, cleans localization templates
+        /// (e.g. "@tt:regular:tasks:... name" or "@tt:overlay:..."), sanitizes Wiki links,
+        /// resolves prerequisite titles, and maps 27 global variable pool thresholds.
+        /// </summary>
+        public static void PostProcessTasks(List<TarkovTrackerTask> tasks)
+        {
+            if (tasks == null || tasks.Count == 0) return;
+
+            var tasksById = new Dictionary<string, TarkovTrackerTask>(StringComparer.OrdinalIgnoreCase);
             foreach (var task in tasks)
             {
-                // Clean title from wikiLink if name looks like a localization template (e.g. "657315ddab5a49b71f098853 name")
-                if (!string.IsNullOrEmpty(task.Name) && (task.Name.EndsWith(" name", StringComparison.OrdinalIgnoreCase) || task.Name.Length == 24))
+                if (!string.IsNullOrEmpty(task.Id))
+                    tasksById[task.Id] = task;
+            }
+
+            foreach (var task in tasks)
+            {
+                // 1. Resolve Trader Name
+                if (task.Trader != null)
+                {
+                    var resolvedTrader = ResolveTraderName(task.Trader);
+                    if (!string.IsNullOrEmpty(resolvedTrader))
+                    {
+                        task.Trader.Name = resolvedTrader;
+                    }
+                    else if (task.Trader.Name != null && task.Trader.Name.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        task.Trader.Name = null;
+                    }
+                }
+
+                // 2. Clean task title if template or ID
+                var isTemplateName = string.IsNullOrEmpty(task.Name) ||
+                                     task.Name.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase) ||
+                                     task.Name.EndsWith(" name", StringComparison.OrdinalIgnoreCase) ||
+                                     task.Name.Length == 24;
+
+                if (isTemplateName)
                 {
                     var titleFromWiki = ExtractTitleFromWikiLink(task.WikiLink);
-                    if (!string.IsNullOrEmpty(titleFromWiki))
+                    if (!string.IsNullOrEmpty(titleFromWiki) && !titleFromWiki.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
                     {
                         task.Name = titleFromWiki;
                     }
-                    else if (!string.IsNullOrEmpty(task.NormalizedName))
+                    else if (!string.IsNullOrEmpty(task.NormalizedName) && !task.NormalizedName.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
                     {
                         task.Name = FormatNormalizedNameToTitle(task.NormalizedName);
                     }
                 }
 
-                // Resolve trader name from TraderIdToName if Trader.Name is empty
-                if (task.Trader != null && string.IsNullOrEmpty(task.Trader.Name) && !string.IsNullOrEmpty(task.Trader.Id))
+                // 3. Clean wikiLink if it contains an unresolved template like @tt:overlay:.../wikiLink
+                if (!string.IsNullOrEmpty(task.WikiLink) && task.WikiLink.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (TraderIdToName.TryGetValue(task.Trader.Id, out var resolvedTraderName))
+                    if (!string.IsNullOrEmpty(task.Name) && !task.Name.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
                     {
-                        task.Trader.Name = resolvedTraderName;
+                        var encodedTitle = Uri.EscapeDataString(task.Name.Replace(' ', '_')).Replace("%28", "(").Replace("%29", ")");
+                        task.WikiLink = $"https://escapefromtarkov.fandom.com/wiki/{encodedTitle}";
+                    }
+                    else
+                    {
+                        task.WikiLink = null;
                     }
                 }
 
-                // Process otherRequirements using the 27 Global Variable registry
+                // 4. Resolve trader in trader requirements
+                if (task.NormalizedTraderRequirements != null)
+                {
+                    foreach (var tr in task.NormalizedTraderRequirements)
+                    {
+                        if (tr.Trader != null)
+                        {
+                            var trTrader = ResolveTraderName(tr.Trader);
+                            if (!string.IsNullOrEmpty(trTrader))
+                                tr.Trader.Name = trTrader;
+                            else if (tr.Trader.Name?.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase) == true)
+                                tr.Trader.Name = null;
+                        }
+                    }
+                }
+
+                if (task.TraderLevelRequirements != null)
+                {
+                    foreach (var tr in task.TraderLevelRequirements)
+                    {
+                        if (tr.Trader != null)
+                        {
+                            var trTrader = ResolveTraderName(tr.Trader);
+                            if (!string.IsNullOrEmpty(trTrader))
+                                tr.Trader.Name = trTrader;
+                            else if (tr.Trader.Name?.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase) == true)
+                                tr.Trader.Name = null;
+                        }
+                    }
+                }
+
+                // 5. Process otherRequirements using the 27 Global Variable registry
                 if (task.OtherRequirements != null)
                 {
                     foreach (var otherReq in task.OtherRequirements)
@@ -418,14 +564,14 @@ namespace TarkovHelper.Services.DataAudit
                     }
                 }
 
-                // Resolve task requirement prerequisite titles if missing
+                // 6. Resolve task requirement prerequisite titles if missing
                 if (task.TaskRequirements != null)
                 {
                     foreach (var req in task.TaskRequirements)
                     {
-                        if (req.Task != null && string.IsNullOrEmpty(req.Task.Name) && !string.IsNullOrEmpty(req.Task.Id))
+                        if (req.Task != null && (string.IsNullOrEmpty(req.Task.Name) || req.Task.Name.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrEmpty(req.Task.Id))
                         {
-                            if (tasksById.TryGetValue(req.Task.Id, out var prereqTask))
+                            if (tasksById.TryGetValue(req.Task.Id, out var prereqTask) && !string.IsNullOrEmpty(prereqTask.Name) && !prereqTask.Name.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
                             {
                                 req.Task.Name = prereqTask.Name;
                                 req.Task.WikiLink = prereqTask.WikiLink;
@@ -434,13 +580,6 @@ namespace TarkovHelper.Services.DataAudit
                     }
                 }
             }
-
-            return new RawTarkovTrackerData
-            {
-                ExtractedAt = DateTime.UtcNow,
-                Source = "json.tarkov.dev Fallback",
-                Tasks = tasks
-            };
         }
 
         /// <summary>
@@ -449,7 +588,7 @@ namespace TarkovHelper.Services.DataAudit
         /// </summary>
         public static string ExtractTitleFromWikiLink(string? wikiLink)
         {
-            if (string.IsNullOrWhiteSpace(wikiLink))
+            if (string.IsNullOrWhiteSpace(wikiLink) || wikiLink.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
                 return string.Empty;
 
             var lastSegment = wikiLink.Trim().TrimEnd('/').Split('/').LastOrDefault();

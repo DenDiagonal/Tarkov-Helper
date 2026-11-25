@@ -12,8 +12,14 @@ namespace TarkovHelper.Services
     /// Helper class for parsing and rendering wiki markup text.
     /// Supports: [[Link|Text]], [[Link]], &lt;font color="..."&gt;text&lt;/font&gt;
     /// </summary>
-    public static class WikiMarkupHelper
+    public static partial class WikiMarkupHelper
     {
+        [GeneratedRegex(@"(\[\[([^\]|]+)(?:\|([^\]]+))?\]\])|(<font\s+color=""([^""]+)"">([^<]+)</font>)", RegexOptions.IgnoreCase)]
+        private static partial Regex WikiMarkupRegex();
+
+        [GeneratedRegex(@"<font\s+color=""([^""]+)"">([^<]+)</font>", RegexOptions.IgnoreCase)]
+        private static partial Regex FontColorRegex();
+
         /// <summary>
         /// Parse wiki markup and populate a TextBlock with rich content.
         /// Supports wiki links ([[Link|Text]], [[Link]]) and font color tags.
@@ -24,12 +30,8 @@ namespace TarkovHelper.Services
         /// <param name="linkBrush">Link text color brush</param>
         public static void ParseWikiMarkup(string text, TextBlock textBlock, Brush defaultBrush, Brush linkBrush)
         {
-            // Pattern to match wiki links and font color tags
-            var pattern = @"(\[\[([^\]|]+)(?:\|([^\]]+))?\]\])|(<font\s+color=""([^""]+)"">([^<]+)</font>)";
-            var regex = new Regex(pattern, RegexOptions.IgnoreCase);
-
             int lastIndex = 0;
-            var matches = regex.Matches(text);
+            var matches = WikiMarkupRegex().Matches(text);
 
             foreach (Match match in matches)
             {
@@ -70,8 +72,10 @@ namespace TarkovHelper.Services
                     Brush colorBrush;
                     try
                     {
-                        colorBrush = new SolidColorBrush(
+                        var solid = new SolidColorBrush(
                             (Color)ColorConverter.ConvertFromString(colorStr));
+                        solid.Freeze();
+                        colorBrush = solid;
                     }
                     catch
                     {
@@ -97,12 +101,8 @@ namespace TarkovHelper.Services
         /// </summary>
         private static void ParseHyperlinkContent(string displayText, Hyperlink hyperlink, Brush defaultBrush)
         {
-            // Pattern to match font color tags
-            var fontPattern = @"<font\s+color=""([^""]+)"">([^<]+)</font>";
-            var fontRegex = new Regex(fontPattern, RegexOptions.IgnoreCase);
-
             int lastIndex = 0;
-            var matches = fontRegex.Matches(displayText);
+            var matches = FontColorRegex().Matches(displayText);
 
             foreach (Match match in matches)
             {
@@ -120,8 +120,10 @@ namespace TarkovHelper.Services
                 Brush colorBrush;
                 try
                 {
-                    colorBrush = new SolidColorBrush(
+                    var solid = new SolidColorBrush(
                         (Color)ColorConverter.ConvertFromString(colorStr));
+                    solid.Freeze();
+                    colorBrush = solid;
                 }
                 catch
                 {

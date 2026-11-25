@@ -214,6 +214,19 @@ namespace TarkovHelper.Services.DataAudit
                     await transaction.CommitAsync(ct);
                     _log.Info($"Successfully committed all {diff.TotalChanges} changes to '{resolvedDbPath}'.");
                 }
+                catch (OperationCanceledException)
+                {
+                    _log.Warning("Transaction cancelled, rolling back cleanly.");
+                    try
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None);
+                    }
+                    catch (Exception rbEx)
+                    {
+                        _log.Error($"Error while executing rollback on cancellation: {rbEx.Message}");
+                    }
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     _log.Error($"Exception during transaction execution, rolling back immediately: {ex.Message}\n{ex.StackTrace}");
@@ -265,7 +278,7 @@ namespace TarkovHelper.Services.DataAudit
 
                 if (qDiff.ChangeType == DiffChangeType.Added)
                 {
-                    var checkCmd = new SqliteCommand("SELECT COUNT(*) FROM Quests WHERE Id = @Id;", connection, transaction);
+                    await using var checkCmd = new SqliteCommand("SELECT COUNT(*) FROM Quests WHERE Id = @Id;", connection, transaction);
                     checkCmd.Parameters.AddWithValue("@Id", qDiff.QuestId);
                     var exists = Convert.ToInt32(await checkCmd.ExecuteScalarAsync(ct)) > 0;
 
@@ -303,8 +316,14 @@ namespace TarkovHelper.Services.DataAudit
                         insertCmd.Parameters.AddWithValue("@NameEN", (object?)qDiff.RemoteQuest?.NameEN ?? (object?)qDiff.QuestName);
                         insertCmd.Parameters.AddWithValue("@NameKO", (object?)qDiff.RemoteQuest?.NameKO ?? DBNull.Value);
                         insertCmd.Parameters.AddWithValue("@NameJA", (object?)qDiff.RemoteQuest?.NameJA ?? DBNull.Value);
-                        insertCmd.Parameters.AddWithValue("@WikiPageLink", (object?)qDiff.RemoteQuest?.WikiPageLink ?? DBNull.Value);
-                        insertCmd.Parameters.AddWithValue("@Trader", (object?)qDiff.NewTrader ?? string.Empty);
+                        var safeInsertWiki = (qDiff.RemoteQuest?.WikiPageLink != null && !qDiff.RemoteQuest.WikiPageLink.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
+                            ? (object)qDiff.RemoteQuest.WikiPageLink
+                            : DBNull.Value;
+                        var safeInsertTrader = (!string.IsNullOrEmpty(qDiff.NewTrader) && !qDiff.NewTrader.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
+                            ? qDiff.NewTrader
+                            : "Prapor";
+                        insertCmd.Parameters.AddWithValue("@WikiPageLink", safeInsertWiki);
+                        insertCmd.Parameters.AddWithValue("@Trader", safeInsertTrader);
                         insertCmd.Parameters.AddWithValue("@Location", (object?)qDiff.RemoteQuest?.Location ?? string.Empty);
                         insertCmd.Parameters.AddWithValue("@MinLevel", (object?)qDiff.NewMinLevel ?? DBNull.Value);
                         insertCmd.Parameters.AddWithValue("@MinScavKarma", (object?)qDiff.NewMinScavKarma ?? DBNull.Value);
@@ -358,7 +377,8 @@ namespace TarkovHelper.Services.DataAudit
                 }
                 else if (qDiff.ChangeType == DiffChangeType.Modified)
                 {
-                    bool hasMinLevelChange = qDiff.PropertyChanges.Any(p => p.PropertyName == "MinLevel");
+                    bool hasMinLevelChange = qDiff.NewMinLevel.HasValue ||
+                                             qDiff.PropertyChanges.Any(p => p.PropertyName == "MinLevel");
                     var updateSql = @"
                         UPDATE Quests SET
                             Name = CASE WHEN @Name IS NOT NULL THEN @Name ELSE Name END,
@@ -380,7 +400,10 @@ namespace TarkovHelper.Services.DataAudit
                     updateCmd.Parameters.AddWithValue("@Id", qDiff.QuestId);
                     updateCmd.Parameters.AddWithValue("@Name", (object?)qDiff.QuestName ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@BsgId", (object?)qDiff.BsgId ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("@Trader", (object?)qDiff.NewTrader ?? DBNull.Value);
+                    var safeUpdateTrader = (qDiff.NewTrader != null && !qDiff.NewTrader.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
+                        ? (object)qDiff.NewTrader
+                        : DBNull.Value;
+                    updateCmd.Parameters.AddWithValue("@Trader", safeUpdateTrader);
                     updateCmd.Parameters.AddWithValue("@MinLevel", (object?)qDiff.NewMinLevel ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@HasMinLevelChange", hasMinLevelChange ? 1 : 0);
                     updateCmd.Parameters.AddWithValue("@Faction", (object?)qDiff.NewFaction ?? DBNull.Value);
@@ -390,7 +413,10 @@ namespace TarkovHelper.Services.DataAudit
                     updateCmd.Parameters.AddWithValue("@ExcludedEdition", (object?)qDiff.NewExcludedEdition ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@RequiredPrestigeLevel", (object?)qDiff.NewRequiredPrestigeLevel ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@RequiredDecodeCount", (object?)qDiff.NewRequiredDecodeCount ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("@WikiPageLink", (object?)qDiff.RemoteQuest?.WikiPageLink ?? DBNull.Value);
+                    var safeUpdateWiki = (qDiff.RemoteQuest?.WikiPageLink != null && !qDiff.RemoteQuest.WikiPageLink.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
+                        ? (object)qDiff.RemoteQuest.WikiPageLink
+                        : DBNull.Value;
+                    updateCmd.Parameters.AddWithValue("@WikiPageLink", safeUpdateWiki);
                     updateCmd.Parameters.AddWithValue("@UpdatedAt", DateTime.UtcNow.ToString("o"));
                     await updateCmd.ExecuteNonQueryAsync(ct);
 
@@ -856,7 +882,7 @@ namespace TarkovHelper.Services.DataAudit
             if (!await TableExistsAsync(connection, transaction, "QuestTraderRequirements", ct))
                 return;
 
-            var validQuestCheckCmd = new SqliteCommand("SELECT COUNT(*) FROM Quests WHERE Id = @id;", connection, transaction);
+            await using var validQuestCheckCmd = new SqliteCommand("SELECT COUNT(*) FROM Quests WHERE Id = @id;", connection, transaction);
             validQuestCheckCmd.Parameters.Add("@id", SqliteType.Text);
 
             foreach (var trDiff in diff.QuestTraderRequirementDiffs)
@@ -950,7 +976,7 @@ namespace TarkovHelper.Services.DataAudit
             if (!await TableExistsAsync(connection, transaction, "QuestPoolRequirements", ct))
                 return;
 
-            var validQuestCheckCmd = new SqliteCommand("SELECT COUNT(*) FROM Quests WHERE Id = @id;", connection, transaction);
+            await using var validQuestCheckCmd = new SqliteCommand("SELECT COUNT(*) FROM Quests WHERE Id = @id;", connection, transaction);
             validQuestCheckCmd.Parameters.Add("@id", SqliteType.Text);
 
             foreach (var poolDiff in diff.QuestPoolRequirementDiffs)
@@ -1297,144 +1323,122 @@ namespace TarkovHelper.Services.DataAudit
             // 1. Clear pools to release locks
             SqliteConnection.ClearAllPools();
 
-            // 2. Notify DatabaseUpdateService
+            // 2. Refresh DB-backed caches first, suppressing duplicate async-void reloads from DatabaseUpdated
+            var updateSvc = DatabaseUpdateService.Instance;
+            updateSvc?.BeginInternalHotReload();
             try
-            {
-                DatabaseUpdateService.Instance?.NotifyDatabaseUpdated();
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"Error notifying DatabaseUpdateService: {ex.Message}");
-            }
-
-            // 3. Refresh DB-backed caches
-            try
-            {
-                if (QuestDbService.Instance != null)
-                {
-                    await QuestDbService.Instance.RefreshAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"Error refreshing QuestDbService: {ex.Message}");
-            }
-
-            try
-            {
-                if (HideoutDbService.Instance != null)
-                {
-                    await HideoutDbService.Instance.RefreshAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"Error refreshing HideoutDbService: {ex.Message}");
-            }
-
-            try
-            {
-                if (ItemDbService.Instance != null)
-                {
-                    await ItemDbService.Instance.RefreshAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"Error refreshing ItemDbService: {ex.Message}");
-            }
-
-            try
-            {
-                if (QuestObjectiveDbService.Instance != null)
-                {
-                    await QuestObjectiveDbService.Instance.RefreshAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"Error refreshing QuestObjectiveDbService: {ex.Message}");
-            }
-
-            try
-            {
-                if (TraderDbService.Instance != null)
-                {
-                    await TraderDbService.Instance.RefreshAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"Error refreshing TraderDbService: {ex.Message}");
-            }
-
-            try
-            {
-                if (MapMarkerDbService.Instance != null)
-                {
-                    await MapMarkerDbService.Instance.RefreshAsync();
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"Error refreshing MapMarkerDbService: {ex.Message}");
-            }
-
-            // 4. Critical Gap Fix: Re-initialize QuestProgressService, QuestGraphService, and HideoutProgressService
-            try
-            {
-                if (QuestProgressService.Instance != null)
-                {
-                    await QuestProgressService.Instance.InitializeFromDbAsync();
-                    var tasks = QuestProgressService.Instance.AllTasks.ToList();
-                    QuestGraphService.Instance?.Initialize(tasks);
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"Error reinitializing QuestProgressService / QuestGraphService: {ex.Message}");
-            }
-
-            try
-            {
-                if (HideoutProgressService.Instance != null && HideoutDbService.Instance != null)
-                {
-                    var stations = HideoutDbService.Instance.AllStations.ToList();
-                    HideoutProgressService.Instance.Initialize(stations);
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.Warning($"Error reinitializing HideoutProgressService: {ex.Message}");
-            }
-
-            // 5. Trigger UI updates on the main thread if active
-            if (System.Windows.Application.Current?.Dispatcher != null)
             {
                 try
                 {
-                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(async () =>
-                    {
-                        var mainWindow = System.Windows.Application.Current.MainWindow;
-                        if (mainWindow != null)
-                        {
-                            var method = mainWindow.GetType().GetMethod(
-                                "ReloadActivePagesAfterUpdateAsync",
-                                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-                            if (method != null)
-                            {
-                                if (method.Invoke(mainWindow, null) is Task task)
-                                {
-                                    await task;
-                                }
-                            }
-                        }
-                    });
+                    if (QuestDbService.Instance != null)
+                        await QuestDbService.Instance.RefreshAsync();
                 }
                 catch (Exception ex)
                 {
-                    _log.Warning($"Error dispatching UI refresh to MainWindow: {ex.Message}");
+                    _log.Warning($"Error refreshing QuestDbService: {ex.Message}");
                 }
+
+                try
+                {
+                    if (HideoutDbService.Instance != null)
+                        await HideoutDbService.Instance.RefreshAsync();
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"Error refreshing HideoutDbService: {ex.Message}");
+                }
+
+                try
+                {
+                    if (ItemDbService.Instance != null)
+                        await ItemDbService.Instance.RefreshAsync();
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"Error refreshing ItemDbService: {ex.Message}");
+                }
+
+                try
+                {
+                    if (QuestObjectiveDbService.Instance != null)
+                        await QuestObjectiveDbService.Instance.RefreshAsync();
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"Error refreshing QuestObjectiveDbService: {ex.Message}");
+                }
+
+                try
+                {
+                    if (TraderDbService.Instance != null)
+                        await TraderDbService.Instance.RefreshAsync();
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"Error refreshing TraderDbService: {ex.Message}");
+                }
+
+                try
+                {
+                    if (MapMarkerDbService.Instance != null)
+                        await MapMarkerDbService.Instance.RefreshAsync();
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"Error refreshing MapMarkerDbService: {ex.Message}");
+                }
+
+                try
+                {
+                    if (FloorDetectionService.Instance != null)
+                        await FloorDetectionService.Instance.RefreshAsync();
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"Error refreshing FloorDetectionService: {ex.Message}");
+                }
+
+                // 3. Re-initialize QuestProgressService, QuestGraphService, and HideoutProgressService
+                try
+                {
+                    if (QuestProgressService.Instance != null)
+                    {
+                        await QuestProgressService.Instance.InitializeFromDbAsync();
+                        var tasks = QuestProgressService.Instance.AllTasks.ToList();
+                        QuestGraphService.Instance?.Initialize(tasks);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"Error reinitializing QuestProgressService / QuestGraphService: {ex.Message}");
+                }
+
+                try
+                {
+                    if (HideoutProgressService.Instance != null && HideoutDbService.Instance != null)
+                    {
+                        var stations = HideoutDbService.Instance.AllStations.ToList();
+                        HideoutProgressService.Instance.Initialize(stations);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"Error reinitializing HideoutProgressService: {ex.Message}");
+                }
+
+                // 4. Notify external/test/UI subscribers cleanly after caches are updated
+                try
+                {
+                    updateSvc?.NotifyDatabaseUpdated();
+                }
+                catch (Exception ex)
+                {
+                    _log.Warning($"Error notifying DatabaseUpdateService: {ex.Message}");
+                }
+            }
+            finally
+            {
+                updateSvc?.EndInternalHotReload();
             }
 
             _log.Info("Comprehensive hot-reload orchestration completed.");

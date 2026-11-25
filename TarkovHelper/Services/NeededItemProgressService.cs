@@ -31,11 +31,39 @@ namespace TarkovHelper.Services
     {
         private static readonly ILogger _log = Log.For<NeededItemProgressService>();
         private static NeededItemProgressService? _instance;
-        public static NeededItemProgressService Instance => _instance ??= new NeededItemProgressService();
+        private static readonly object _instanceLock = new();
+
+        public static NeededItemProgressService Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    lock (_instanceLock)
+                    {
+                        _instance ??= new NeededItemProgressService();
+                    }
+                }
+                return _instance;
+            }
+        }
 
         public static void ResetInstance()
         {
-            _instance = null;
+            NeededItemProgressService? old;
+            lock (_instanceLock)
+            {
+                old = _instance;
+                _instance = null;
+            }
+            if (old != null)
+            {
+                old.FlushPendingSaves();
+                old._profileService.ProfileChanged -= old.OnProfileChanged;
+                old._saveTimer?.Stop();
+                old._saveTimer?.Dispose();
+                old._saveLock.Dispose();
+            }
         }
 
         private readonly UserDataDbService _userDataDb;

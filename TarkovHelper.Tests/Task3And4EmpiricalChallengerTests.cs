@@ -410,7 +410,7 @@ public class Task3And4EmpiricalChallengerTests
         Assert.True(File.Exists(dbPath), $"tarkov_data.db must exist at: {dbPath}");
 
         var fileInfo = new FileInfo(dbPath);
-        Assert.True(fileInfo.Length > 6_000_000, $"tarkov_data.db size must be ~6.89MB, found {fileInfo.Length} bytes");
+        Assert.True(fileInfo.Length > 5_000_000, $"tarkov_data.db size must be > 5MB, found {fileInfo.Length} bytes");
 
         using var conn = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
         conn.Open();

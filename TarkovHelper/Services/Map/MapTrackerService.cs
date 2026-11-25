@@ -1,6 +1,8 @@
 using System.IO;
 using System.Text.Json;
+using TarkovHelper.Models;
 using TarkovHelper.Models.Map;
+using TarkovHelper.Services;
 
 namespace TarkovHelper.Services.Map;
 
@@ -12,6 +14,7 @@ public sealed class MapTrackerService : IDisposable
 {
     private static readonly Lazy<MapTrackerService> _lazyInstance =
         new(() => new MapTrackerService(), LazyThreadSafetyMode.ExecutionAndPublication);
+    public static bool IsInitialized => _lazyInstance.IsValueCreated;
     public static MapTrackerService Instance => _lazyInstance.Value;
 
     private readonly ScreenshotCoordinateParser _parser;
@@ -161,12 +164,35 @@ public sealed class MapTrackerService : IDisposable
 
         // EFT 게임 로그 맵 감지 이벤트 연결
         LogMapWatcherService.Instance.MapChanged += OnExternalLogMapChanged;
+        EftRaidEventService.Instance.RaidEvent += OnExternalRaidEvent;
     }
 
     private void OnExternalLogMapChanged(object? sender, MapChangedEventArgs e)
     {
         if (!_isDisposed && !string.IsNullOrEmpty(e.NewMapKey))
             SetCurrentMap(e.NewMapKey, force: false);
+    }
+
+    private void OnExternalRaidEvent(object? sender, EftRaidEventArgs e)
+    {
+        if (_isDisposed) return;
+
+        if (e.EventType == EftRaidEventType.RaidEnded)
+        {
+            LogMapWatcherService.Instance.ResetLastDetectedMap();
+            return;
+        }
+
+        if ((e.EventType == EftRaidEventType.RaidStarted || e.EventType == EftRaidEventType.MapLoadingStarted) &&
+            !string.IsNullOrEmpty(e.RaidInfo?.MapKey))
+        {
+            if (e.EventType == EftRaidEventType.RaidStarted)
+            {
+                ClearTrail();
+            }
+
+            SetCurrentMap(e.RaidInfo.MapKey, force: false);
+        }
     }
 
     /// <summary>
@@ -645,6 +671,7 @@ public sealed class MapTrackerService : IDisposable
         _isDisposed = true;
 
         LogMapWatcherService.Instance.MapChanged -= OnExternalLogMapChanged;
+        EftRaidEventService.Instance.RaidEvent -= OnExternalRaidEvent;
         _watcher.PositionDetected -= OnPositionDetected;
         _watcher.ParsingFailed -= OnParsingFailed;
         _watcher.StateChanged -= OnWatcherStateChanged;

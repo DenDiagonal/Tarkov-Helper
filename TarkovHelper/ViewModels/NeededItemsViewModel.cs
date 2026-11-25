@@ -47,13 +47,24 @@ namespace TarkovHelper.ViewModels
         public void AddRange(IEnumerable<T> items)
         {
             if (items == null) return;
-            var list = items.ToList();
+            var list = items as IList<T> ?? items.ToList();
             if (list.Count == 0) return;
 
-            foreach (var item in list)
+            _suppressNotification = true;
+            try
             {
-                Add(item);
+                foreach (var item in list)
+                {
+                    Items.Add(item);
+                }
             }
+            finally
+            {
+                _suppressNotification = false;
+            }
+            OnPropertyChanged(new PropertyChangedEventArgs("Count"));
+            OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
+            OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
         }
 
         protected override void OnCollectionChanged(NotifyCollectionChangedEventArgs e)
@@ -868,9 +879,21 @@ namespace TarkovHelper.ViewModels
             }
 
             var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher != null && !dispatcher.HasShutdownStarted && dispatcher.Thread.IsAlive && !dispatcher.CheckAccess())
+            if (dispatcher != null &&
+                MainWindow.Instance != null &&
+                !dispatcher.HasShutdownStarted &&
+                !dispatcher.HasShutdownFinished &&
+                dispatcher.Thread.IsAlive &&
+                !dispatcher.CheckAccess())
             {
-                dispatcher.Invoke(UpdateCollections);
+                try
+                {
+                    dispatcher.Invoke(UpdateCollections);
+                }
+                catch (OperationCanceledException)
+                {
+                    UpdateCollections();
+                }
             }
             else
             {
@@ -883,9 +906,9 @@ namespace TarkovHelper.ViewModels
         private void StreamRemainingCards(List<NeededItemCardViewModel> allItems, int startIndex, CancellationToken ct)
         {
             var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher == null || dispatcher.HasShutdownStarted)
+            if (dispatcher == null || dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished || !dispatcher.Thread.IsAlive)
             {
-                var rest = allItems.Skip(startIndex).ToList();
+                var rest = allItems.Skip(_displayedCount).ToList();
                 if (rest.Count > 0 && !ct.IsCancellationRequested)
                 {
                     _displayedCount += rest.Count;
@@ -894,26 +917,24 @@ namespace TarkovHelper.ViewModels
                 return;
             }
 
-            int currentIndex = startIndex;
             const int chunkSize = 40;
 
             void PostNextChunk()
             {
-                if (ct.IsCancellationRequested || currentIndex >= allItems.Count) return;
+                if (ct.IsCancellationRequested || _displayedCount >= allItems.Count) return;
 
                 dispatcher.BeginInvoke(new Action(() =>
                 {
-                    if (ct.IsCancellationRequested || currentIndex >= allItems.Count) return;
+                    if (ct.IsCancellationRequested || _displayedCount >= allItems.Count) return;
 
-                    var chunk = allItems.Skip(currentIndex).Take(chunkSize).ToList();
+                    var chunk = allItems.Skip(_displayedCount).Take(chunkSize).ToList();
                     if (chunk.Count > 0)
                     {
                         _displayedCount += chunk.Count;
                         DisplayedCards.AddRange(chunk);
-                        currentIndex += chunk.Count;
                     }
 
-                    if (currentIndex < allItems.Count && !ct.IsCancellationRequested)
+                    if (_displayedCount < allItems.Count && !ct.IsCancellationRequested)
                     {
                         PostNextChunk();
                     }
@@ -926,6 +947,7 @@ namespace TarkovHelper.ViewModels
         public void LoadMoreDisplayedCards()
         {
             if (_displayedCount >= FilteredCards.Count) return;
+            _streamingCts?.Cancel();
             var nextBatch = FilteredCards.Skip(_displayedCount).Take(ScrollBatchSize).ToList();
             if (nextBatch.Count > 0)
             {
@@ -984,9 +1006,21 @@ namespace TarkovHelper.ViewModels
         private static void RunOnUI(Action action)
         {
             var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher != null && !dispatcher.HasShutdownStarted && dispatcher.Thread.IsAlive && !dispatcher.CheckAccess())
+            if (dispatcher != null &&
+                MainWindow.Instance != null &&
+                !dispatcher.HasShutdownStarted &&
+                !dispatcher.HasShutdownFinished &&
+                dispatcher.Thread.IsAlive &&
+                !dispatcher.CheckAccess())
             {
-                dispatcher.Invoke(action);
+                try
+                {
+                    dispatcher.Invoke(action);
+                }
+                catch (OperationCanceledException)
+                {
+                    action();
+                }
             }
             else
             {

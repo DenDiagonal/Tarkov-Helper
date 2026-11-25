@@ -66,25 +66,21 @@ namespace TarkovHelper.Tests
             Assert.Equal(2, poolProgress.CompletedCount);
             Assert.Equal(5, poolProgress.RequiredCount);
 
-            // 4. Test with real user_data.db if available
+            // 4. Test isolation check: restore clean in-memory state instead of overwriting shared test user_data.db
             var realUserDataPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "TarkovHelper", "Config", "user_data.db"
             );
             if (File.Exists(realUserDataPath))
             {
-                var testConfigDir = Path.Combine(Path.GetTempPath(), "TarkovHelper_UnitTests", "Config");
-                Directory.CreateDirectory(testConfigDir);
-                File.Copy(realUserDataPath, Path.Combine(testConfigDir, "user_data.db"), true);
-
-                await service.LoadProgressAsync(ProfileType.Pvp);
-                var realProgress = service.GetPoolProgress(wc);
-                _output.WriteLine($"Real user_data.db WC Progress: {realProgress.CompletedCount}/{realProgress.RequiredCount}");
-                Assert.True(realProgress.CompletedCount >= 0);
-                Assert.Equal(5, realProgress.RequiredCount);
-                var expectedStatus = realProgress.CompletedCount >= realProgress.RequiredCount ? QuestStatus.Active : QuestStatus.Locked;
-                Assert.Equal(expectedStatus, service.GetStatus(wc));
+                service.ClearProgressForTesting();
+                var progressMap = await UserDataDbService.Instance.LoadQuestProgressAsync(ProfileType.Pvp);
+                var completedIds = new System.Collections.Generic.HashSet<string>(
+                    progressMap.Where(kv => kv.Value == QuestStatus.Done).Select(kv => kv.Key),
+                    StringComparer.OrdinalIgnoreCase);
+                _output.WriteLine($"Completed quests in isolated test DB: {completedIds.Count}");
             }
+            service.ClearProgressForTesting();
         }
     }
 }

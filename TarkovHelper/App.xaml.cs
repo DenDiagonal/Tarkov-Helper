@@ -104,14 +104,17 @@ namespace TarkovHelper
                 GlobalKeyboardHookService.Instance.Dispose();
             }, nameof(GlobalKeyboardHookService));
 
-            // 2. Volcado determinista y bloqueante con timeout acotado (2s) de todas las escrituras pendientes a SQLite
+            // 2. Volcado determinista y bloqueante con timeout acotado (3s) de todas las escrituras pendientes a SQLite
             TryDispose(() =>
             {
                 Task.Run(async () =>
                 {
+                    await ProfileService.Instance.FlushPendingSaveAsync().ConfigureAwait(false);
                     await NeededItemProgressService.Instance.FlushPendingSavesAsync().ConfigureAwait(false);
                     await ObjectiveProgressService.Instance.FlushPendingSavesAsync().ConfigureAwait(false);
-                }).Wait(TimeSpan.FromSeconds(2));
+                    await ItemInventoryService.Instance.FlushPendingSavesAsync().ConfigureAwait(false);
+                    await HideoutProgressService.Instance.FlushPendingSavesAsync().ConfigureAwait(false);
+                }).Wait(TimeSpan.FromSeconds(3));
 
                 // Checkpoint limpio del WAL antes de cerrar el pool de conexiones
                 Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();

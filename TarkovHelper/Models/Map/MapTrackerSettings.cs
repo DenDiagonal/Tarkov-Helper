@@ -55,6 +55,7 @@ public sealed class MapTrackerSettings
     /// <summary>
     /// 맵 설정 목록 (map_configs.json에서 로드됨)
     /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
     public List<MapConfig> Maps { get; set; } = new();
 
     /// <summary>

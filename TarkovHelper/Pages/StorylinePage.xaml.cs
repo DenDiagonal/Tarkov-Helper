@@ -323,7 +323,7 @@ namespace TarkovHelper.Pages
             set { }
         }
 
-        public string GlobalChaptersSummary => $"{CompletedChaptersCount}/{TotalChaptersCount} Capítulos";
+        public string GlobalChaptersSummary => $"{CompletedChaptersCount}/{TotalChaptersCount} Chapters";
         public string GlobalObjectivesSummary => $"{CompletedObjectivesCount}/{TotalObjectivesCount} Objectives ({GlobalProgressPercent:0}%)";
 
         public StorylinePage()
@@ -336,7 +336,9 @@ namespace TarkovHelper.Pages
 
         private void OnPageLoaded(object sender, RoutedEventArgs e)
         {
+            ObjectiveProgressService.Instance.ObjectiveProgressChanged -= OnObjectiveProgressChanged;
             ObjectiveProgressService.Instance.ObjectiveProgressChanged += OnObjectiveProgressChanged;
+            QuestProgressService.Instance.ProgressChanged -= OnQuestProgressChanged;
             QuestProgressService.Instance.ProgressChanged += OnQuestProgressChanged;
             LoadChapters();
         }

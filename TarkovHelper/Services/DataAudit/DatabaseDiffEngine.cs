@@ -416,7 +416,7 @@ namespace TarkovHelper.Services.DataAudit
                         }
 
                         // Trader
-                        if (!StringsEqual(lq.Trader, rq.Trader) && !string.IsNullOrEmpty(rq.Trader))
+                        if (!StringsEqual(lq.Trader, rq.Trader) && !string.IsNullOrEmpty(rq.Trader) && !rq.Trader.StartsWith("@tt:", StringComparison.OrdinalIgnoreCase))
                         {
                             diff.PropertyChanges.Add(new PropertyDiff("Trader", lq.Trader, rq.Trader));
                             isModified = true;
@@ -1400,7 +1400,7 @@ namespace TarkovHelper.Services.DataAudit
                     Trader = reader.IsDBNull(7) ? null : reader.GetString(7),
                     Location = reader.IsDBNull(8) ? null : reader.GetString(8),
                     MinLevel = reader.IsDBNull(9) ? null : reader.GetInt32(9),
-                    MinScavKarma = reader.IsDBNull(10) ? null : reader.GetInt32(10),
+                    MinScavKarma = reader.IsDBNull(10) ? null : (int)Math.Round(reader.GetDouble(10)),
                     KappaRequired = !reader.IsDBNull(11) && reader.GetInt32(11) != 0,
                     Faction = reader.IsDBNull(12) ? null : reader.GetString(12),
                     RequiredEdition = reader.IsDBNull(13) ? null : reader.GetString(13),

@@ -124,6 +124,20 @@ namespace TarkovHelper.Pages
         private bool _hasRequiredItems;
         private bool _isManualOverride;
         private string? _poolProgressText;
+        private bool _isCardExpanded = true;
+
+        public bool IsCardExpanded
+        {
+            get => _isCardExpanded;
+            set
+            {
+                if (_isCardExpanded != value)
+                {
+                    _isCardExpanded = value;
+                    OnPropertyChanged(nameof(IsCardExpanded));
+                }
+            }
+        }
 
         public TarkovTask Task { get; set; } = null!;
 
@@ -613,11 +627,14 @@ namespace TarkovHelper.Pages
     /// </summary>
     public class PrerequisiteGroupViewModel
     {
+        private static readonly Brush OrGroupBrush = CreateFrozenBrush(Color.FromArgb(30, 33, 150, 243));
+        private static Brush CreateFrozenBrush(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
+
         public int GroupId { get; set; }
         public bool IsOrGroup => GroupId > 0;
         public string GroupLabel => IsOrGroup ? "Choice" : "";
         public Visibility OrLabelVisibility => IsOrGroup ? Visibility.Visible : Visibility.Collapsed;
-        public Brush OrGroupBackground => IsOrGroup ? new SolidColorBrush(Color.FromArgb(30, 33, 150, 243)) : Brushes.Transparent;
+        public Brush OrGroupBackground => IsOrGroup ? OrGroupBrush : Brushes.Transparent;
         public List<PrerequisiteItemViewModel> Items { get; set; } = new();
     }
 
@@ -641,13 +658,19 @@ namespace TarkovHelper.Pages
     /// </summary>
     public class PoolTaskItemViewModel
     {
+        private static readonly Brush DoneStatusBrush = CreateFrozenBrush(Color.FromRgb(76, 175, 80));
+        private static readonly Brush PendingStatusBrush = CreateFrozenBrush(Color.FromRgb(158, 158, 158));
+        private static readonly Brush DoneTextBrush = CreateFrozenBrush(Color.FromRgb(200, 230, 201));
+        private static readonly Brush PendingTextBrush = CreateFrozenBrush(Color.FromRgb(220, 220, 220));
+        private static Brush CreateFrozenBrush(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
+
         public TarkovTask? Task { get; set; }
         public string TaskId { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
         public bool IsDone { get; set; }
         public string StatusIcon => IsDone ? "✓" : "○";
-        public Brush StatusBrush => IsDone ? new SolidColorBrush(Color.FromRgb(76, 175, 80)) : new SolidColorBrush(Color.FromRgb(158, 158, 158));
-        public Brush TextBrush => IsDone ? new SolidColorBrush(Color.FromRgb(200, 230, 201)) : new SolidColorBrush(Color.FromRgb(220, 220, 220));
+        public Brush StatusBrush => IsDone ? DoneStatusBrush : PendingStatusBrush;
+        public Brush TextBrush => IsDone ? DoneTextBrush : PendingTextBrush;
         public TextDecorationCollection? TextDecorations => IsDone ? System.Windows.TextDecorations.Strikethrough : null;
     }
 

@@ -377,9 +377,6 @@ public partial class MainWindow : Window
                 OverlayMiniMapService.Instance.OverlayVisibilityChanged -= OnOverlayVisibilityChanged;
                 OverlayMiniMapService.Instance.OverlayVisibilityChanged += OnOverlayVisibilityChanged;
                 OnOverlayVisibilityChanged(OverlayMiniMapService.Instance.IsOverlayVisible);
-
-                // Iniciar monitorización global de capturas de pantalla
-                TarkovHelper.Services.Map.MapTrackerService.Instance.StartTracking();
             }
             catch (Exception ex)
             {
@@ -751,19 +748,20 @@ public partial class MainWindow : Window
 
     {
 
+#if DEBUG
         try
 
         {
 
-            var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "font_debug.log");
+            var logPath = Path.Combine(AppEnv.LogsPath, "font_debug.log");
 
             File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss}] {message}\n");
-
-            _log.Debug($"FontDebug: {message}");
 
         }
 
         catch { }
+#endif
+        _log.Debug($"FontDebug: {message}");
 
     }
 
@@ -1051,6 +1049,9 @@ public partial class MainWindow : Window
 
 
 
+        // Inicializar primero MapTrackerService para que esté suscrito al evento MapChanged del escaneo inicial
+        TarkovHelper.Services.Map.MapTrackerService.Instance.StartTracking();
+
         if (!string.IsNullOrEmpty(logPath) && Directory.Exists(logPath))
 
         {
@@ -1067,9 +1068,6 @@ public partial class MainWindow : Window
             EftRaidEventService.Instance.StartMonitoring(logPath);
 
         }
-
-        // Iniciar rastreo de capturas de pantalla para minimapa y mapa
-        TarkovHelper.Services.Map.MapTrackerService.Instance.StartTracking();
 
 
 
@@ -1111,12 +1109,7 @@ public partial class MainWindow : Window
 
         LoadingOverlay.Visibility = Visibility.Visible;
 
-
-
-        var blurAnimation = new DoubleAnimation(0, 4, TimeSpan.FromMilliseconds(50));
-
-        BlurEffect.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurAnimation);
-
+        AnimateMainContentBlur(0, 4);
     }
 
 
@@ -1130,19 +1123,32 @@ public partial class MainWindow : Window
     public void HideLoadingOverlay()
 
     {
-
-        var blurAnimation = new DoubleAnimation(4, 0, TimeSpan.FromMilliseconds(50));
-
-        blurAnimation.Completed += (s, e) =>
-
+        AnimateMainContentBlur(4, 0, () =>
         {
-
             LoadingOverlay.Visibility = Visibility.Collapsed;
+        });
+    }
 
+    private System.Windows.Media.Effects.BlurEffect? _modalBlurEffect;
+
+    private void AnimateMainContentBlur(double from, double to, Action? onCompleted = null)
+    {
+        _modalBlurEffect ??= new System.Windows.Media.Effects.BlurEffect { Radius = from };
+        if (MainContent.Effect == null)
+        {
+            MainContent.Effect = _modalBlurEffect;
+        }
+
+        var blurAnimation = new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(50));
+        blurAnimation.Completed += (_, _) =>
+        {
+            if (to <= 0.01)
+            {
+                MainContent.Effect = null;
+            }
+            onCompleted?.Invoke();
         };
-
-        BlurEffect.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurAnimation);
-
+        _modalBlurEffect.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurAnimation);
     }
 
 
@@ -1500,15 +1506,9 @@ public partial class MainWindow : Window
         }
 
         else if (needsMigration)
-
         {
-
             // 마이그레이션이 필요했지만 결과가 없는 경우 Blur 해제
-
-            var blurAnimation = new DoubleAnimation(4, 0, TimeSpan.FromMilliseconds(50));
-
-            BlurEffect.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurAnimation);
-
+            AnimateMainContentBlur(4, 0);
         }
 
     }
@@ -1540,64 +1540,49 @@ public partial class MainWindow : Window
         
 
         if (ProfileService.Instance.CurrentProfile != newProfile)
-
         {
-
-            ProfileService.Instance.CurrentProfile = newProfile;
-
-            await RefreshCurrentProfileDataAsync();
-
+            await RefreshCurrentProfileDataAsync(newProfile);
         }
-
     }
 
-
-
     /// <summary>
-
-    /// 현재 프로필 데이터를 기반으로 모든 서비스 및 UI 새로고침
-
+    /// 현재 프로필 데이터를 기반으로 모든 서비스 및 UI 새로고침 (출고 전 flush -> 프로필 전환 -> 인플레이스 재로드)
     /// </summary>
-
-    private async Task RefreshCurrentProfileDataAsync()
-
+    private async Task RefreshCurrentProfileDataAsync(ProfileType? targetProfile = null)
     {
-
         if (!await _profileSwitchGate.WaitAsync(0))
             return; // Evita ejecuciones concurrentes al alternar perfiles rápidamente
 
-        ShowLoadingOverlay($"Loading {ProfileService.Instance.CurrentProfile.ToString().ToUpper()} data...");
+        var nextProfile = targetProfile ?? ProfileService.Instance.CurrentProfile;
+        ShowLoadingOverlay($"Loading {nextProfile.ToString().ToUpper()} data...");
 
         try
-
         {
-
             await UserDataDbService.Instance.EnsureDatabaseSchemaAsync();
+
+            // 1. Flush preventivo y determinista del perfil saliente ANTES de cambiar CurrentProfile
+            await NeededItemProgressService.Instance.FlushPendingSavesAsync();
+            await ItemInventoryService.Instance.FlushPendingSavesAsync();
+            await HideoutProgressService.Instance.FlushPendingSavesAsync();
+            await ObjectiveProgressService.Instance.FlushPendingSavesAsync();
+
+            // 2. Aplicar cambio de perfil atómicamente y persistir preferencia
+            if (ProfileService.Instance.CurrentProfile != nextProfile)
+            {
+                ProfileService.Instance.CurrentProfile = nextProfile;
+                await ProfileService.Instance.FlushPendingSaveAsync();
+            }
 
             var currentProfile = ProfileService.Instance.CurrentProfile;
 
-            // 1. Flush preventivo del perfil saliente ANTES de destruir singletons
-            NeededItemProgressService.Instance.FlushPendingSaves();
-            ObjectiveProgressService.Instance.SaveObjectiveProgress();
-
-            // 2. 서비스들을 물리적으로 리셋
-
-            QuestProgressService.ResetInstance();
-
-            ItemInventoryService.ResetInstance();
-
-            HideoutProgressService.ResetInstance();
-
-            // 3. 백엔드 서비스 리셋 및 데이터 다시 로드
+            // 3. 백엔드 서비스 설정 및 데이터 재로드 (싱글톤 파괴 대신 in-place 리로드로 구독 유지)
             _settingsService.ReloadSettings();
 
-            // Carga determinista con backoff exponencial real (máximo 3 intentos)
             for (int attempt = 1; attempt <= 3; attempt++)
             {
                 await QuestProgressService.Instance.InitializeFromDbAsync(currentProfile);
                 await HideoutDbService.Instance.LoadStationsAsync();
                 await HideoutProgressService.Instance.InitializeAsync(HideoutDbService.Instance.AllStations.ToList());
-                await HideoutProgressService.Instance.ReloadProgressAsync();
 
                 if (QuestProgressService.Instance.AllTasks.Count > 0 &&
                     HideoutProgressService.Instance.AllModules.Count > 0)
@@ -1613,6 +1598,10 @@ public partial class MainWindow : Window
                 ItemInventoryService.Instance.InitializeAsync(),
                 NeededItemProgressService.Instance.LoadProgressAsync(currentProfile),
                 ObjectiveProgressService.Instance.LoadObjectiveProgressAsync(currentProfile));
+
+            QuestProgressService.Instance.NotifyProgressChanged();
+            IntegratedItemService.Instance.Refresh();
+            TaskImpactEngine.Instance.InvalidateCache();
 
             // Re-vincular overlay minimapa al nuevo perfil
             OverlayMiniMapService.Instance.OnProfileSwitched();
@@ -2512,12 +2501,7 @@ public partial class MainWindow : Window
 
         SettingsOverlay.Visibility = Visibility.Visible;
 
-
-
-        var blurAnimation = new DoubleAnimation(0, 4, TimeSpan.FromMilliseconds(50));
-
-        BlurEffect.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurAnimation);
-
+        AnimateMainContentBlur(0, 4);
     }
 
 
@@ -2531,19 +2515,10 @@ public partial class MainWindow : Window
     private void HideSettingsOverlay()
 
     {
-
-        var blurAnimation = new DoubleAnimation(4, 0, TimeSpan.FromMilliseconds(50));
-
-        blurAnimation.Completed += (s, e) =>
-
+        AnimateMainContentBlur(4, 0, () =>
         {
-
             SettingsOverlay.Visibility = Visibility.Collapsed;
-
-        };
-
-        BlurEffect.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurAnimation);
-
+        });
     }
 
 
@@ -4837,6 +4812,22 @@ public partial class MainWindow : Window
     {
 
         if (Instance == this) Instance = null;
+
+        try
+        {
+            OverlayMiniMapService.Instance.OverlayVisibilityChanged -= OnOverlayVisibilityChanged;
+        }
+        catch { }
+
+        if (_fontWatcher != null)
+        {
+            _fontWatcher.EnableRaisingEvents = false;
+            _fontWatcher.Dispose();
+            _fontWatcher = null;
+        }
+
+        _fontRefreshTimer?.Dispose();
+        _fontRefreshTimer = null;
 
         if (_notifyIcon != null)
 

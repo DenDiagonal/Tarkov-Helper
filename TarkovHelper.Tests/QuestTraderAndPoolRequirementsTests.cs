@@ -948,8 +948,10 @@ namespace TarkovHelper.Tests
             Assert.NotNull(task);
             Assert.Equal("Humanitarian Supplies", task.Name);
             Assert.NotNull(task.Objectives);
-            Assert.Contains(task.Objectives, o => o.Contains("Scavs", StringComparison.OrdinalIgnoreCase) || o.Contains("uniform", StringComparison.OrdinalIgnoreCase));
+            // Current live BSG/Tarkov data defines Humanitarian Supplies with the 2 UN truck Locate+Mark pairs, MRE collect, and HandOver
+            Assert.Contains(task.Objectives, o => o.Contains("first UN truck", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(task.Objectives, o => o.Contains("first truck", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(task.Objectives, o => o.Contains("second UN truck", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(task.Objectives, o => o.Contains("second truck", StringComparison.OrdinalIgnoreCase));
             Assert.Contains(task.Objectives, o => o.Contains("MRE", StringComparison.OrdinalIgnoreCase));
         }

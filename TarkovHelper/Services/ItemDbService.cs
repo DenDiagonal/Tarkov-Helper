@@ -12,17 +12,19 @@ namespace TarkovHelper.Services;
 public sealed class ItemDbService
 {
     private static readonly ILogger _log = Log.For<ItemDbService>();
-    private static ItemDbService? _instance;
-    public static ItemDbService Instance => _instance ??= new ItemDbService();
+    private static readonly Lazy<ItemDbService> _lazyInstance =
+        new(() => new ItemDbService(), LazyThreadSafetyMode.ExecutionAndPublication);
+    public static ItemDbService Instance => _lazyInstance.Value;
 
     private readonly string _databasePath;
+    private readonly SemaphoreSlim _reloadLock = new(1, 1);
     private List<TarkovItem> _allItems = new();
     private Dictionary<string, TarkovItem> _itemsById = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, TarkovItem> _itemsByNormalizedName = new(StringComparer.OrdinalIgnoreCase);
     private bool _isLoaded;
 
-    public bool IsLoaded => _isLoaded;
-    public int ItemCount => _allItems.Count;
+    public bool IsLoaded => Volatile.Read(ref _isLoaded);
+    public int ItemCount => Volatile.Read(ref _allItems).Count;
 
     /// <summary>
     /// 데이터가 새로고침되었을 때 발생하는 이벤트.
@@ -43,8 +45,18 @@ public sealed class ItemDbService
     /// </summary>
     private async void OnDatabaseUpdated(object? sender, EventArgs e)
     {
-        _log.Info("Database updated, reloading data...");
-        await RefreshAsync();
+        if (DatabaseUpdateService.Instance.IsInternalHotReloadInProgress)
+            return;
+
+        try
+        {
+            _log.Info("Database updated, reloading data...");
+            await RefreshAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Error reloading item data after DB update: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -55,40 +67,30 @@ public sealed class ItemDbService
     /// <summary>
     /// 모든 아이템 반환
     /// </summary>
-    public IReadOnlyList<TarkovItem> AllItems => _allItems;
+    public IReadOnlyList<TarkovItem> AllItems => Volatile.Read(ref _allItems);
 
-    /// <summary>
-    /// ID로 아이템 조회
-    /// </summary>
     public TarkovItem? GetItemById(string id)
     {
-        return _itemsById.TryGetValue(id, out var item) ? item : null;
+        return Volatile.Read(ref _itemsById).TryGetValue(id, out var item) ? item : null;
     }
 
-    /// <summary>
-    /// NormalizedName으로 아이템 조회
-    /// </summary>
     public TarkovItem? GetItemByNormalizedName(string normalizedName)
     {
-        return _itemsByNormalizedName.TryGetValue(normalizedName, out var item) ? item : null;
+        return Volatile.Read(ref _itemsByNormalizedName).TryGetValue(normalizedName, out var item) ? item : null;
     }
 
-    /// <summary>
-    /// 아이템 Lookup Dictionary 반환 (ID와 NormalizedName 모두 키로 사용)
-    /// QuestRequiredItems에서 ItemId로 조회하거나 NormalizedName으로 조회할 수 있도록 함
-    /// </summary>
     public Dictionary<string, TarkovItem> GetItemLookup()
     {
         var lookup = new Dictionary<string, TarkovItem>(StringComparer.OrdinalIgnoreCase);
+        var itemsByNorm = Volatile.Read(ref _itemsByNormalizedName);
+        var itemsById = Volatile.Read(ref _itemsById);
 
-        // NormalizedName으로 먼저 추가
-        foreach (var kvp in _itemsByNormalizedName)
+        foreach (var kvp in itemsByNorm)
         {
             lookup.TryAdd(kvp.Key, kvp.Value);
         }
 
-        // ID로도 추가 (QuestRequiredItems.ItemId가 tarkov.dev ID를 사용하므로)
-        foreach (var kvp in _itemsById)
+        foreach (var kvp in itemsById)
         {
             lookup.TryAdd(kvp.Key, kvp.Value);
             if (!string.IsNullOrEmpty(kvp.Value.BsgId))
@@ -121,20 +123,21 @@ public sealed class ItemDbService
             return false;
         }
 
+        await _reloadLock.WaitAsync().ConfigureAwait(false);
         try
         {
             var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
             await using var connection = new SqliteConnection(connectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync().ConfigureAwait(false);
 
             // Items 테이블 존재 여부 확인
-            if (!await TableExistsAsync(connection, "Items"))
+            if (!await TableExistsAsync(connection, "Items").ConfigureAwait(false))
             {
                 _log.Warning("Items table not found");
                 return false;
             }
 
-            var items = await LoadItemsFromDbAsync(connection);
+            var items = await LoadItemsFromDbAsync(connection).ConfigureAwait(false);
 
             // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
             var newItemsById = new Dictionary<string, TarkovItem>(StringComparer.OrdinalIgnoreCase);
@@ -153,10 +156,10 @@ public sealed class ItemDbService
             }
 
             // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
-            _allItems = items;
-            _itemsById = newItemsById;
-            _itemsByNormalizedName = newItemsByNormalizedName;
-            _isLoaded = true;
+            Interlocked.Exchange(ref _allItems, items);
+            Interlocked.Exchange(ref _itemsById, newItemsById);
+            Interlocked.Exchange(ref _itemsByNormalizedName, newItemsByNormalizedName);
+            Volatile.Write(ref _isLoaded, true);
             _log.Info($"Loaded {items.Count} items from DB");
             return true;
         }
@@ -164,6 +167,10 @@ public sealed class ItemDbService
         {
             _log.Error($"Error loading items: {ex.Message}");
             return false;
+        }
+        finally
+        {
+            _reloadLock.Release();
         }
     }
 
@@ -265,17 +272,19 @@ public sealed class ItemDbService
     /// </summary>
     private void OnDataRefreshed()
     {
-        // UI 스레드에서 이벤트 발생
-        if (System.Windows.Application.Current?.Dispatcher != null)
+        var handler = DataRefreshed;
+        if (handler == null) return;
+
+        foreach (EventHandler listener in handler.GetInvocationList())
         {
-            System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
+            try
             {
-                DataRefreshed?.Invoke(this, EventArgs.Empty);
-            });
-        }
-        else
-        {
-            DataRefreshed?.Invoke(this, EventArgs.Empty);
+                listener(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Error in ItemDbService.DataRefreshed listener: {ex.Message}");
+            }
         }
     }
 }

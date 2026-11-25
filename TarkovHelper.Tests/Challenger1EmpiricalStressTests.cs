@@ -472,7 +472,7 @@ namespace TarkovHelper.Tests
                 }
             }
 
-            Assert.Equal(4 * 5 * 5 * 2, countTested); // 200 combinations verified
+            Assert.Equal(viewModes.Length * statusFilters.Length * sortModes.Length * sortDirections.Length, countTested);
         }
 
         [Fact]

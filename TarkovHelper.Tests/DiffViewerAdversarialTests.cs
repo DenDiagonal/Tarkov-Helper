@@ -60,6 +60,7 @@ namespace TarkovHelper.Tests
                     {
                         try { dialog.Close(); } catch { }
                     }
+                    try { System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread)?.InvokeShutdown(); } catch { }
                 }
             });
 
@@ -218,10 +219,10 @@ namespace TarkovHelper.Tests
                 Assert.Equal(Visibility.Collapsed, scrollViewer.Visibility);
 
                 // 2. Verify summary text and counts
-                Assert.Equal("Total: 0 cambios", txtTotal.Text);
-                Assert.Equal("+ 0 Añadidos", txtAdded!.Text);
-                Assert.Equal("~ 0 Modificados", txtModified!.Text);
-                Assert.Equal("- 0 Eliminados", txtRemoved!.Text);
+                Assert.Equal("Total: 0 changes", txtTotal.Text);
+                Assert.Equal("+ 0 Added", txtAdded!.Text);
+                Assert.Equal("~ 0 Modified", txtModified!.Text);
+                Assert.Equal("- 0 Removed", txtRemoved!.Text);
 
                 // 3. Verify Empty State text content
                 var stackPanel = emptyBorder.Child as StackPanel;
@@ -229,8 +230,8 @@ namespace TarkovHelper.Tests
                 var textBlocks = stackPanel.Children.OfType<TextBlock>().ToList();
                 Assert.True(textBlocks.Count >= 3);
                 Assert.Equal("✓", textBlocks[0].Text);
-                Assert.Contains("La base de datos local está sincronizada", textBlocks[1].Text);
-                Assert.Contains("coinciden exactamente con las fuentes remotas auditadas", textBlocks[2].Text);
+                Assert.Contains("Local database is synchronized", textBlocks[1].Text);
+                Assert.Contains("match audited remote sources", textBlocks[2].Text);
 
                 // 4. Verify Apply button disabled state
                 Assert.False(btnApply.IsEnabled);
@@ -340,14 +341,14 @@ namespace TarkovHelper.Tests
 
             var prop0 = card0.PropertyChanges[0];
             Assert.Equal(string.Empty, prop0.PropertyName);
-            Assert.Equal("(vacío)", prop0.DisplayOldValue);
-            Assert.Equal("(ninguno)", prop0.DisplayNewValue);
+            Assert.Equal("(empty)", prop0.DisplayOldValue);
+            Assert.Equal("(none)", prop0.DisplayNewValue);
             Assert.False(string.IsNullOrEmpty(prop0.FormattedSummary));
 
             var prop1 = card0.PropertyChanges[1];
             Assert.Equal("CustomUnknownProperty123", prop1.DisplayPropertyName);
-            Assert.Equal("(vacío)", prop1.DisplayOldValue);
-            Assert.Equal("(ninguno)", prop1.DisplayNewValue);
+            Assert.Equal("(empty)", prop1.DisplayOldValue);
+            Assert.Equal("(none)", prop1.DisplayNewValue);
 
             // 3. STA Dialog rendering must not throw
             RunOnStaThread(dialog =>
@@ -403,14 +404,14 @@ namespace TarkovHelper.Tests
                 Assert.Equal(Visibility.Collapsed, emptyBorder.Visibility);
                 Assert.Equal(Visibility.Visible, scrollViewer.Visibility);
 
-                Assert.Equal("Total: 1250 cambios", txtTotal.Text);
+                Assert.Equal("Total: 1250 changes", txtTotal.Text);
                 Assert.True(btnApply.IsEnabled);
                 Assert.Equal(1.0, btnApply.Opacity);
 
-                Assert.Equal("Todos (1250)", btnFilterAll!.Content);
-                Assert.Equal("Misiones (450)", btnFilterQuests!.Content);
-                Assert.Equal("Requisitos (300)", btnFilterRequirements!.Content);
-                Assert.Equal("Objetos (300)", btnFilterItems!.Content);
+                Assert.Equal("All (1250)", btnFilterAll!.Content);
+                Assert.Equal("Tasks (450)", btnFilterQuests!.Content);
+                Assert.Equal("Requirements (300)", btnFilterRequirements!.Content);
+                Assert.Equal("Items (300)", btnFilterItems!.Content);
                 Assert.Equal("Hideout (200)", btnFilterHideout!.Content);
 
                 Assert.Equal(1250, dialog.ViewModel.FilteredCards.Count);

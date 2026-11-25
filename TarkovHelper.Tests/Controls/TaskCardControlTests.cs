@@ -559,7 +559,7 @@ namespace TarkovHelper.Tests.Controls
             Assert.Equal("f-1", stepper.ItemId);
             Assert.Equal("F-1 hand grenade", stepper.ItemName);
             Assert.Equal(f1Alt, stepper.SelectedAlternative);
-            Assert.Contains("Alternativas válidas", stepper.AlternativesTooltip);
+            Assert.Contains("Valid alternatives", stepper.AlternativesTooltip);
         }
 
         [Fact]

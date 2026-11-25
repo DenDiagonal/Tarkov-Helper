@@ -11,16 +11,42 @@ namespace TarkovHelper.Services
     {
         private static readonly ILogger _log = Log.For<HideoutProgressService>();
         private static HideoutProgressService? _instance;
-        public static HideoutProgressService Instance => _instance ??= new HideoutProgressService();
+        private static readonly object _instanceLock = new();
+
+        public static HideoutProgressService Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    lock (_instanceLock)
+                    {
+                        _instance ??= new HideoutProgressService();
+                    }
+                }
+                return _instance;
+            }
+        }
 
         /// <summary>
         /// 싱글톤 인스턴스를 파괴하여 은신처 진행 데이터를 초기화합니다.
         /// </summary>
         public static void ResetInstance()
         {
-            _instance = null;
+            HideoutProgressService? old;
+            lock (_instanceLock)
+            {
+                old = _instance;
+                _instance = null;
+            }
+            if (old != null)
+            {
+                try { old.FlushPendingSavesAsync().GetAwaiter().GetResult(); } catch { }
+            }
         }
         private ProfileType _loadedProfile = ProfileType.Pvp;
+        private readonly object _lock = new();
+        private Task _activeSaveTask = Task.CompletedTask;
 
         private readonly UserDataDbService _userDataDb = UserDataDbService.Instance;
 
@@ -62,6 +88,10 @@ namespace TarkovHelper.Services
         public void Initialize(List<HideoutModule> modules)
         {
             _allModules = modules;
+            lock (_lock)
+            {
+                _loadedProfile = ProfileService.Instance.CurrentProfile;
+            }
             _modulesByNormalizedName = new Dictionary<string, HideoutModule>(StringComparer.OrdinalIgnoreCase);
             foreach (var module in modules.Where(m => !string.IsNullOrEmpty(m.NormalizedName)))
             {
@@ -94,7 +124,10 @@ namespace TarkovHelper.Services
             if (string.IsNullOrEmpty(module.NormalizedName))
                 return 0;
 
-            return _progress.Modules.TryGetValue(module.NormalizedName, out var level) ? level : 0;
+            lock (_lock)
+            {
+                return _progress.Modules.TryGetValue(module.NormalizedName, out var level) ? level : 0;
+            }
         }
 
         /// <summary>
@@ -102,7 +135,10 @@ namespace TarkovHelper.Services
         /// </summary>
         public int GetCurrentLevel(string normalizedName)
         {
-            return _progress.Modules.TryGetValue(normalizedName, out var level) ? level : 0;
+            lock (_lock)
+            {
+                return _progress.Modules.TryGetValue(normalizedName, out var level) ? level : 0;
+            }
         }
 
         /// <summary>
@@ -115,34 +151,49 @@ namespace TarkovHelper.Services
 
             // Clamp level between 0 and max level
             level = Math.Max(0, Math.Min(level, module.MaxLevel));
+            ProfileType targetProfile;
 
-            if (level == 0)
+            lock (_lock)
             {
-                _progress.Modules.Remove(module.NormalizedName);
-            }
-            else
-            {
-                _progress.Modules[module.NormalizedName] = level;
+                targetProfile = _loadedProfile;
+                if (level == 0)
+                {
+                    _progress.Modules.Remove(module.NormalizedName);
+                }
+                else
+                {
+                    _progress.Modules[module.NormalizedName] = level;
+                }
+
+                _progress.LastUpdated = DateTime.UtcNow;
             }
 
-            _progress.LastUpdated = DateTime.UtcNow;
-            SaveSingleModule(module.NormalizedName, level);
+            SaveSingleModule(module.NormalizedName, level, targetProfile);
             ProgressChanged?.Invoke(this, EventArgs.Empty);
         }
 
-        private void SaveSingleModule(string normalizedName, int level)
+        private void SaveSingleModule(string normalizedName, int level, ProfileType targetProfile)
         {
-            _ = Task.Run(async () =>
+            _activeSaveTask = Task.Run(async () =>
             {
                 try
                 {
-                    await _userDataDb.SaveHideoutProgressAsync(normalizedName, level, _loadedProfile);
+                    await _userDataDb.SaveHideoutProgressAsync(normalizedName, level, targetProfile).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
                     _log.Error($"Save failed: {ex.Message}");
                 }
             });
+        }
+
+        public async Task FlushPendingSavesAsync()
+        {
+            try
+            {
+                await _activeSaveTask.ConfigureAwait(false);
+            }
+            catch { }
         }
 
         /// <summary>
@@ -315,12 +366,17 @@ namespace TarkovHelper.Services
         /// </summary>
         public void ResetAllProgress()
         {
-            _progress = new HideoutProgress();
-            _ = Task.Run(async () =>
+            ProfileType targetProfile;
+            lock (_lock)
+            {
+                targetProfile = _loadedProfile;
+                _progress = new HideoutProgress();
+            }
+            _activeSaveTask = Task.Run(async () =>
             {
                 try
                 {
-                    await _userDataDb.ClearAllHideoutProgressAsync(_loadedProfile);
+                    await _userDataDb.ClearAllHideoutProgressAsync(targetProfile).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -335,7 +391,11 @@ namespace TarkovHelper.Services
         /// </summary>
         public async Task ReloadProgressAsync()
         {
-            _loadedProfile = ProfileService.Instance.CurrentProfile;
+            var profile = ProfileService.Instance.CurrentProfile;
+            lock (_lock)
+            {
+                _loadedProfile = profile;
+            }
             await LoadProgressFromDbAsync();
             ProgressChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -351,9 +411,16 @@ namespace TarkovHelper.Services
         {
             try
             {
-                foreach (var kvp in _progress.Modules)
+                List<KeyValuePair<string, int>> snapshot;
+                ProfileType targetProfile;
+                lock (_lock)
                 {
-                    await _userDataDb.SaveHideoutProgressAsync(kvp.Key, kvp.Value, _loadedProfile);
+                    targetProfile = _loadedProfile;
+                    snapshot = _progress.Modules.ToList();
+                }
+                foreach (var kvp in snapshot)
+                {
+                    await _userDataDb.SaveHideoutProgressAsync(kvp.Key, kvp.Value, targetProfile).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
@@ -374,19 +441,32 @@ namespace TarkovHelper.Services
 
         private async Task LoadProgressFromDbAsync()
         {
+            ProfileType targetProfile;
+            lock (_lock)
+            {
+                targetProfile = _loadedProfile;
+            }
             try
             {
-                var modules = await _userDataDb.LoadHideoutProgressAsync(_loadedProfile);
-                _progress = new HideoutProgress
+                var modules = await _userDataDb.LoadHideoutProgressAsync(targetProfile).ConfigureAwait(false);
+                lock (_lock)
                 {
-                    Modules = new Dictionary<string, int>(modules, StringComparer.OrdinalIgnoreCase),
-                    LastUpdated = DateTime.UtcNow
-                };
+                    if (targetProfile != _loadedProfile) return;
+                    _progress = new HideoutProgress
+                    {
+                        Modules = new Dictionary<string, int>(modules, StringComparer.OrdinalIgnoreCase),
+                        LastUpdated = DateTime.UtcNow
+                    };
+                }
             }
             catch (Exception ex)
             {
                 _log.Error($"Load failed: {ex.Message}");
-                _progress = new HideoutProgress();
+                lock (_lock)
+                {
+                    if (targetProfile == _loadedProfile)
+                        _progress = new HideoutProgress();
+                }
             }
         }
 

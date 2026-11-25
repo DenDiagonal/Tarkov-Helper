@@ -13,8 +13,9 @@ namespace TarkovHelper.Services;
 public sealed class QuestDbService
 {
     private static readonly ILogger _log = Log.For<QuestDbService>();
-    private static QuestDbService? _instance;
-    public static QuestDbService Instance => _instance ??= new QuestDbService();
+    private static readonly Lazy<QuestDbService> _lazyInstance =
+        new(() => new QuestDbService(), LazyThreadSafetyMode.ExecutionAndPublication);
+    public static QuestDbService Instance => _lazyInstance.Value;
 
     private readonly string _databasePath;
     private readonly SemaphoreSlim _reloadLock = new(1, 1);
@@ -44,6 +45,9 @@ public sealed class QuestDbService
     /// </summary>
     private async void OnDatabaseUpdated(object? sender, EventArgs e)
     {
+        if (DatabaseUpdateService.Instance.IsInternalHotReloadInProgress)
+            return;
+
         try
         {
             _log.Info("Database updated, reloading data...");
@@ -232,6 +236,19 @@ public sealed class QuestDbService
         return false;
     }
 
+    private async Task<HashSet<string>> GetTableColumnsAsync(SqliteConnection connection, string tableName)
+    {
+        var cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sql = $"PRAGMA table_info({tableName})";
+        await using var cmd = new SqliteCommand(sql, connection);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            cols.Add(reader.GetString(1));
+        }
+        return cols;
+    }
+
     /// <summary>
     /// 기본 퀘스트 정보 로드
     /// </summary>
@@ -239,15 +256,16 @@ public sealed class QuestDbService
     {
         var quests = new List<TarkovTask>();
 
-        // 동적으로 존재하는 컬럼 확인
-        var hasNormalizedName = await ColumnExistsAsync(connection, "Quests", "NormalizedName");
-        var hasBsgId = await ColumnExistsAsync(connection, "Quests", "BsgId");
-        var hasRequiredEdition = await ColumnExistsAsync(connection, "Quests", "RequiredEdition");
-        var hasExcludedEdition = await ColumnExistsAsync(connection, "Quests", "ExcludedEdition");
-        var hasRequiredPrestigeLevel = await ColumnExistsAsync(connection, "Quests", "RequiredPrestigeLevel");
-        var hasRequiredDecodeCount = await ColumnExistsAsync(connection, "Quests", "RequiredDecodeCount");
-        var hasWikiPageLink = await ColumnExistsAsync(connection, "Quests", "WikiPageLink");
-        var hasIsSeasonal = await ColumnExistsAsync(connection, "Quests", "IsSeasonal");
+        // 한 번의 PRAGMA table_info로 컬럼 존재 여부 조회
+        var columns = await GetTableColumnsAsync(connection, "Quests");
+        var hasNormalizedName = columns.Contains("NormalizedName");
+        var hasBsgId = columns.Contains("BsgId");
+        var hasRequiredEdition = columns.Contains("RequiredEdition");
+        var hasExcludedEdition = columns.Contains("ExcludedEdition");
+        var hasRequiredPrestigeLevel = columns.Contains("RequiredPrestigeLevel");
+        var hasRequiredDecodeCount = columns.Contains("RequiredDecodeCount");
+        var hasWikiPageLink = columns.Contains("WikiPageLink");
+        var hasIsSeasonal = columns.Contains("IsSeasonal");
         _log.Debug($"BsgId column exists: {hasBsgId}");
 
         // NormalizedName이 없으면 Name에서 생성
@@ -410,15 +428,24 @@ public sealed class QuestDbService
             var existing = quest.TaskRequirements.FirstOrDefault(r =>
                 r.TaskId.Equals(requiredQuestId, StringComparison.OrdinalIgnoreCase));
 
+            var statusVal = requirementType.ToLowerInvariant();
             if (existing == null)
             {
                 quest.TaskRequirements.Add(new TaskRequirement
                 {
                     TaskId = requiredQuestId,
                     TaskNormalizedName = requiredNormalizedName ?? "",
-                    Status = new List<string> { requirementType.ToLowerInvariant() },
+                    Status = new List<string> { statusVal },
                     GroupId = groupId
                 });
+            }
+            else
+            {
+                existing.Status ??= new List<string>();
+                if (!existing.Status.Contains(statusVal, StringComparer.OrdinalIgnoreCase))
+                {
+                    existing.Status.Add(statusVal);
+                }
             }
         }
 
@@ -761,17 +788,19 @@ public sealed class QuestDbService
     /// </summary>
     private void OnDataRefreshed()
     {
-        // UI 스레드에서 이벤트 발생
-        if (System.Windows.Application.Current?.Dispatcher != null)
+        var handler = DataRefreshed;
+        if (handler == null) return;
+
+        foreach (EventHandler listener in handler.GetInvocationList())
         {
-            System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
+            try
             {
-                DataRefreshed?.Invoke(this, EventArgs.Empty);
-            });
-        }
-        else
-        {
-            DataRefreshed?.Invoke(this, EventArgs.Empty);
+                listener(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Error in QuestDbService.DataRefreshed listener: {ex.Message}");
+            }
         }
     }
 }

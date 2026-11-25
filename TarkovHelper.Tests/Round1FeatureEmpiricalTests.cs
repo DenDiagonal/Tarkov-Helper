@@ -34,6 +34,10 @@ public class Round1FeatureEmpiricalTests
             {
                 caught = ex;
             }
+            finally
+            {
+                try { System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread)?.InvokeShutdown(); } catch { }
+            }
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
@@ -220,26 +224,32 @@ public class Round1FeatureEmpiricalTests
         RunInSta(() =>
         {
             var window = new OverlayMiniMapWindow(new OverlayMiniMapSettings());
+            try
+            {
+                var btnMinimize = window.FindName("BtnMinimize") as Button;
+                var btnClose = window.FindName("BtnClose") as Button;
 
-            var btnMinimize = window.FindName("BtnMinimize") as Button;
-            var btnClose = window.FindName("BtnClose") as Button;
+                Assert.NotNull(btnMinimize);
+                Assert.NotNull(btnClose);
 
-            Assert.NotNull(btnMinimize);
-            Assert.NotNull(btnClose);
+                // Symbols
+                Assert.Equal("_", btnMinimize.Content);
+                Assert.Equal("✕", btnClose.Content);
 
-            // Symbols
-            Assert.Equal("_", btnMinimize.Content);
-            Assert.Equal("✕", btnClose.Content);
+                // Dimensions
+                Assert.Equal(24.0, btnMinimize.Width);
+                Assert.Equal(24.0, btnMinimize.Height);
+                Assert.Equal(24.0, btnClose.Width);
+                Assert.Equal(24.0, btnClose.Height);
 
-            // Dimensions
-            Assert.Equal(24.0, btnMinimize.Width);
-            Assert.Equal(24.0, btnMinimize.Height);
-            Assert.Equal(24.0, btnClose.Width);
-            Assert.Equal(24.0, btnClose.Height);
-
-            // Tooltips
-            Assert.NotNull(btnMinimize.ToolTip);
-            Assert.NotNull(btnClose.ToolTip);
+                // Tooltips
+                Assert.NotNull(btnMinimize.ToolTip);
+                Assert.NotNull(btnClose.ToolTip);
+            }
+            finally
+            {
+                try { window.Close(); } catch { }
+            }
         });
     }
 
@@ -269,9 +279,10 @@ public class Round1FeatureEmpiricalTests
         {
             var origLang = LocalizationService.Instance.CurrentLanguage;
             LocalizationService.Instance.CurrentLanguage = AppLanguage.EN;
+            OverlayMiniMapWindow? window = null;
             try
             {
-                var window = new OverlayMiniMapWindow(new OverlayMiniMapSettings());
+                window = new OverlayMiniMapWindow(new OverlayMiniMapSettings());
 
                 var selectorBtn = window.FindName("BtnTitleMapSelector") as Button;
                 Assert.NotNull(selectorBtn);
@@ -297,6 +308,7 @@ public class Round1FeatureEmpiricalTests
             }
             finally
             {
+                if (window != null) { try { window.Close(); } catch { } }
                 LocalizationService.Instance.CurrentLanguage = origLang;
             }
         });
@@ -308,18 +320,25 @@ public class Round1FeatureEmpiricalTests
         RunInSta(() =>
         {
             var window = new OverlayMiniMapWindow(new OverlayMiniMapSettings());
-            window.PopulateMapSelectorMenu();
+            try
+            {
+                window.PopulateMapSelectorMenu();
 
-            var menu = window.BtnTitleMapSelector.ContextMenu;
-            Assert.NotNull(menu);
-            Assert.NotEmpty(menu.Items);
+                var menu = window.BtnTitleMapSelector.ContextMenu;
+                Assert.NotNull(menu);
+                Assert.NotEmpty(menu.Items);
 
-            var headers = menu.Items.OfType<MenuItem>()
-                .Select(mi => (mi.Header as string ?? "").TrimStart('✓', ' '))
-                .ToList();
+                var headers = menu.Items.OfType<MenuItem>()
+                    .Select(mi => (mi.Header as string ?? "").TrimStart('✓', ' '))
+                    .ToList();
 
-            var sorted = headers.OrderBy(h => h, StringComparer.CurrentCultureIgnoreCase).ToList();
-            Assert.Equal(sorted, headers);
+                var sorted = headers.OrderBy(h => h, StringComparer.CurrentCultureIgnoreCase).ToList();
+                Assert.Equal(sorted, headers);
+            }
+            finally
+            {
+                try { window.Close(); } catch { }
+            }
         });
     }
 
@@ -518,16 +537,27 @@ public class Round1FeatureEmpiricalTests
         RunInSta(() =>
         {
             var window = new OverlayMiniMapWindow(new OverlayMiniMapSettings());
-            var contextMenu = window.FindName("MapSelectorContextMenu") as ContextMenu;
-            Assert.NotNull(contextMenu);
+            ContextMenu? contextMenu = null;
+            try
+            {
+                contextMenu = window.FindName("MapSelectorContextMenu") as ContextMenu;
+                Assert.NotNull(contextMenu);
 
-            // Simulate right-click opening without prior left-click
-            contextMenu.IsOpen = true;
-            contextMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+                // Trigger ContextMenu.Opened routed event safely without spawning a detached native popup HWND on a non-pumped STA thread
+                contextMenu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
 
-            Assert.NotEmpty(contextMenu.Items);
-            var tracker = MapTrackerService.Instance;
-            Assert.Equal(tracker.GetAllMapKeys().Count, contextMenu.Items.Count);
+                Assert.NotEmpty(contextMenu.Items);
+                var tracker = MapTrackerService.Instance;
+                Assert.Equal(tracker.GetAllMapKeys().Count, contextMenu.Items.Count);
+            }
+            finally
+            {
+                if (contextMenu != null)
+                {
+                    try { contextMenu.IsOpen = false; } catch { }
+                }
+                try { window.Close(); } catch { }
+            }
         });
     }
 
@@ -566,24 +596,30 @@ public class Round1FeatureEmpiricalTests
         RunInSta(() =>
         {
             var window = new OverlayMiniMapWindow(new OverlayMiniMapSettings());
+            try
+            {
+                var extractContainer = window.FindName("ExtractMarkersContainer") as Canvas;
+                Assert.NotNull(extractContainer);
 
-            var extractContainer = window.FindName("ExtractMarkersContainer") as Canvas;
-            Assert.NotNull(extractContainer);
+                var retainedMarker = new Canvas();
+                var st = new ScaleTransform(1.0, 1.0);
+                retainedMarker.RenderTransform = st;
+                MarkerRefreshHelper.SetIsRetained(retainedMarker, true);
+                extractContainer.Children.Add(retainedMarker);
 
-            var retainedMarker = new Canvas();
-            var st = new ScaleTransform(1.0, 1.0);
-            retainedMarker.RenderTransform = st;
-            MarkerRefreshHelper.SetIsRetained(retainedMarker, true);
-            extractContainer.Children.Add(retainedMarker);
+                // UpdateMarkerScales directly with override size
+                var updateMethod = typeof(OverlayMiniMapWindow).GetMethod("UpdateMarkerScales", BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(updateMethod);
+                updateMethod.Invoke(window, new object?[] { 400.0, 400.0 });
 
-            // UpdateMarkerScales directly with override size
-            var updateMethod = typeof(OverlayMiniMapWindow).GetMethod("UpdateMarkerScales", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.NotNull(updateMethod);
-            updateMethod.Invoke(window, new object?[] { 400.0, 400.0 });
-
-            // Effective scale must have adjusted st
-            Assert.True(st.ScaleX > 0);
-            Assert.Equal(st.ScaleX, st.ScaleY);
+                // Effective scale must have adjusted st
+                Assert.True(st.ScaleX > 0);
+                Assert.Equal(st.ScaleX, st.ScaleY);
+            }
+            finally
+            {
+                try { window.Close(); } catch { }
+            }
         });
     }
 

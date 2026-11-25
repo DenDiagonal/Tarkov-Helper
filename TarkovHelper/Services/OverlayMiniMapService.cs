@@ -67,12 +67,17 @@ public class OverlayMiniMapService : IDisposable
     /// <summary>
     /// 서비스 초기화
     /// </summary>
+    private readonly SemaphoreSlim _initLock = new(1, 1);
+
     public async Task InitializeAsync()
     {
         if (_isInitialized) return;
 
+        await _initLock.WaitAsync();
         try
         {
+            if (_isInitialized) return;
+
             await LoadSettingsAsync();
 
             // 단축키 이벤트 연결
@@ -85,9 +90,6 @@ public class OverlayMiniMapService : IDisposable
             _isInitialized = true;
             _log.Info("OverlayMiniMapService initialized");
 
-            // Asegurar que el rastreo de capturas de pantalla esté activo
-            TarkovHelper.Services.Map.MapTrackerService.Instance.StartTracking();
-
             // 이전 상태가 활성화였다면 오버레이 표시
             if (_settings.Enabled)
             {
@@ -97,6 +99,10 @@ public class OverlayMiniMapService : IDisposable
         catch (Exception ex)
         {
             _log.Error("Failed to initialize OverlayMiniMapService", ex);
+        }
+        finally
+        {
+            _initLock.Release();
         }
     }
 

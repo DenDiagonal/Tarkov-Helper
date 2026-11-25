@@ -73,25 +73,33 @@ namespace TarkovHelper.Tests
 
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
             var dir = new DirectoryInfo(baseDir);
-            string? scratchDir = null;
+            string? corePath = null;
+            string? objPath = null;
             while (dir != null)
             {
-                var candidate = Path.Combine(dir.FullName, "scratch");
-                if (Directory.Exists(candidate))
+                var assetCore = Path.Combine(dir.FullName, "TarkovHelper", "Assets", "DB", "Data", "tasks_core.json");
+                var assetObj = Path.Combine(dir.FullName, "TarkovHelper", "Assets", "DB", "Data", "tasks_objectives.json");
+                if (File.Exists(assetCore) && File.Exists(assetObj))
                 {
-                    scratchDir = candidate;
+                    corePath = assetCore;
+                    objPath = assetObj;
+                    break;
+                }
+
+                var scratchCore = Path.Combine(dir.FullName, "scratch", "tasks_core.json");
+                var scratchObj = Path.Combine(dir.FullName, "scratch", "tasks_objectives.json");
+                if (File.Exists(scratchCore) && File.Exists(scratchObj))
+                {
+                    corePath = scratchCore;
+                    objPath = scratchObj;
                     break;
                 }
                 dir = dir.Parent;
             }
 
-            Assert.NotNull(scratchDir);
-            var corePath = Path.Combine(scratchDir!, "tasks_core.json");
-            var objPath = Path.Combine(scratchDir!, "tasks_objectives.json");
-
-            if (!File.Exists(corePath) || !File.Exists(objPath))
+            if (corePath == null || objPath == null || !File.Exists(corePath) || !File.Exists(objPath))
             {
-                Assert.Fail($"Scratch tracker files missing at: {corePath} or {objPath}");
+                Assert.Fail($"Tracker dataset files missing (searched Assets/DB/Data and scratch from {baseDir})");
                 return;
             }
 

@@ -165,15 +165,9 @@
 
         </Grid.RowDefinitions>
 
-        <!-- Main Content with Blur Effect -->
+        <!-- Main Content (BlurEffect attached dynamically during modal overlays for 60 FPS idle rendering) -->
 
         <Grid x:Name="MainContent" Grid.RowSpan="2">
-
-            <Grid.Effect>
-
-                <BlurEffect x:Name="BlurEffect" Radius="0"/>
-
-            </Grid.Effect>
 
 
 

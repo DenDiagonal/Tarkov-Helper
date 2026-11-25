@@ -516,10 +516,15 @@ namespace TarkovHelper.ViewModels
 
         private static void RunOnUI(Action action)
         {
-            var app = Application.Current;
-            if (app != null && app.Dispatcher != null && !app.Dispatcher.CheckAccess())
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher != null &&
+                MainWindow.Instance != null &&
+                !dispatcher.HasShutdownStarted &&
+                !dispatcher.HasShutdownFinished &&
+                dispatcher.Thread.IsAlive &&
+                !dispatcher.CheckAccess())
             {
-                app.Dispatcher.InvokeAsync(action);
+                dispatcher.InvokeAsync(action);
             }
             else
             {

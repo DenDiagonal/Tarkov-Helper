@@ -35,8 +35,19 @@ namespace TarkovHelper.Tests
             var dbPath = GetDatabasePath();
             var engine = new DatabaseDiffEngine();
 
-            // Debut has initial MinLevel = 1, KappaRequired = true in Assets/tarkov_data.db
             var debutId = "5936d90786f7742b1420ba5b";
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT MinLevel, KappaRequired, Trader, Name FROM Quests WHERE Id = @id";
+            cmd.Parameters.AddWithValue("@id", debutId);
+            using var reader = cmd.ExecuteReader();
+            Assert.True(reader.Read());
+            var dbMinLevel = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+            var dbKappa = !reader.IsDBNull(1) && reader.GetInt32(1) == 1;
+            var dbTrader = reader.GetString(2);
+            var dbName = reader.GetString(3);
+
             var remoteData = new NormalizedAuditData
             {
                 Quests = new List<NormalizedQuest>
@@ -44,10 +55,10 @@ namespace TarkovHelper.Tests
                     new NormalizedQuest
                     {
                         Id = debutId,
-                        Name = "Debut",
-                        Trader = "Prapor",
+                        Name = dbName,
+                        Trader = dbTrader,
                         MinLevel = newLevel,
-                        KappaRequired = true
+                        KappaRequired = dbKappa
                     }
                 }
             };
@@ -55,7 +66,7 @@ namespace TarkovHelper.Tests
             var report = await engine.ComputeDiffAsync(remoteData, dbPath);
 
             Assert.NotNull(report);
-            if (newLevel == 1) // Unchanged
+            if (newLevel == dbMinLevel) // Unchanged
             {
                 Assert.False(report.HasChanges);
             }
@@ -64,11 +75,11 @@ namespace TarkovHelper.Tests
                 Assert.True(report.HasChanges);
                 var diff = Assert.Single(report.QuestDiffs);
                 Assert.Equal(DiffChangeType.Modified, diff.ChangeType);
-                Assert.Equal(1, diff.OldMinLevel);
+                Assert.Equal(dbMinLevel, diff.OldMinLevel);
                 Assert.Equal(newLevel, diff.NewMinLevel);
 
                 var prop = Assert.Single(diff.PropertyChanges, p => p.PropertyName == "MinLevel");
-                Assert.Equal("1", prop.OldValue);
+                Assert.Equal(dbMinLevel.ToString(), prop.OldValue);
                 Assert.Equal(newLevel.ToString(), prop.NewValue);
             }
         }
@@ -79,17 +90,30 @@ namespace TarkovHelper.Tests
             var dbPath = GetDatabasePath();
             var engine = new DatabaseDiffEngine();
 
+            var debutId = "5936d90786f7742b1420ba5b";
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT MinLevel, KappaRequired, Trader, Name FROM Quests WHERE Id = @id";
+            cmd.Parameters.AddWithValue("@id", debutId);
+            using var reader = cmd.ExecuteReader();
+            Assert.True(reader.Read());
+            var dbMinLevel = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+            var dbKappa = !reader.IsDBNull(1) && reader.GetInt32(1) == 1;
+            var dbTrader = reader.GetString(2);
+            var dbName = reader.GetString(3);
+
             var remoteData = new NormalizedAuditData
             {
                 Quests = new List<NormalizedQuest>
                 {
                     new NormalizedQuest
                     {
-                        Id = "5936d90786f7742b1420ba5b",
-                        Name = "Debut",
-                        Trader = "Prapor",
-                        MinLevel = 1, // Same as DB
-                        KappaRequired = false // Same as DB
+                        Id = debutId,
+                        Name = dbName,
+                        Trader = dbTrader,
+                        MinLevel = dbMinLevel,
+                        KappaRequired = dbKappa
                     }
                 }
             };
@@ -952,13 +976,13 @@ namespace TarkovHelper.Tests
             var engine = new DatabaseDiffEngine();
 
             // A quest requirement with "Accept" should match "active" without producing a diff
-            var qId = "60e71b9bbd90872cb85440f3"; // Capturing Outposts
-            var reqId = "59ca2eb686f77445a80ed049"; // The Punisher - Part 6
+            var qId = "5a27bbf886f774333a418eeb"; // Wet Job - Part 2
+            var reqId = "5a27bb8386f7741c770d2d0a"; // Wet Job - Part 1
             var remoteData = new NormalizedAuditData
             {
                 Quests = new List<NormalizedQuest>
                 {
-                    new NormalizedQuest { Id = qId, Name = "Capturing Outposts", Trader = "Prapor", MinLevel = 42 }
+                    new NormalizedQuest { Id = qId, Name = "Wet Job - Part 2", Trader = "Peacekeeper", MinLevel = 14 }
                 },
                 QuestRequirements = new List<NormalizedQuestRequirement>
                 {
@@ -966,10 +990,10 @@ namespace TarkovHelper.Tests
                     {
                         Id = $"{qId}_{reqId}_0",
                         QuestId = qId,
-                        QuestName = "Capturing Outposts",
+                        QuestName = "Wet Job - Part 2",
                         RequiredQuestId = reqId,
-                        RequiredQuestName = "The Punisher - Part 6",
-                        RequirementType = "Complete" // Should match Complete in DB
+                        RequiredQuestName = "Wet Job - Part 1",
+                        RequirementType = "Complete" // Matches Complete in DB
                     }
                 }
             };

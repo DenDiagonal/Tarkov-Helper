@@ -256,8 +256,6 @@ public sealed class ConfigMigrationService
         var filesToDelete = new[]
         {
             "quest_progress.json",
-            "quest_progress_v2.json",
-            "objective_progress.json",
             "hideout_progress.json",
             "item_inventory.json",
             "app_settings.json"

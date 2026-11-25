@@ -40,6 +40,12 @@ public sealed class DatabaseUpdateService : IDisposable
 
     private volatile bool _isUpdating;
     private volatile bool _disposed;
+    private int _internalHotReloadDepth;
+
+    internal bool IsInternalHotReloadInProgress => Volatile.Read(ref _internalHotReloadDepth) > 0;
+
+    internal void BeginInternalHotReload() => Interlocked.Increment(ref _internalHotReloadDepth);
+    internal void EndInternalHotReload() => Interlocked.Decrement(ref _internalHotReloadDepth);
 
     /// <summary>
     /// 데이터베이스 파일 경로
@@ -570,16 +576,19 @@ public sealed class DatabaseUpdateService : IDisposable
     /// </summary>
     private void OnDatabaseUpdated()
     {
-        if (System.Windows.Application.Current?.Dispatcher != null)
+        var handler = DatabaseUpdated;
+        if (handler == null) return;
+
+        foreach (EventHandler listener in handler.GetInvocationList())
         {
-            System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
+            try
             {
-                DatabaseUpdated?.Invoke(this, EventArgs.Empty);
-            });
-        }
-        else
-        {
-            DatabaseUpdated?.Invoke(this, EventArgs.Empty);
+                listener(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Error in DatabaseUpdated listener: {ex.Message}");
+            }
         }
     }
 

@@ -185,9 +185,12 @@ public sealed class EftRaidEventService : IDisposable
     private readonly ConcurrentDictionary<string, long> _filePositions = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _fileLocks = new(StringComparer.OrdinalIgnoreCase);
 
-    // Trailing-edge debounce timers
+    // Trailing-edge debounce timers + NTFS open-handle poll timer
     private Timer? _appLogDebounceTimer;
     private Timer? _netLogDebounceTimer;
+    private Timer? _logPollTimer;
+    private string? _monitoredFolderPath;
+    private int _isPollingLogs;
     private string? _pendingAppLogPath;
     private string? _pendingNetLogPath;
     private readonly object _debounceLock = new();
@@ -300,6 +303,7 @@ public sealed class EftRaidEventService : IDisposable
                 _networkLogWatcher.Error += OnWatcherError;
 
                 _isWatching = true;
+                _monitoredFolderPath = folderPath;
                 _filePositions.Clear();
 
                 // Order startup initialization deterministically: DB first, then InitialScan overrides with freshest log
@@ -318,6 +322,9 @@ public sealed class EftRaidEventService : IDisposable
                         _log.Warning($"Background startup scan failed: {ex.Message}");
                     }
                 });
+
+                _logPollTimer?.Dispose();
+                _logPollTimer = new Timer(OnLogPollTimerTick, null, 2000, 2000);
 
                 RaiseEventSafe(MonitoringStateChanged, true);
                 _log.Info($"EftRaidEventService started monitoring: {folderPath}");
@@ -344,6 +351,12 @@ public sealed class EftRaidEventService : IDisposable
     {
         lock (_watcherLock)
         {
+            if (_logPollTimer != null)
+            {
+                _logPollTimer.Dispose();
+                _logPollTimer = null;
+            }
+
             if (_applicationLogWatcher != null)
             {
                 _applicationLogWatcher.EnableRaisingEvents = false;
@@ -373,14 +386,7 @@ public sealed class EftRaidEventService : IDisposable
             }
 
             _filePositions.Clear();
-
-            foreach (var kvp in _fileLocks)
-            {
-                if (_fileLocks.TryRemove(kvp.Key, out var sem))
-                {
-                    sem.Dispose();
-                }
-            }
+            _fileLocks.Clear();
 
             _isWatching = false;
             RaiseEventSafe(MonitoringStateChanged, false);
@@ -418,9 +424,46 @@ public sealed class EftRaidEventService : IDisposable
 
     private static string? GetDefaultLogFolderPath()
     {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var eftLogsPath = Path.Combine(localAppData, "Battlestate Games", "EFT", "Logs");
-        return Directory.Exists(eftLogsPath) ? eftLogsPath : null;
+        try
+        {
+            var configured = SettingsService.Instance?.LogFolderPath;
+            if (!string.IsNullOrEmpty(configured) && Directory.Exists(configured))
+                return configured;
+        }
+        catch { }
+
+        var candidates = new List<string>
+        {
+            @"C:\Battlestate Games\Escape from Tarkov\Logs",
+            @"C:\Battlestate Games\EFT\Logs",
+            @"D:\Battlestate Games\Escape from Tarkov\Logs",
+            @"D:\Battlestate Games\EFT\Logs",
+            @"E:\Battlestate Games\Escape from Tarkov\Logs",
+            @"E:\Battlestate Games\EFT\Logs"
+        };
+
+        try
+        {
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            candidates.Add(Path.Combine(localAppData, "Battlestate Games", "EFT", "Logs"));
+            candidates.Add(Path.Combine(localAppData, "Battlestate Games", "Escape from Tarkov", "Logs"));
+        }
+        catch { }
+
+        return candidates.FirstOrDefault(Directory.Exists);
+    }
+
+    private static long GetActualFileLength(string filePath)
+    {
+        try
+        {
+            using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return fs.Length;
+        }
+        catch
+        {
+            return new FileInfo(filePath).Length;
+        }
     }
 
     private void InitialScan(string folderPath)
@@ -433,26 +476,26 @@ public sealed class EftRaidEventService : IDisposable
             if (latestFolder == null) return;
 
             var appLogs = Directory.GetFiles(latestFolder, "*application*.log", SearchOption.TopDirectoryOnly)
-                .OrderByDescending(f => File.GetLastWriteTime(f))
+                .OrderByDescending(f => Math.Max(File.GetCreationTimeUtc(f).Ticks, File.GetLastWriteTimeUtc(f).Ticks))
                 .ToList();
 
             if (appLogs.Count > 0)
             {
                 var latestAppLog = appLogs[0];
-                var length = new FileInfo(latestAppLog).Length;
+                var length = GetActualFileLength(latestAppLog);
                 _filePositions[latestAppLog] = length;
                 _log.Debug($"Latest app log: {latestAppLog}, initial pos={length}");
                 ScanLogFileForProfile(latestAppLog);
             }
 
             var netLogs = Directory.GetFiles(latestFolder, "*network-connection*.log", SearchOption.TopDirectoryOnly)
-                .OrderByDescending(f => File.GetLastWriteTime(f))
+                .OrderByDescending(f => Math.Max(File.GetCreationTimeUtc(f).Ticks, File.GetLastWriteTimeUtc(f).Ticks))
                 .ToList();
 
             if (netLogs.Count > 0)
             {
                 var latestNetLog = netLogs[0];
-                var length = new FileInfo(latestNetLog).Length;
+                var length = GetActualFileLength(latestNetLog);
                 _filePositions[latestNetLog] = length;
                 _log.Debug($"Latest network log: {latestNetLog}, initial pos={length}");
             }
@@ -463,13 +506,51 @@ public sealed class EftRaidEventService : IDisposable
         }
     }
 
+    private void OnLogPollTimerTick(object? state)
+    {
+        if (!_isWatching || _isDisposed) return;
+        if (Interlocked.CompareExchange(ref _isPollingLogs, 1, 0) != 0) return;
+
+        try
+        {
+            var folderPath = _monitoredFolderPath;
+            if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath)) return;
+
+            var latestFolder = FindLatestLogSubfolder(folderPath);
+            if (string.IsNullOrEmpty(latestFolder) || !Directory.Exists(latestFolder)) return;
+
+            var latestAppLog = Directory.GetFiles(latestFolder, "*application*.log", SearchOption.TopDirectoryOnly)
+                .OrderByDescending(f => Math.Max(File.GetCreationTimeUtc(f).Ticks, File.GetLastWriteTimeUtc(f).Ticks))
+                .FirstOrDefault();
+            if (!string.IsNullOrEmpty(latestAppLog))
+            {
+                ProcessLogFileSerialized(latestAppLog, ParseApplicationLogLine);
+            }
+
+            var latestNetLog = Directory.GetFiles(latestFolder, "*network-connection*.log", SearchOption.TopDirectoryOnly)
+                .OrderByDescending(f => Math.Max(File.GetCreationTimeUtc(f).Ticks, File.GetLastWriteTimeUtc(f).Ticks))
+                .FirstOrDefault();
+            if (!string.IsNullOrEmpty(latestNetLog))
+            {
+                ProcessLogFileSerialized(latestNetLog, ParseNetworkLogLine);
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isPollingLogs, 0);
+        }
+    }
+
     private string? FindLatestLogSubfolder(string basePath)
     {
         try
         {
             var subdirs = Directory.GetDirectories(basePath)
                 .Where(d => SubfolderLogRegex.IsMatch(Path.GetFileName(d)))
-                .OrderByDescending(d => Directory.GetLastWriteTime(d))
+                .OrderByDescending(d => Math.Max(Directory.GetCreationTimeUtc(d).Ticks, Directory.GetLastWriteTimeUtc(d).Ticks))
                 .ToList();
 
             return subdirs.Count > 0 ? subdirs[0] : basePath;
@@ -564,10 +645,7 @@ public sealed class EftRaidEventService : IDisposable
             foreach (var key in _filePositions.Keys.Take(32))
             {
                 _filePositions.TryRemove(key, out _);
-                if (_fileLocks.TryRemove(key, out var oldGate))
-                {
-                    oldGate.Dispose();
-                }
+                _fileLocks.TryRemove(key, out _);
             }
         }
 

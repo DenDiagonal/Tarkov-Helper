@@ -24,7 +24,7 @@ public static class TestMenu
     [TestMenu("Debug Health Care Privacy Sync")]
     public static async Task DebugHealthCarePrivacySyncAsync()
     {
-        var logFolderPath = @"C:\Users\Zeliper\Downloads\Logs";
+        var logFolderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Logs");
         var outputPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "hcp_sync_debug.txt");
         var sb = new StringBuilder();
 

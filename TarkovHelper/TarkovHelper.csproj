@@ -16,7 +16,7 @@
     <SatelliteResourceLanguages>en;ko</SatelliteResourceLanguages>
     <!-- Run as Administrator -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <NoWarn>$(NoWarn);CS4014;CS1998;CS8602;CS8618</NoWarn>
+    <NoWarn>$(NoWarn);CS1998;CS8602;CS8618</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <Using Remove="System.Drawing" />
@@ -29,13 +29,10 @@
     <Content Include="Fonts\*.ttf;Fonts\*.otf" ExcludeFromSingleFile="true">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Assets\Maps\*.svg" ExcludeFromSingleFile="true">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Include="Assets\tarkov_data.db" ExcludeFromSingleFile="true">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Assets\Icons\*.png" ExcludeFromSingleFile="true">
+    <Content Include="Assets\Icons\**\*.png" ExcludeFromSingleFile="true">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Assets\db_version.txt" ExcludeFromSingleFile="true">

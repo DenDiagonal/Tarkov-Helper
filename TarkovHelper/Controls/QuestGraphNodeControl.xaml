@@ -23,9 +23,6 @@
             CornerRadius="6"
             Padding="8,6"
             Opacity="{Binding CardOpacity}">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="8" ShadowDepth="2" Direction="270" Color="#000000" Opacity="0.5"/>
-        </Border.Effect>
 
         <Grid>
             <Grid.RowDefinitions>

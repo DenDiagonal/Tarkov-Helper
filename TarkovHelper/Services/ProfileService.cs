@@ -8,17 +8,16 @@ namespace TarkovHelper.Services;
 /// </summary>
 public sealed class ProfileService
 {
-    private static ProfileService? _instance;
-    public static ProfileService Instance
-    {
-        get
-        {
-            if (_instance == null) _instance = new ProfileService();
-            return _instance;
-        }
-    }
+    private static readonly Lazy<ProfileService> _lazyInstance = new(() => new ProfileService());
+    public static ProfileService Instance => _lazyInstance.Value;
 
     private ProfileType? _currentProfile;
+    private Task _pendingSaveTask = Task.CompletedTask;
+
+    /// <summary>
+    /// Awaits any in-flight profile persistence write (used during shutdown/profile switch).
+    /// </summary>
+    public Task FlushPendingSaveAsync() => _pendingSaveTask;
 
     public ProfileType CurrentProfile
     {
@@ -36,9 +35,8 @@ public sealed class ProfileService
             {
                 System.Diagnostics.Debug.WriteLine($"[ProfileService] Profile Changing: {_currentProfile} -> {value}");
                 _currentProfile = value;
-                // 직접 DB에 마지막 프로필 상태 비동기 저장 (전역 영역 null)
                 var profileStr = value.ToString();
-                Task.Run(async () =>
+                _pendingSaveTask = Task.Run(async () =>
                 {
                     try
                     {
@@ -61,7 +59,6 @@ public sealed class ProfileService
 
     private ProfileService() 
     { 
-        _instance = this;
     }
 
     private void LoadProfileFromDb()

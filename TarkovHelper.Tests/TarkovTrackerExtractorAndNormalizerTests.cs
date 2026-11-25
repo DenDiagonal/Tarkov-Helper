@@ -444,6 +444,99 @@ namespace TarkovHelper.Tests
             Assert.Equal(TarkovTrackerExtractorService.FallbackUserAgent, usedUserAgent);
         }
 
+        [Theory]
+        [InlineData("5ac3b934156ae10c4430e83c", "@tt:regular:traders:5ac3b934156ae10c4430e83c Nickname", "ragman", "Ragman")]
+        [InlineData("5a7c2eca46aef81a7ca2145d", "@tt:regular:traders:5a7c2eca46aef81a7ca2145d Nickname", "mechanic", "Mechanic")]
+        [InlineData("54cb50c76803fa8b248b4571", "@tt:regular:traders:54cb50c76803fa8b248b4571 Nickname", "prapor", "Prapor")]
+        [InlineData("54cb57776803fa99248b456e", "@tt:regular:traders:54cb57776803fa99248b456e Nickname", "therapist", "Therapist")]
+        [InlineData("58330581ace78e27b8b10cee", "@tt:regular:traders:58330581ace78e27b8b10cee Nickname", "skier", "Skier")]
+        [InlineData("5935c25fb3acc3127c3d8cd9", "@tt:regular:traders:5935c25fb3acc3127c3d8cd9 Nickname", "peacekeeper", "Peacekeeper")]
+        [InlineData("5c0647fdd443bc2504c2d371", "@tt:regular:traders:5c0647fdd443bc2504c2d371 Nickname", "jaeger", "Jaeger")]
+        [InlineData("6617beeaa9cfa777ca915b7c", "@tt:regular:traders:6617beeaa9cfa777ca915b7c Nickname", "ref", "Ref")]
+        [InlineData("656f0f98d80a697f855d34b1", "@tt:regular:traders:656f0f98d80a697f855d34b1 Nickname", "btr-driver", "BTR Driver")]
+        [InlineData("5ac3b934156ae10c4430e83c", "@tt:overlay:/tasks/placeholder_pay_the_fare/trader/name", null, "Ragman")]
+        public void ResolveTraderName_ResolvesLocalizationTemplatesAccurately(string id, string name, string? normalizedName, string expected)
+        {
+            var traderRef = new TarkovTrackerTraderRef
+            {
+                Id = id,
+                Name = name,
+                NormalizedName = normalizedName
+            };
+
+            var resolved = TarkovTrackerExtractorService.ResolveTraderName(traderRef);
+            Assert.Equal(expected, resolved);
+        }
+
+        [Fact]
+        public void ParseTasksCore_ResolvesLocalizationTemplatesAndSanitizesWikilinks()
+        {
+            var sampleCoreWithTemplates = @"{
+                ""data"": {
+                    ""tasks"": [
+                        {
+                            ""id"": ""60e71dc0a94be721b065bbfc"",
+                            ""name"": ""@tt:regular:tasks:60e71dc0a94be721b065bbfc name"",
+                            ""trader"": {
+                                ""id"": ""5ac3b934156ae10c4430e83c"",
+                                ""name"": ""@tt:regular:traders:5ac3b934156ae10c4430e83c Nickname"",
+                                ""normalizedName"": ""ragman""
+                            },
+                            ""wikiLink"": ""https://escapefromtarkov.fandom.com/wiki/Long_Line"",
+                            ""minPlayerLevel"": 45,
+                            ""kappaRequired"": false
+                        },
+                        {
+                            ""id"": ""625d700cc48e6c62a440fab5"",
+                            ""name"": ""@tt:overlay:/tasks/625d700cc48e6c62a440fab5/name"",
+                            ""normalizedName"": ""getting-acquainted"",
+                            ""trader"": {
+                                ""id"": ""5a7c2eca46aef81a7ca2145d"",
+                                ""name"": ""@tt:overlay:/tasks/625d700cc48e6c62a440fab5/trader/name""
+                            },
+                            ""wikiLink"": ""@tt:overlay:/tasks/625d700cc48e6c62a440fab5/wikiLink"",
+                            ""minPlayerLevel"": 33,
+                            ""kappaRequired"": false
+                        }
+                    ],
+                    ""traders"": [],
+                    ""maps"": []
+                }
+            }";
+
+            var rawData = TarkovTrackerExtractorService.ParseTasksCore(sampleCoreWithTemplates);
+            Assert.NotNull(rawData);
+            Assert.Equal(2, rawData.Tasks.Count);
+
+            // Task 1: Long Line
+            var t1 = rawData.Tasks[0];
+            Assert.Equal("Long Line", t1.Name);
+            Assert.Equal("Ragman", t1.Trader?.Name);
+            Assert.Equal("https://escapefromtarkov.fandom.com/wiki/Long_Line", t1.WikiLink);
+
+            // Task 2: Getting Acquainted
+            var t2 = rawData.Tasks[1];
+            Assert.Equal("Getting Acquainted", t2.Name);
+            Assert.Equal("Mechanic", t2.Trader?.Name);
+            Assert.Equal("https://escapefromtarkov.fandom.com/wiki/Getting_Acquainted", t2.WikiLink);
+
+            // Normalize
+            var normalizer = new DataNormalizerService();
+            var normalized = normalizer.NormalizeTarkovTrackerData(rawData);
+            Assert.Equal(2, normalized.Quests.Count);
+
+            var q1 = normalized.Quests[0];
+            Assert.Equal("Long Line", q1.Name);
+            Assert.Equal("Ragman", q1.Trader);
+            Assert.False(q1.Trader.StartsWith("@tt:"));
+
+            var q2 = normalized.Quests[1];
+            Assert.Equal("Getting Acquainted", q2.Name);
+            Assert.Equal("Mechanic", q2.Trader);
+            Assert.False(q2.Trader.StartsWith("@tt:"));
+            Assert.False(q2.WikiPageLink.StartsWith("@tt:"));
+        }
+
         private class MockHttpMessageHandler : HttpMessageHandler
         {
             private readonly Func<HttpRequestMessage, HttpResponseMessage> _handler;

@@ -193,8 +193,10 @@ public sealed class UserDataDbService
     {
         try
         {
-            using var conn = new SqliteConnection(GetConnectionString());
-            SqliteConnection.ClearPool(conn);
+            using var rwConn = new SqliteConnection(GetConnectionString(readOnly: false));
+            SqliteConnection.ClearPool(rwConn);
+            using var roConn = new SqliteConnection(GetConnectionString(readOnly: true));
+            SqliteConnection.ClearPool(roConn);
         }
         catch { }
     }
@@ -255,11 +257,24 @@ public sealed class UserDataDbService
 
     private async Task InitializeCoreAsync(CancellationToken ct)
     {
+        var dbExistedBeforeOpen = File.Exists(_databasePath) && new FileInfo(_databasePath).Length > 0;
         Directory.CreateDirectory(Path.GetDirectoryName(_databasePath)!);
 
         await using var connection = await OpenConnectionAsync(readOnly: false, ct).ConfigureAwait(false);
         await EnableWalModeAsync(connection, ct).ConfigureAwait(false);
-        await BackupDatabaseSafeOnlineAsync(connection).ConfigureAwait(false);
+
+        // Solo realizar backup en arranque si la BD ya existía con datos y no hay backup reciente (<12h)
+        if (dbExistedBeforeOpen)
+        {
+            var bakPath = _databasePath + ".bak";
+            var needsBackup = !File.Exists(bakPath) ||
+                (DateTime.UtcNow - File.GetLastWriteTimeUtc(bakPath)) > TimeSpan.FromHours(12);
+            if (needsBackup)
+            {
+                await BackupDatabaseSafeOnlineAsync(connection).ConfigureAwait(false);
+            }
+        }
+
         await MigrateToProfileSystemTransactionalAsync(connection, ct).ConfigureAwait(false);
 
         await using (var cmd = new SqliteCommand(SchemaDdlSql, connection))
@@ -655,7 +670,6 @@ public sealed class UserDataDbService
         await using var cmd = new SqliteCommand("DELETE FROM QuestProgress WHERE ProfileType = @profileType", connection);
         cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = (int)actualProfileType;
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        CustomMarkersChanged?.Invoke();
     }
 
     #endregion
@@ -747,10 +761,10 @@ public sealed class UserDataDbService
         }
     }
 
-    public async Task SaveObjectiveProgressAsync(string id, string? questId, bool isCompleted)
+    public async Task SaveObjectiveProgressAsync(string id, string? questId, bool isCompleted, ProfileType? profileType = null)
     {
         await InitializeAsync().ConfigureAwait(false);
-        var profileType = ProfileService.Instance.CurrentProfile;
+        var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
 
         await using var connection = await OpenConnectionAsync(readOnly: false).ConfigureAwait(false);
         const string sql = @"
@@ -762,7 +776,7 @@ public sealed class UserDataDbService
                 UpdatedAt = excluded.UpdatedAt;";
 
         await using var cmd = new SqliteCommand(sql, connection);
-        cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = (int)profileType;
+        cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = (int)actualProfileType;
         cmd.Parameters.Add("@id", SqliteType.Text).Value = id;
         cmd.Parameters.Add("@questId", SqliteType.Text).Value = questId ?? (object)DBNull.Value;
         cmd.Parameters.Add("@isCompleted", SqliteType.Integer).Value = isCompleted ? 1 : 0;
@@ -771,15 +785,15 @@ public sealed class UserDataDbService
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
-    public async Task DeleteObjectiveProgressAsync(string id)
+    public async Task DeleteObjectiveProgressAsync(string id, ProfileType? profileType = null)
     {
         await InitializeAsync().ConfigureAwait(false);
-        var profileType = ProfileService.Instance.CurrentProfile;
+        var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
 
         await using var connection = await OpenConnectionAsync(readOnly: false).ConfigureAwait(false);
         const string sql = "DELETE FROM ObjectiveProgress WHERE ProfileType = @profileType AND Id = @id";
         await using var cmd = new SqliteCommand(sql, connection);
-        cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = (int)profileType;
+        cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = (int)actualProfileType;
         cmd.Parameters.Add("@id", SqliteType.Text).Value = id;
 
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
@@ -814,16 +828,15 @@ public sealed class UserDataDbService
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
-    public async Task ClearAllObjectiveProgressAsync()
+    public async Task ClearAllObjectiveProgressAsync(ProfileType? profileType = null)
     {
         await InitializeAsync().ConfigureAwait(false);
-        var profileType = ProfileService.Instance.CurrentProfile;
+        var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
 
         await using var connection = await OpenConnectionAsync(readOnly: false).ConfigureAwait(false);
         await using var cmd = new SqliteCommand("DELETE FROM ObjectiveProgress WHERE ProfileType = @profileType", connection);
-        cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = (int)profileType;
+        cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = (int)actualProfileType;
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        CustomMarkersChanged?.Invoke();
     }
 
     #endregion
@@ -894,7 +907,6 @@ public sealed class UserDataDbService
         await using var cmd = new SqliteCommand("DELETE FROM HideoutProgress WHERE ProfileType = @profileType", connection);
         cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = (int)actualProfileType;
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        CustomMarkersChanged?.Invoke();
     }
 
     #endregion
@@ -1040,7 +1052,6 @@ public sealed class UserDataDbService
         await using var cmd = new SqliteCommand("DELETE FROM ItemInventory WHERE ProfileType = @profileType", connection);
         cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = (int)actualProfileType;
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        CustomMarkersChanged?.Invoke();
     }
 
     #endregion
@@ -1472,6 +1483,11 @@ public sealed class UserDataDbService
         {
             using var connection = new SqliteConnection(GetConnectionString(readOnly: true));
             connection.Open();
+            using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA busy_timeout = 5000;";
+                pragma.ExecuteNonQuery();
+            }
             const string sql = "SELECT Value FROM UserSettings WHERE ProfileType = @profileType AND Key = @key LIMIT 1;";
             using var cmd = new SqliteCommand(sql, connection);
             cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = actualProfileType;
@@ -1496,6 +1512,11 @@ public sealed class UserDataDbService
         {
             using var connection = new SqliteConnection(GetConnectionString(readOnly: true));
             connection.Open();
+            using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA busy_timeout = 5000;";
+                pragma.ExecuteNonQuery();
+            }
             const string sql = @"
                 SELECT Key, Value, ProfileType FROM UserSettings
                 WHERE ProfileType IN (@currentProfile, 99)
@@ -1527,6 +1548,11 @@ public sealed class UserDataDbService
         {
             using var connection = new SqliteConnection(GetConnectionString(readOnly: false));
             connection.Open();
+            using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA busy_timeout = 5000;";
+                pragma.ExecuteNonQuery();
+            }
             const string sql = @"
                 INSERT INTO UserSettings (ProfileType, Key, Value)
                 VALUES (@profileType, @key, @value)
@@ -1553,6 +1579,11 @@ public sealed class UserDataDbService
         {
             using var connection = new SqliteConnection(GetConnectionString(readOnly: false));
             connection.Open();
+            using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA busy_timeout = 5000;";
+                pragma.ExecuteNonQuery();
+            }
             const string sql = "DELETE FROM UserSettings WHERE ProfileType = @profileType AND Key = @key;";
             using var cmd = new SqliteCommand(sql, connection);
             cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = actualProfileType;
@@ -1645,7 +1676,7 @@ public sealed class UserDataDbService
                 MapName = reader.IsDBNull(6) ? null : reader.GetString(6),
                 MapKey = reader.IsDBNull(7) ? null : reader.GetString(7),
                 ServerIp = reader.IsDBNull(8) ? null : reader.GetString(8),
-                ServerPort = reader.GetInt32(9),
+                ServerPort = reader.IsDBNull(9) ? 0 : reader.GetInt32(9),
                 IsParty = reader.GetInt32(10) == 1,
                 PartyLeaderAccountId = reader.IsDBNull(11) ? null : reader.GetString(11),
                 StartTime = TryParseIsoDateTime(reader, 12),
@@ -1699,9 +1730,11 @@ public sealed class UserDataDbService
                 Z = reader.GetDouble(5),
                 FloorId = reader.IsDBNull(6) ? null : reader.GetString(6),
                 Color = reader.IsDBNull(7) ? null : reader.GetString(7),
-                Size = reader.GetDouble(8),
+                Size = reader.IsDBNull(8) ? 24.0 : reader.GetDouble(8),
                 Opacity = reader.IsDBNull(9) ? 1.0 : reader.GetDouble(9),
-                CreatedAt = DateTime.Parse(reader.GetString(10), CultureInfo.InvariantCulture)
+                CreatedAt = !reader.IsDBNull(10) && DateTime.TryParse(reader.GetString(10), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt)
+                    ? dt
+                    : DateTime.UtcNow
             });
         }
         return result;
@@ -1746,15 +1779,15 @@ public sealed class UserDataDbService
         CustomMarkersChanged?.Invoke();
     }
 
-    public async Task DeleteCustomMarkerAsync(string id)
+    public async Task DeleteCustomMarkerAsync(string id, ProfileType? profileType = null)
     {
         await InitializeAsync().ConfigureAwait(false);
-        var profileType = ProfileService.Instance.CurrentProfile;
+        var actualProfileType = profileType ?? ProfileService.Instance.CurrentProfile;
 
         await using var connection = await OpenConnectionAsync(readOnly: false).ConfigureAwait(false);
         const string sql = "DELETE FROM CustomMapMarkers WHERE ProfileType = @profileType AND Id = @id";
         await using var cmd = new SqliteCommand(sql, connection);
-        cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = (int)profileType;
+        cmd.Parameters.Add("@profileType", SqliteType.Integer).Value = (int)actualProfileType;
         cmd.Parameters.Add("@id", SqliteType.Text).Value = id;
 
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);

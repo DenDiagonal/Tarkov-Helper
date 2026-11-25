@@ -13,8 +13,9 @@ namespace TarkovHelper.Services;
 public sealed class DatabaseBootstrapService
 {
     private static readonly ILogger _log = Log.For<DatabaseBootstrapService>();
-    private static DatabaseBootstrapService? _instance;
-    public static DatabaseBootstrapService Instance => _instance ??= new DatabaseBootstrapService();
+    private static readonly Lazy<DatabaseBootstrapService> _lazyInstance =
+        new(() => new DatabaseBootstrapService(), LazyThreadSafetyMode.ExecutionAndPublication);
+    public static DatabaseBootstrapService Instance => _lazyInstance.Value;
 
     private DatabaseBootstrapService() { }
 
@@ -40,24 +41,33 @@ public sealed class DatabaseBootstrapService
             await using var connection = new SqliteConnection(connectionString);
             await connection.OpenAsync();
 
+            long userVersion = 0;
+            await using (var verCmd = new SqliteCommand("PRAGMA user_version;", connection))
+            {
+                userVersion = Convert.ToInt64(await verCmd.ExecuteScalarAsync());
+            }
+
+            if (userVersion >= 1)
+                return;
+
+            await using var tx = (SqliteTransaction)await connection.BeginTransactionAsync();
+
             // 1. Ensure QuestObjectives schema migrations if table exists
-            if (await TableExistsAsync(connection, "QuestObjectives"))
+            if (await TableExistsAsync(connection, "QuestObjectives", tx))
             {
                 // 2. Add OriginalLocationPoints column if missing
-                if (!await ColumnExistsAsync(connection, "QuestObjectives", "OriginalLocationPoints"))
+                if (!await ColumnExistsAsync(connection, "QuestObjectives", "OriginalLocationPoints", tx))
                 {
                     _log.Info("Adding column OriginalLocationPoints to QuestObjectives...");
-                    var alterSql = "ALTER TABLE QuestObjectives ADD COLUMN OriginalLocationPoints TEXT;";
-                    await using var cmd = new SqliteCommand(alterSql, connection);
+                    await using var cmd = new SqliteCommand("ALTER TABLE QuestObjectives ADD COLUMN OriginalLocationPoints TEXT;", connection, tx);
                     await cmd.ExecuteNonQueryAsync();
                 }
 
                 // 3. Add IsCustomized column if missing
-                if (!await ColumnExistsAsync(connection, "QuestObjectives", "IsCustomized"))
+                if (!await ColumnExistsAsync(connection, "QuestObjectives", "IsCustomized", tx))
                 {
                     _log.Info("Adding column IsCustomized to QuestObjectives...");
-                    var alterSql = "ALTER TABLE QuestObjectives ADD COLUMN IsCustomized INTEGER NOT NULL DEFAULT 0;";
-                    await using var cmd = new SqliteCommand(alterSql, connection);
+                    await using var cmd = new SqliteCommand("ALTER TABLE QuestObjectives ADD COLUMN IsCustomized INTEGER NOT NULL DEFAULT 0;", connection, tx);
                     await cmd.ExecuteNonQueryAsync();
                 }
 
@@ -70,7 +80,7 @@ public sealed class DatabaseBootstrapService
                       AND LocationPoints IS NOT NULL
                       AND LocationPoints != ''
                       AND IsCustomized = 0;";
-                await using (var cmd = new SqliteCommand(backfillSql, connection))
+                await using (var cmd = new SqliteCommand(backfillSql, connection, tx))
                 {
                     var rowsBackfilled = await cmd.ExecuteNonQueryAsync();
                     if (rowsBackfilled > 0)
@@ -93,7 +103,7 @@ public sealed class DatabaseBootstrapService
                         Timestamp TEXT NOT NULL
                     );
                     CREATE INDEX IF NOT EXISTS idx_reloclog_objid ON QuestObjectiveRelocationLog(ObjectiveId);";
-                await using (var cmd = new SqliteCommand(createLogSql, connection))
+                await using (var cmd = new SqliteCommand(createLogSql, connection, tx))
                 {
                     await cmd.ExecuteNonQueryAsync();
                 }
@@ -117,7 +127,7 @@ public sealed class DatabaseBootstrapService
                 );
                 CREATE INDEX IF NOT EXISTS idx_quest_trader_req_quest_id ON QuestTraderRequirements(QuestId);
                 CREATE INDEX IF NOT EXISTS idx_quest_trader_req_trader ON QuestTraderRequirements(TraderName, RequiredLevel);";
-            await using (var cmd = new SqliteCommand(createTraderReqSql, connection))
+            await using (var cmd = new SqliteCommand(createTraderReqSql, connection, tx))
             {
                 await cmd.ExecuteNonQueryAsync();
             }
@@ -139,14 +149,14 @@ public sealed class DatabaseBootstrapService
                 );
                 CREATE INDEX IF NOT EXISTS idx_quest_pool_req_quest_id ON QuestPoolRequirements(QuestId);
                 CREATE INDEX IF NOT EXISTS idx_quest_pool_req_trader ON QuestPoolRequirements(PoolTrader, PoolTraderLL);";
-            await using (var cmd = new SqliteCommand(createPoolReqSql, connection))
+            await using (var cmd = new SqliteCommand(createPoolReqSql, connection, tx))
             {
                 await cmd.ExecuteNonQueryAsync();
             }
 
-            if (!await ColumnExistsAsync(connection, "QuestPoolRequirements", "TaskIds"))
+            if (!await ColumnExistsAsync(connection, "QuestPoolRequirements", "TaskIds", tx))
             {
-                await using var alterCmd = new SqliteCommand("ALTER TABLE QuestPoolRequirements ADD COLUMN TaskIds TEXT;", connection);
+                await using var alterCmd = new SqliteCommand("ALTER TABLE QuestPoolRequirements ADD COLUMN TaskIds TEXT;", connection, tx);
                 await alterCmd.ExecuteNonQueryAsync();
             }
 
@@ -155,13 +165,14 @@ public sealed class DatabaseBootstrapService
                 DELETE FROM QuestTraderRequirements 
                 WHERE Id = 'seed_wc_pk_ll2' 
                   AND EXISTS (SELECT 1 FROM QuestTraderRequirements WHERE QuestId = '5a27ba1c86f77461ea5a3c56' AND Id != 'seed_wc_pk_ll2');";
-            await using (var cmd = new SqliteCommand(cleanupSql, connection))
+            await using (var cmd = new SqliteCommand(cleanupSql, connection, tx))
             {
                 await cmd.ExecuteNonQueryAsync();
             }
 
-            // 9. Seed missing baseline extractions into MapMarkers
-            if (await TableExistsAsync(connection, "MapMarkers"))
+            // 9. Seed missing baseline extractions into MapMarkers (only if full schema columns exist)
+            if (await TableExistsAsync(connection, "MapMarkers", tx) &&
+                await ColumnExistsAsync(connection, "MapMarkers", "NameKo", tx))
             {
                 var seedMarkersSql = @"
                     INSERT OR IGNORE INTO MapMarkers (Id, Name, NameKo, MarkerType, MapKey, X, Y, Z, FloorId, CreatedAt, UpdatedAt) VALUES
@@ -183,18 +194,29 @@ public sealed class DatabaseBootstrapService
                     DELETE FROM MapMarkers WHERE Id = '135def91-174f-4451-9696-b85d4039fa76';
 
                     UPDATE MapMarkers SET Name = 'Killa', NameKo = '킬라' WHERE MapKey = 'Interchange' AND MarkerType = 'BossSpawn' AND Name LIKE 'BOSS_SPAWN_%';";
-                await using var markerCmd = new SqliteCommand(seedMarkersSql, connection);
+                await using var markerCmd = new SqliteCommand(seedMarkersSql, connection, tx);
                 await markerCmd.ExecuteNonQueryAsync();
             }
 
-            if (await TableExistsAsync(connection, "QuestObjectives"))
+            if (await TableExistsAsync(connection, "QuestObjectives", tx))
             {
-                var seedObjectivesSql = @"
+                var hasObjectiveType = await ColumnExistsAsync(connection, "QuestObjectives", "ObjectiveType", tx);
+                var seedObjectivesSql = hasObjectiveType
+                    ? @"
                     DELETE FROM QuestObjectives WHERE Id IN ('64ee99639878a0569d6ec8c9_survive', 'sLnZaRMj1J0xfB_Xb4izGB');
-                    DELETE FROM QuestObjectives WHERE Id = 'lsz-izpRbqejXNnpl3IVtF' OR (QuestId = '5a27b87686f77460de0252a8' AND ObjectiveType = 'Kill');";
-                await using var objCmd = new SqliteCommand(seedObjectivesSql, connection);
+                    DELETE FROM QuestObjectives WHERE Id = 'lsz-izpRbqejXNnpl3IVtF' OR (QuestId = '5a27b87686f77460de0252a8' AND ObjectiveType = 'Kill');"
+                    : @"
+                    DELETE FROM QuestObjectives WHERE Id IN ('64ee99639878a0569d6ec8c9_survive', 'sLnZaRMj1J0xfB_Xb4izGB', 'lsz-izpRbqejXNnpl3IVtF');";
+                await using var objCmd = new SqliteCommand(seedObjectivesSql, connection, tx);
                 await objCmd.ExecuteNonQueryAsync();
             }
+
+            await using (var setVerCmd = new SqliteCommand("PRAGMA user_version = 1;", connection, tx))
+            {
+                await setVerCmd.ExecuteNonQueryAsync();
+            }
+
+            await tx.CommitAsync();
         }
         catch (Exception ex)
         {
@@ -202,19 +224,19 @@ public sealed class DatabaseBootstrapService
         }
     }
 
-    private static async Task<bool> TableExistsAsync(SqliteConnection connection, string tableName)
+    private static async Task<bool> TableExistsAsync(SqliteConnection connection, string tableName, SqliteTransaction? tx = null)
     {
         var sql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=@name";
-        await using var cmd = new SqliteCommand(sql, connection);
+        await using var cmd = new SqliteCommand(sql, connection, tx);
         cmd.Parameters.AddWithValue("@name", tableName);
         var result = await cmd.ExecuteScalarAsync();
         return Convert.ToInt32(result) > 0;
     }
 
-    private static async Task<bool> ColumnExistsAsync(SqliteConnection connection, string tableName, string columnName)
+    private static async Task<bool> ColumnExistsAsync(SqliteConnection connection, string tableName, string columnName, SqliteTransaction? tx = null)
     {
         var sql = $"PRAGMA table_info({tableName})";
-        await using var cmd = new SqliteCommand(sql, connection);
+        await using var cmd = new SqliteCommand(sql, connection, tx);
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -227,9 +249,11 @@ public sealed class DatabaseBootstrapService
 
     private static void ValidateTargetDatabasePath(string dbPath)
     {
-        var fileName = Path.GetFileName(dbPath);
-        if (string.Equals(fileName, "user_data.db", StringComparison.OrdinalIgnoreCase) ||
-            dbPath.EndsWith("user_data.db", StringComparison.OrdinalIgnoreCase))
+        var normalized = Path.GetFullPath(dbPath).Replace('/', '\\').ToLowerInvariant();
+        var fileName = Path.GetFileName(normalized);
+        if (fileName == "user_data.db" ||
+            normalized.EndsWith("\\user_data.db", StringComparison.Ordinal) ||
+            normalized.Contains("userdata.db", StringComparison.Ordinal))
         {
             throw new InvalidOperationException("DatabaseBootstrapService must never modify user_data.db.");
         }

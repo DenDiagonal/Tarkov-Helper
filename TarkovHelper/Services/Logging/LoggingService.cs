@@ -52,8 +52,8 @@ namespace TarkovHelper.Services.Logging
 
         private LoggingService()
         {
-            // 로그 디렉토리: 실행 폴더/Logs
-            _logDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+            // 로그 디렉토리: writable user AppData/Logs
+            _logDirectory = TarkovHelper.Debug.AppEnv.LogsPath;
             Directory.CreateDirectory(_logDirectory);
 
             // 세션 폴더 생성: 날짜-인스턴스번호

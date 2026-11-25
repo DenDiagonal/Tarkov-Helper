@@ -10,14 +10,16 @@ namespace TarkovHelper.Services;
 /// </summary>
 public sealed class QuestObjectiveDbService
 {
-    private static QuestObjectiveDbService? _instance;
-    public static QuestObjectiveDbService Instance => _instance ??= new QuestObjectiveDbService();
+    private static readonly Lazy<QuestObjectiveDbService> _lazyInstance =
+        new(() => new QuestObjectiveDbService(), LazyThreadSafetyMode.ExecutionAndPublication);
+    public static QuestObjectiveDbService Instance => _lazyInstance.Value;
 
     private readonly string _databasePath;
+    private readonly SemaphoreSlim _reloadLock = new(1, 1);
     private List<QuestObjective> _allObjectives = new();
     private bool _isLoaded;
 
-    public bool IsLoaded => _isLoaded;
+    public bool IsLoaded => Volatile.Read(ref _isLoaded);
 
     /// <summary>
     /// 데이터가 새로고침되었을 때 발생하는 이벤트.
@@ -38,8 +40,18 @@ public sealed class QuestObjectiveDbService
     /// </summary>
     private async void OnDatabaseUpdated(object? sender, EventArgs e)
     {
-        System.Diagnostics.Debug.WriteLine("[QuestObjectiveDbService] Database updated, reloading data...");
-        await RefreshAsync();
+        if (DatabaseUpdateService.Instance.IsInternalHotReloadInProgress)
+            return;
+
+        try
+        {
+            System.Diagnostics.Debug.WriteLine("[QuestObjectiveDbService] Database updated, reloading data...");
+            await RefreshAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[QuestObjectiveDbService] Error reloading after DB update: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -60,56 +72,43 @@ public sealed class QuestObjectiveDbService
     /// </summary>
     private void OnDataRefreshed()
     {
-        // UI 스레드에서 이벤트 발생
-        if (System.Windows.Application.Current?.Dispatcher != null)
+        var handler = DataRefreshed;
+        if (handler == null) return;
+
+        foreach (EventHandler listener in handler.GetInvocationList())
         {
-            System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
+            try
             {
-                DataRefreshed?.Invoke(this, EventArgs.Empty);
-            });
-        }
-        else
-        {
-            DataRefreshed?.Invoke(this, EventArgs.Empty);
+                listener(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[QuestObjectiveDbService] Error in DataRefreshed listener: {ex.Message}");
+            }
         }
     }
 
-    /// <summary>
-    /// Get all loaded objectives
-    /// </summary>
-    public IReadOnlyList<QuestObjective> AllObjectives => _allObjectives;
+    public IReadOnlyList<QuestObjective> AllObjectives => Volatile.Read(ref _allObjectives);
 
-    /// <summary>
-    /// For testing purposes only: overrides loaded objectives in-memory.
-    /// </summary>
     internal void SetObjectivesForTesting(IEnumerable<QuestObjective> objectives)
     {
-        _allObjectives = objectives.ToList();
-        _isLoaded = true;
+        Interlocked.Exchange(ref _allObjectives, objectives.ToList());
+        Volatile.Write(ref _isLoaded, true);
     }
 
-    /// <summary>
-    /// For testing purposes only: clears in-memory objectives.
-    /// </summary>
     internal void ClearObjectivesForTesting()
     {
-        _allObjectives = new List<QuestObjective>();
-        _isLoaded = false;
+        Interlocked.Exchange(ref _allObjectives, new List<QuestObjective>());
+        Volatile.Write(ref _isLoaded, false);
     }
 
-    /// <summary>
-    /// Get objectives for a specific map
-    /// </summary>
     public List<QuestObjective> GetObjectivesForMap(string mapKey, MapConfig mapConfig)
     {
-        return _allObjectives
+        return Volatile.Read(ref _allObjectives)
             .Where(o => mapConfig.MatchesMapName(o.EffectiveMapName))
             .ToList();
     }
 
-    /// <summary>
-    /// Load all quest objectives with location data
-    /// </summary>
     public async Task<bool> LoadObjectivesAsync()
     {
         if (!File.Exists(_databasePath))
@@ -118,31 +117,30 @@ public sealed class QuestObjectiveDbService
             return false;
         }
 
+        await _reloadLock.WaitAsync().ConfigureAwait(false);
         try
         {
             var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
             await using var connection = new SqliteConnection(connectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync().ConfigureAwait(false);
 
-            // Check if QuestObjectives table exists
-            if (!await TableExistsAsync(connection, "QuestObjectives"))
+            if (!await TableExistsAsync(connection, "QuestObjectives").ConfigureAwait(false))
             {
                 System.Diagnostics.Debug.WriteLine("[QuestObjectiveDbService] QuestObjectives table not found");
                 return false;
             }
 
-            // Check if columns exist
-            var hasOptionalPoints = await ColumnExistsAsync(connection, "QuestObjectives", "OptionalPoints");
-            var hasObjectiveType = await ColumnExistsAsync(connection, "QuestObjectives", "ObjectiveType");
-            var hasOriginalPoints = await ColumnExistsAsync(connection, "QuestObjectives", "OriginalLocationPoints");
-            var hasIsCustomized = await ColumnExistsAsync(connection, "QuestObjectives", "IsCustomized");
+            var objCols = await GetTableColumnsAsync(connection, "QuestObjectives").ConfigureAwait(false);
+            var hasOptionalPoints = objCols.Contains("OptionalPoints");
+            var hasObjectiveType = objCols.Contains("ObjectiveType");
+            var hasOriginalPoints = objCols.Contains("OriginalLocationPoints");
+            var hasIsCustomized = objCols.Contains("IsCustomized");
 
-            // 새 리스트 빌드 (기존 데이터 유지하면서)
             var newObjectives = new List<QuestObjective>();
 
-            // Check if Quests table has localization columns
-            var hasQuestNameKo = await ColumnExistsAsync(connection, "Quests", "NameKo");
-            var hasQuestNameJa = await ColumnExistsAsync(connection, "Quests", "NameJa");
+            var questCols = await GetTableColumnsAsync(connection, "Quests").ConfigureAwait(false);
+            var hasQuestNameKo = questCols.Contains("NameKo");
+            var hasQuestNameJa = questCols.Contains("NameJa");
 
             // Load objectives with location points and quest info
             var sql = $@"
@@ -222,9 +220,9 @@ public sealed class QuestObjectiveDbService
             }
 
             // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
-            _allObjectives = newObjectives;
-            _isLoaded = true;
-            System.Diagnostics.Debug.WriteLine($"[QuestObjectiveDbService] Loaded {_allObjectives.Count} objectives with location data");
+            Interlocked.Exchange(ref _allObjectives, newObjectives);
+            Volatile.Write(ref _isLoaded, true);
+            System.Diagnostics.Debug.WriteLine($"[QuestObjectiveDbService] Loaded {newObjectives.Count} objectives with location data");
             return true;
         }
         catch (Exception ex)
@@ -232,6 +230,23 @@ public sealed class QuestObjectiveDbService
             System.Diagnostics.Debug.WriteLine($"[QuestObjectiveDbService] Error loading objectives: {ex.Message}");
             return false;
         }
+        finally
+        {
+            _reloadLock.Release();
+        }
+    }
+
+    private async Task<HashSet<string>> GetTableColumnsAsync(SqliteConnection connection, string tableName)
+    {
+        var cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sql = $"PRAGMA table_info({tableName})";
+        await using var cmd = new SqliteCommand(sql, connection);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            cols.Add(reader.GetString(1));
+        }
+        return cols;
     }
 
     private async Task<bool> TableExistsAsync(SqliteConnection connection, string tableName)

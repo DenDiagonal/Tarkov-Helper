@@ -259,8 +259,8 @@ namespace TarkovHelper.Tests
 
             var card = new DiffItemCardViewModel(questDiff);
 
-            Assert.Equal("MISIÓN", card.CategoryLabel);
-            Assert.Equal("+ AÑADIDO", card.ChangeBadgeText);
+            Assert.Equal("TASK", card.CategoryLabel);
+            Assert.Equal("+ ADDED", card.ChangeBadgeText);
             Assert.Equal("#4CAF50", card.AccentColorHex);
             Assert.Equal("#1B5E20", card.BadgeBackgroundHex);
             Assert.Equal("Customs Reconnaissance", card.Title);
@@ -288,20 +288,20 @@ namespace TarkovHelper.Tests
 
             var card = new DiffItemCardViewModel(questDiff);
 
-            Assert.Equal("MISIÓN", card.CategoryLabel);
-            Assert.Equal("~ MODIFICADO", card.ChangeBadgeText);
+            Assert.Equal("TASK", card.CategoryLabel);
+            Assert.Equal("~ MODIFIED", card.ChangeBadgeText);
             Assert.Equal("#FFB300", card.AccentColorHex);
             Assert.True(card.HasPropertyChanges);
             Assert.Equal(2, card.PropertyChanges.Count);
 
             var minLevelProp = card.PropertyChanges.First(p => p.PropertyName == "MinLevel");
-            Assert.Equal("Nivel Mínimo", minLevelProp.DisplayPropertyName);
+            Assert.Equal("Min Level", minLevelProp.DisplayPropertyName);
             Assert.Equal("1", minLevelProp.DisplayOldValue);
             Assert.Equal("15", minLevelProp.DisplayNewValue);
             Assert.Contains("1 ➔ 15", minLevelProp.FormattedSummary);
 
             var traderProp = card.PropertyChanges.First(p => p.PropertyName == "Trader");
-            Assert.Equal("Comerciante", traderProp.DisplayPropertyName);
+            Assert.Equal("Trader", traderProp.DisplayPropertyName);
             Assert.Equal("Prapor", traderProp.DisplayOldValue);
             Assert.Equal("Skier", traderProp.DisplayNewValue);
             Assert.Contains("Prapor ➔ Skier", traderProp.FormattedSummary);
@@ -341,8 +341,8 @@ namespace TarkovHelper.Tests
 
             var card = new DiffItemCardViewModel(removedItem);
 
-            Assert.Equal("OBJETO REQUERIDO", card.CategoryLabel);
-            Assert.Equal("- ELIMINADO", card.ChangeBadgeText);
+            Assert.Equal("REQUIRED ITEM", card.CategoryLabel);
+            Assert.Equal("- REMOVED", card.ChangeBadgeText);
             Assert.Equal("#EF5350", card.AccentColorHex);
             Assert.Equal("#B71C1C", card.BadgeBackgroundHex);
         }
@@ -353,10 +353,10 @@ namespace TarkovHelper.Tests
             var diff = new PropertyDiff("MinLevel", null, "18");
             var vm = new PropertyDiffViewModel(diff);
 
-            Assert.Equal("Nivel Mínimo", vm.DisplayPropertyName);
-            Assert.Equal("(vacío)", vm.DisplayOldValue);
+            Assert.Equal("Min Level", vm.DisplayPropertyName);
+            Assert.Equal("(empty)", vm.DisplayOldValue);
             Assert.Equal("18", vm.DisplayNewValue);
-            Assert.Equal("Nivel Mínimo: (vacío) ➔ 18", vm.FormattedSummary);
+            Assert.Equal("Min Level: (empty) ➔ 18", vm.FormattedSummary);
         }
 
         #endregion
@@ -515,10 +515,15 @@ namespace TarkovHelper.Tests
                     Assert.Equal(1, dialog.ViewModel.TotalChanges);
                     Assert.False(dialog.WasApplied);
                     Assert.False(dialog.WasRestored);
+                    dialog.Close();
                 }
                 catch (Exception ex)
                 {
                     threadEx = ex;
+                }
+                finally
+                {
+                    System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread)?.InvokeShutdown();
                 }
             });
 
@@ -542,10 +547,15 @@ namespace TarkovHelper.Tests
                     Assert.NotNull(dialog.ViewModel);
                     Assert.False(dialog.ViewModel.HasChanges);
                     Assert.False(dialog.WasRestored);
+                    dialog.Close();
                 }
                 catch (Exception ex)
                 {
                     threadEx = ex;
+                }
+                finally
+                {
+                    System.Windows.Threading.Dispatcher.FromThread(Thread.CurrentThread)?.InvokeShutdown();
                 }
             });
 

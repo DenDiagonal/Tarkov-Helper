@@ -11,19 +11,30 @@ namespace TarkovHelper.Services
     /// </summary>
     public class ObjectiveProgressService
     {
-        private static ObjectiveProgressService? _instance;
-        public static ObjectiveProgressService Instance => _instance ??= new ObjectiveProgressService();
+        private static readonly Lazy<ObjectiveProgressService> _lazyInstance = new(() => new ObjectiveProgressService());
+        public static ObjectiveProgressService Instance => _lazyInstance.Value;
 
         private readonly UserDataDbService _userDataDb = UserDataDbService.Instance;
+        private readonly object _lock = new();
+        private ProfileType _loadedProfile = ProfileService.Instance.CurrentProfile;
+        private Task _activeSaveTask = Task.CompletedTask;
 
         // Objective progress: key = "questNormalizedName:objectiveIndex" or "id:objectiveId", value = completed
-        private Dictionary<string, bool> _objectiveProgress = new();
+        private Dictionary<string, bool> _objectiveProgress = new(StringComparer.OrdinalIgnoreCase);
 
         public event EventHandler<ObjectiveProgressChangedEventArgs>? ObjectiveProgressChanged;
 
         private ObjectiveProgressService()
         {
-            ProfileService.Instance.ProfileChanged += (s, newProfile) => _ = LoadObjectiveProgressAsync(newProfile);
+            ProfileService.Instance.ProfileChanged += (s, newProfile) =>
+            {
+                lock (_lock)
+                {
+                    _loadedProfile = newProfile;
+                    _objectiveProgress.Clear();
+                }
+                _ = LoadObjectiveProgressAsync(newProfile);
+            };
         }
 
         #region Objective Status
@@ -197,34 +208,39 @@ namespace TarkovHelper.Services
 
             var idKey = $"id:{objectiveId}";
             var keysToSave = new List<(string Key, string? QuestId, bool IsCompleted)>();
+            ProfileType targetProfile;
 
-            if (completed)
+            lock (_lock)
             {
-                _objectiveProgress[idKey] = true;
-                keysToSave.Add((idKey, questNormalizedName, true));
-
-                if (!string.IsNullOrEmpty(questNormalizedName) && objectiveIndex >= 0)
+                targetProfile = _loadedProfile;
+                if (completed)
                 {
-                    var indexKey = $"{questNormalizedName}:{objectiveIndex}";
-                    _objectiveProgress[indexKey] = true;
-                    keysToSave.Add((indexKey, questNormalizedName, true));
+                    _objectiveProgress[idKey] = true;
+                    keysToSave.Add((idKey, questNormalizedName, true));
+
+                    if (!string.IsNullOrEmpty(questNormalizedName) && objectiveIndex >= 0)
+                    {
+                        var indexKey = $"{questNormalizedName}:{objectiveIndex}";
+                        _objectiveProgress[indexKey] = true;
+                        keysToSave.Add((indexKey, questNormalizedName, true));
+                    }
                 }
-            }
-            else
-            {
-                _objectiveProgress.Remove(idKey);
-                keysToSave.Add((idKey, questNormalizedName, false));
-
-                if (!string.IsNullOrEmpty(questNormalizedName) && objectiveIndex >= 0)
+                else
                 {
-                    var indexKey = $"{questNormalizedName}:{objectiveIndex}";
-                    _objectiveProgress.Remove(indexKey);
-                    keysToSave.Add((indexKey, questNormalizedName, false));
+                    _objectiveProgress.Remove(idKey);
+                    keysToSave.Add((idKey, questNormalizedName, false));
+
+                    if (!string.IsNullOrEmpty(questNormalizedName) && objectiveIndex >= 0)
+                    {
+                        var indexKey = $"{questNormalizedName}:{objectiveIndex}";
+                        _objectiveProgress.Remove(indexKey);
+                        keysToSave.Add((indexKey, questNormalizedName, false));
+                    }
                 }
             }
 
             // Fire-and-forget async save - don't block UI
-            _ = SaveObjectiveProgressBatchAsync(keysToSave);
+            _ = SaveObjectiveProgressBatchAsync(keysToSave, targetProfile);
             ObjectiveProgressChanged?.Invoke(this, new ObjectiveProgressChangedEventArgs(questNormalizedName, objectiveId, objectiveIndex, completed));
         }
 
@@ -250,33 +266,38 @@ namespace TarkovHelper.Services
 
             var idKey = $"id:{objectiveId}";
             var keysToSave = new List<(string Key, string? QuestId, bool IsCompleted)>();
+            ProfileType targetProfile;
 
-            if (completed)
+            lock (_lock)
             {
-                _objectiveProgress[idKey] = true;
-                keysToSave.Add((idKey, questNormalizedName, true));
-
-                if (!string.IsNullOrEmpty(questNormalizedName) && objectiveIndex >= 0)
+                targetProfile = _loadedProfile;
+                if (completed)
                 {
-                    var indexKey = $"{questNormalizedName}:{objectiveIndex}";
-                    _objectiveProgress[indexKey] = true;
-                    keysToSave.Add((indexKey, questNormalizedName, true));
+                    _objectiveProgress[idKey] = true;
+                    keysToSave.Add((idKey, questNormalizedName, true));
+
+                    if (!string.IsNullOrEmpty(questNormalizedName) && objectiveIndex >= 0)
+                    {
+                        var indexKey = $"{questNormalizedName}:{objectiveIndex}";
+                        _objectiveProgress[indexKey] = true;
+                        keysToSave.Add((indexKey, questNormalizedName, true));
+                    }
+                }
+                else
+                {
+                    _objectiveProgress.Remove(idKey);
+                    keysToSave.Add((idKey, questNormalizedName, false));
+
+                    if (!string.IsNullOrEmpty(questNormalizedName) && objectiveIndex >= 0)
+                    {
+                        var indexKey = $"{questNormalizedName}:{objectiveIndex}";
+                        _objectiveProgress.Remove(indexKey);
+                        keysToSave.Add((indexKey, questNormalizedName, false));
+                    }
                 }
             }
-            else
-            {
-                _objectiveProgress.Remove(idKey);
-                keysToSave.Add((idKey, questNormalizedName, false));
 
-                if (!string.IsNullOrEmpty(questNormalizedName) && objectiveIndex >= 0)
-                {
-                    var indexKey = $"{questNormalizedName}:{objectiveIndex}";
-                    _objectiveProgress.Remove(indexKey);
-                    keysToSave.Add((indexKey, questNormalizedName, false));
-                }
-            }
-
-            await SaveObjectiveProgressBatchAsync(keysToSave);
+            await SaveObjectiveProgressBatchAsync(keysToSave, targetProfile);
             ObjectiveProgressChanged?.Invoke(this, new ObjectiveProgressChangedEventArgs(questNormalizedName, objectiveId, objectiveIndex, completed));
         }
 
@@ -531,6 +552,11 @@ namespace TarkovHelper.Services
 
         public async Task FlushPendingSavesAsync()
         {
+            try
+            {
+                await _activeSaveTask.ConfigureAwait(false);
+            }
+            catch { }
             await SaveObjectiveProgressToDbAsync().ConfigureAwait(false);
         }
 
@@ -563,22 +589,34 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var list = new List<(string Key, string? QuestId, bool IsCompleted)>();
-                foreach (var kvp in _objectiveProgress)
+                List<KeyValuePair<string, bool>> snapshot;
+                ProfileType targetProfile;
+                lock (_lock)
+                {
+                    targetProfile = _loadedProfile;
+                    snapshot = _objectiveProgress.ToList();
+                }
+
+                Dictionary<string, QuestObjective>? objById = null;
+                var list = new List<(string Key, string? QuestId, bool IsCompleted)>(snapshot.Count);
+                foreach (var kvp in snapshot)
                 {
                     string? questId = null;
                     if (kvp.Key.Contains(':'))
                     {
                         var parts = kvp.Key.Split(':');
-                        if (parts[0] != "id")
+                        if (!string.Equals(parts[0], "id", StringComparison.OrdinalIgnoreCase))
                         {
                             questId = parts[0];
                         }
                         else if (parts.Length > 1)
                         {
-                            var obj = QuestObjectiveDbService.Instance.AllObjectives
-                                .FirstOrDefault(o => string.Equals(o.Id, parts[1], StringComparison.OrdinalIgnoreCase));
-                            if (obj != null)
+                            objById ??= QuestObjectiveDbService.Instance.AllObjectives
+                                .Where(o => !string.IsNullOrEmpty(o.Id))
+                                .GroupBy(o => o.Id!, StringComparer.OrdinalIgnoreCase)
+                                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+                            if (objById.TryGetValue(parts[1], out var obj))
                             {
                                 questId = ResolveQuestAndIndex(obj).QuestNormalizedName;
                             }
@@ -589,7 +627,9 @@ namespace TarkovHelper.Services
 
                 if (list.Count > 0)
                 {
-                    await _userDataDb.SaveObjectiveProgressBatchAsync(list).ConfigureAwait(false);
+                    var saveTask = _userDataDb.SaveObjectiveProgressBatchAsync(list, targetProfile);
+                    _activeSaveTask = saveTask;
+                    await saveTask.ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
@@ -598,11 +638,25 @@ namespace TarkovHelper.Services
             }
         }
 
-        public async Task SaveObjectiveProgressBatchAsync(List<(string Key, string? QuestId, bool IsCompleted)> items)
+        public async Task SaveObjectiveProgressBatchAsync(List<(string Key, string? QuestId, bool IsCompleted)> items, ProfileType? profileType = null)
         {
             try
             {
-                await _userDataDb.SaveObjectiveProgressBatchAsync(items);
+                ProfileType targetProfile;
+                if (profileType.HasValue)
+                {
+                    targetProfile = profileType.Value;
+                }
+                else
+                {
+                    lock (_lock)
+                    {
+                        targetProfile = _loadedProfile;
+                    }
+                }
+                var saveTask = _userDataDb.SaveObjectiveProgressBatchAsync(items, targetProfile);
+                _activeSaveTask = saveTask;
+                await saveTask.ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -622,21 +676,33 @@ namespace TarkovHelper.Services
 
         private async Task LoadObjectiveProgressFromDbAsync(ProfileType? profile = null)
         {
+            var targetProfile = profile ?? ProfileService.Instance.CurrentProfile;
+            lock (_lock)
+            {
+                _loadedProfile = targetProfile;
+            }
             try
             {
-                var targetProfile = profile ?? ProfileService.Instance.CurrentProfile;
-                var dbProgress = await _userDataDb.LoadObjectiveProgressAsync(targetProfile);
-                _objectiveProgress.Clear();
-                foreach (var kvp in dbProgress)
+                var dbProgress = await _userDataDb.LoadObjectiveProgressAsync(targetProfile).ConfigureAwait(false);
+                lock (_lock)
                 {
-                    _objectiveProgress[kvp.Key] = kvp.Value;
+                    if (targetProfile != _loadedProfile) return;
+                    _objectiveProgress.Clear();
+                    foreach (var kvp in dbProgress)
+                    {
+                        _objectiveProgress[kvp.Key] = kvp.Value;
+                    }
+                    System.Diagnostics.Debug.WriteLine($"[ObjectiveProgressService] Loaded {_objectiveProgress.Count} objective progress from DB for {targetProfile}");
                 }
-                System.Diagnostics.Debug.WriteLine($"[ObjectiveProgressService] Loaded {_objectiveProgress.Count} objective progress from DB for {targetProfile}");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[ObjectiveProgressService] Load failed: {ex.Message}");
-                _objectiveProgress.Clear();
+                lock (_lock)
+                {
+                    if (targetProfile == _loadedProfile)
+                        _objectiveProgress.Clear();
+                }
             }
         }
 

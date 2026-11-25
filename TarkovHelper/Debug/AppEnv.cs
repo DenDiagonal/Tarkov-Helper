@@ -55,5 +55,6 @@ namespace TarkovHelper.Debug
         public static string DataPath { get; set; } = Path.Combine(AppDataHelperPath, "Data");
         public static string CachePath { get; set; } = Path.Combine(AppDataHelperPath, "Cache");
         public static string ConfigPath { get; set; } = Path.Combine(AppDataHelperPath, "Config");
+        public static string LogsPath { get; set; } = Path.Combine(AppDataHelperPath, "Logs");
     }
 }

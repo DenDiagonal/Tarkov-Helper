@@ -357,16 +357,14 @@ namespace TarkovHelper.Tests
             ProfileService.Instance.CurrentProfile = ProfileType.Pvp;
             await _progressService.SetObjectiveCompletedAsync(questName, 0, true);
 
-            // 2. Change ProfileService.CurrentProfile to Pve WITHOUT calling LoadObjectiveProgressAsync
+            // 2. Change ProfileService.CurrentProfile to Pve:
+            // ObjectiveProgressService clears in-memory cache immediately on ProfileChanged to eliminate cross-profile leak.
             ProfileService.Instance.CurrentProfile = ProfileType.Pve;
 
-            // Notice: The in-memory cache still holds the PVP state unless LoadObjectiveProgressAsync is called!
-            // This proves empirically that RefreshCurrentProfileDataAsync MUST invoke LoadObjectiveProgressAsync
-            // to ensure UI isolation when switching profiles.
             bool inMemoryLeaked = _progressService.IsObjectiveCompleted(questName, 0);
-            Assert.True(inMemoryLeaked, "Without reloading, in-memory dictionary retains prior profile's state");
+            Assert.False(inMemoryLeaked, "On ProfileChanged, in-memory dictionary must immediately clear prior profile's state");
 
-            // 3. Now explicitly invoke LoadObjectiveProgressAsync
+            // 3. Explicitly invoke LoadObjectiveProgressAsync -> PVE reflects true DB state (false)
             await _progressService.LoadObjectiveProgressAsync();
             Assert.False(_progressService.IsObjectiveCompleted(questName, 0),
                 "Once LoadObjectiveProgressAsync is invoked, PVE reflects true DB state (false)");

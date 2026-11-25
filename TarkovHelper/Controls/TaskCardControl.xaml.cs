@@ -2086,34 +2086,36 @@ namespace TarkovHelper.Controls
             CardModel.RefreshLockToggleState();
         }
 
+        private TarkovHelper.Pages.QuestViewModel? _boundQuestVm;
+
         public TaskCardControl()
-
         {
-
             InitializeComponent();
 
             DataContextChanged += OnDataContextChanged;
 
             Loaded += (s, e) => UpdateRewardsFooterVisibility();
 
+            CardModel.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(TaskCardViewModel.IsExpanded) && _boundQuestVm != null)
+                {
+                    _boundQuestVm.IsCardExpanded = CardModel.IsExpanded;
+                }
+            };
         }
 
         private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
-
         {
+            _boundQuestVm = e.NewValue as TarkovHelper.Pages.QuestViewModel;
 
-            if (e.NewValue is TarkovHelper.Pages.QuestViewModel qvm)
-
+            if (_boundQuestVm != null)
             {
-
-                if (qvm.Task != null)
-
+                CardModel.IsExpanded = _boundQuestVm.IsCardExpanded;
+                if (_boundQuestVm.Task != null)
                 {
-
-                    CardModel.LoadFromTask(qvm.Task, qvm.Status);
-
+                    CardModel.LoadFromTask(_boundQuestVm.Task, _boundQuestVm.Status);
                 }
-
             }
 
             else if (e.NewValue is TaskCardViewModel cardVm)
@@ -2128,6 +2130,7 @@ namespace TarkovHelper.Controls
 
             {
 
+                CardModel.IsExpanded = true;
                 CardModel.LoadFromTask(task, QuestProgressService.Instance.GetStatus(task));
 
             }

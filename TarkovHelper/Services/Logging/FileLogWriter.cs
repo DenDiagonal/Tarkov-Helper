@@ -36,10 +36,12 @@ namespace TarkovHelper.Services.Logging
             _logQueue.Enqueue(entry);
         }
 
+        private readonly Dictionary<string, StreamWriter> _writers = new(StringComparer.OrdinalIgnoreCase);
+
         private async Task ProcessLogQueueAsync()
         {
-            var buffer = new StringBuilder();
-            var levelBuffers = new ConcurrentDictionary<LogLevel, StringBuilder>();
+            var buffer = new StringBuilder(4096);
+            var levelBuffers = new Dictionary<LogLevel, StringBuilder>();
 
             while (!_cts.Token.IsCancellationRequested)
             {
@@ -52,33 +54,33 @@ namespace TarkovHelper.Services.Logging
                     // 종료 시 남은 로그 처리
                 }
 
-                // 큐에서 로그 수집
+                // 큐에서 로그 수집 (StringBuilder 인스턴스 재사용으로 GC 압력 최소화)
                 buffer.Clear();
-                levelBuffers.Clear();
+                foreach (var lb in levelBuffers.Values) lb.Clear();
 
                 while (_logQueue.TryDequeue(out var entry))
                 {
                     var formatted = FormatLogEntry(entry);
                     buffer.AppendLine(formatted);
 
-                    if (!levelBuffers.ContainsKey(entry.Level))
+                    if (!levelBuffers.TryGetValue(entry.Level, out var lb))
                     {
-                        levelBuffers[entry.Level] = new StringBuilder();
+                        lb = new StringBuilder(1024);
+                        levelBuffers[entry.Level] = lb;
                     }
-                    levelBuffers[entry.Level].AppendLine(formatted);
+                    lb.AppendLine(formatted);
                 }
 
-                // 파일에 쓰기
+                // 파일에 쓰기 (버퍼링된 StreamWriter 재사용)
                 if (buffer.Length > 0)
                 {
                     lock (_fileLock)
                     {
-                        // all.log에 모든 로그 쓰기
                         WriteToFile("all.log", buffer.ToString());
 
-                        // 레벨별 파일에 쓰기
                         foreach (var kvp in levelBuffers)
                         {
+                            if (kvp.Value.Length == 0) continue;
                             var fileName = GetLogFileName(kvp.Key);
                             WriteToFile(fileName, kvp.Value.ToString());
                         }
@@ -147,21 +149,37 @@ namespace TarkovHelper.Services.Logging
             {
                 var filePath = Path.Combine(_sessionFolder, fileName);
 
-                // 파일 로테이션 확인
-                if (File.Exists(filePath))
+                if (_writers.TryGetValue(filePath, out var existingWriter))
                 {
-                    var fileInfo = new FileInfo(filePath);
-                    if (fileInfo.Length >= MaxFileSizeBytes)
+                    if (existingWriter.BaseStream.Length >= MaxFileSizeBytes)
                     {
+                        existingWriter.Dispose();
+                        _writers.Remove(filePath);
                         RotateFile(filePath);
                     }
                 }
+                else if (File.Exists(filePath) && new FileInfo(filePath).Length >= MaxFileSizeBytes)
+                {
+                    RotateFile(filePath);
+                }
 
-                File.AppendAllText(filePath, content + Environment.NewLine, Encoding.UTF8);
+                if (!_writers.TryGetValue(filePath, out var writer))
+                {
+                    var fs = new FileStream(filePath, FileMode.Append, FileAccess.Write, FileShare.Read);
+                    writer = new StreamWriter(fs, new UTF8Encoding(false)) { AutoFlush = false };
+                    _writers[filePath] = writer;
+                }
+
+                writer.Write(content);
+                writer.Flush();
             }
             catch (Exception ex)
             {
-                // 로그 쓰기 실패 시 콘솔에만 출력 (앱 크래시 방지)
+                // 로그 쓰기 실패 시 핸들 정리 후 콘솔에만 출력 (앱 크래시 방지)
+                if (_writers.Remove(Path.Combine(_sessionFolder, fileName), out var broken))
+                {
+                    try { broken.Dispose(); } catch { }
+                }
                 System.Diagnostics.Debug.WriteLine($"[FileLogWriter] Failed to write log: {ex.Message}");
             }
         }

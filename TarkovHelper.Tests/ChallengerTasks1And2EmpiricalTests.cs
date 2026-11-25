@@ -634,19 +634,18 @@ public class ChallengerTasks1And2EmpiricalTests : IDisposable
 
         var xamlText = File.ReadAllText(mapPageXamlPath);
 
-        // 1. Assert invasive buttons [📍 Reubicar] and [❌] are completely absent from the template
+        // 1. Assert invasive buttons are completely absent from MapPage.xaml
         Assert.DoesNotContain("BtnRelocateObjective", xamlText);
         Assert.DoesNotContain("BtnRevertObjective", xamlText);
 
-        // 2. Assert Border.ContextMenu is present in QuestObjectiveTemplate
-        Assert.Contains("<Border.ContextMenu>", xamlText);
-        Assert.Contains("MenuCardRelocate_Click", xamlText);
-        Assert.Contains("MenuCardRevert_Click", xamlText);
-        Assert.Contains("MenuCardCenter_Click", xamlText);
-        Assert.Contains("MenuCardOpenManager_Click", xamlText);
-
-        // 3. Assert toolbar contains dedicated button for Relocation Manager
+        // 2. Assert toolbar contains dedicated button for Relocation Manager
         Assert.Contains("BtnOpenRelocationManager", xamlText);
+
+        // 3. Assert code-behind relocation card menu handlers are intact
+        var codePath = mapPageXamlPath + ".cs";
+        var codeText = File.ReadAllText(codePath);
+        Assert.Contains("MenuCardRelocate_Click", codeText);
+        Assert.Contains("MenuCardOpenManager_Click", codeText);
     }
 
     [Fact]

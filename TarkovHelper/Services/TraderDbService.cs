@@ -12,17 +12,19 @@ namespace TarkovHelper.Services;
 public sealed class TraderDbService
 {
     private static readonly ILogger _log = Log.For<TraderDbService>();
-    private static TraderDbService? _instance;
-    public static TraderDbService Instance => _instance ??= new TraderDbService();
+    private static readonly Lazy<TraderDbService> _lazyInstance =
+        new(() => new TraderDbService(), LazyThreadSafetyMode.ExecutionAndPublication);
+    public static TraderDbService Instance => _lazyInstance.Value;
 
     private readonly string _databasePath;
+    private readonly SemaphoreSlim _reloadLock = new(1, 1);
     private List<TarkovTrader> _allTraders = new();
     private Dictionary<string, TarkovTrader> _tradersById = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, TarkovTrader> _tradersByName = new(StringComparer.OrdinalIgnoreCase);
     private bool _isLoaded;
 
-    public bool IsLoaded => _isLoaded;
-    public int TraderCount => _allTraders.Count;
+    public bool IsLoaded => Volatile.Read(ref _isLoaded);
+    public int TraderCount => Volatile.Read(ref _allTraders).Count;
 
     private TraderDbService()
     {
@@ -37,8 +39,18 @@ public sealed class TraderDbService
     /// </summary>
     private async void OnDatabaseUpdated(object? sender, EventArgs e)
     {
-        _log.Info("Database updated, reloading data...");
-        await RefreshAsync();
+        if (DatabaseUpdateService.Instance.IsInternalHotReloadInProgress)
+            return;
+
+        try
+        {
+            _log.Info("Database updated, reloading data...");
+            await RefreshAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Error reloading trader data after DB update: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -59,27 +71,18 @@ public sealed class TraderDbService
     /// <summary>
     /// 모든 트레이더 반환
     /// </summary>
-    public IReadOnlyList<TarkovTrader> AllTraders => _allTraders;
+    public IReadOnlyList<TarkovTrader> AllTraders => Volatile.Read(ref _allTraders);
 
-    /// <summary>
-    /// ID로 트레이더 조회
-    /// </summary>
     public TarkovTrader? GetTraderById(string id)
     {
-        return _tradersById.TryGetValue(id, out var trader) ? trader : null;
+        return Volatile.Read(ref _tradersById).TryGetValue(id, out var trader) ? trader : null;
     }
 
-    /// <summary>
-    /// 이름으로 트레이더 조회
-    /// </summary>
     public TarkovTrader? GetTraderByName(string name)
     {
-        return _tradersByName.TryGetValue(name, out var trader) ? trader : null;
+        return Volatile.Read(ref _tradersByName).TryGetValue(name, out var trader) ? trader : null;
     }
 
-    /// <summary>
-    /// DB에서 모든 트레이더를 로드합니다.
-    /// </summary>
     public async Task<bool> LoadTradersAsync()
     {
         if (!DatabaseExists)
@@ -88,23 +91,21 @@ public sealed class TraderDbService
             return false;
         }
 
+        await _reloadLock.WaitAsync().ConfigureAwait(false);
         try
         {
             var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
             await using var connection = new SqliteConnection(connectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync().ConfigureAwait(false);
 
-            // Traders 테이블 존재 여부 확인
-            if (!await TableExistsAsync(connection, "Traders"))
+            if (!await TableExistsAsync(connection, "Traders").ConfigureAwait(false))
             {
                 _log.Warning("Traders table not found");
                 return false;
             }
 
-            // 트레이더 정보 로드
-            var traders = await LoadTradersFromDbAsync(connection);
+            var traders = await LoadTradersFromDbAsync(connection).ConfigureAwait(false);
 
-            // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
             var newTradersById = new Dictionary<string, TarkovTrader>(StringComparer.OrdinalIgnoreCase);
             var newTradersByName = new Dictionary<string, TarkovTrader>(StringComparer.OrdinalIgnoreCase);
 
@@ -120,11 +121,10 @@ public sealed class TraderDbService
                 }
             }
 
-            // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
-            _allTraders = traders;
-            _tradersById = newTradersById;
-            _tradersByName = newTradersByName;
-            _isLoaded = true;
+            Interlocked.Exchange(ref _allTraders, traders);
+            Interlocked.Exchange(ref _tradersById, newTradersById);
+            Interlocked.Exchange(ref _tradersByName, newTradersByName);
+            Volatile.Write(ref _isLoaded, true);
             _log.Info($"Loaded {traders.Count} traders from DB");
             return true;
         }
@@ -132,6 +132,10 @@ public sealed class TraderDbService
         {
             _log.Error($"Error loading traders: {ex.Message}");
             return false;
+        }
+        finally
+        {
+            _reloadLock.Release();
         }
     }
 

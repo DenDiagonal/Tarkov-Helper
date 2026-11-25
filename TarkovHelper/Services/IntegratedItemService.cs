@@ -55,22 +55,34 @@ public sealed class IntegratedItemService
     /// <summary>
     /// 서비스 초기화
     /// </summary>
+    private readonly SemaphoreSlim _initLock = new(1, 1);
+
     public async Task InitializeAsync()
     {
         if (_isInitialized) return;
 
-        // 의존 서비스 초기화
-        if (!_questDb.IsLoaded)
-            await _questDb.LoadQuestsAsync();
+        await _initLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_isInitialized) return;
 
-        if (!_hideoutDb.IsLoaded)
-            await _hideoutDb.LoadStationsAsync();
+            // 의존 서비스 초기화
+            if (!_questDb.IsLoaded)
+                await _questDb.LoadQuestsAsync().ConfigureAwait(false);
 
-        if (!_itemDb.IsLoaded)
-            await _itemDb.LoadItemsAsync();
+            if (!_hideoutDb.IsLoaded)
+                await _hideoutDb.LoadStationsAsync().ConfigureAwait(false);
 
-        BuildCache();
-        _isInitialized = true;
+            if (!_itemDb.IsLoaded)
+                await _itemDb.LoadItemsAsync().ConfigureAwait(false);
+
+            BuildCache();
+            _isInitialized = true;
+        }
+        finally
+        {
+            _initLock.Release();
+        }
     }
 
     /// <summary>
@@ -315,18 +327,18 @@ public sealed class IntegratedItemService
             integrated.OwnedFir = _inventory.GetFirQuantity(normalizedName);
             integrated.OwnedNonFir = _inventory.GetNonFirQuantity(normalizedName);
 
-            // 퀘스트 충족 상태 업데이트
-            UpdateQuestFulfillment(integrated);
+            // 퀘스트 충족 상태 업데이트 및 잔여 수량 계산
+            var (remainingFir, remainingNonFir) = UpdateQuestFulfillment(integrated);
 
             // 은신처 충족 상태 업데이트
-            UpdateHideoutFulfillment(integrated);
+            UpdateHideoutFulfillment(integrated, remainingFir, remainingNonFir);
         }
     }
 
     /// <summary>
     /// 퀘스트 충족 상태 업데이트
     /// </summary>
-    private void UpdateQuestFulfillment(IntegratedItemRequirement integrated)
+    private (int RemainingFir, int RemainingNonFir) UpdateQuestFulfillment(IntegratedItemRequirement integrated)
     {
         var availableFir = integrated.OwnedFir;
         var availableNonFir = integrated.OwnedNonFir;
@@ -357,38 +369,38 @@ public sealed class IntegratedItemService
                 }
             }
         }
+
+        return (Math.Max(0, availableFir), Math.Max(0, availableNonFir));
     }
 
     /// <summary>
     /// 은신처 충족 상태 업데이트
     /// </summary>
-    private void UpdateHideoutFulfillment(IntegratedItemRequirement integrated)
+    private void UpdateHideoutFulfillment(IntegratedItemRequirement integrated, int availableFir, int availableNonFir)
     {
-        var availableFir = integrated.OwnedFir;
-        var availableNonFir = integrated.OwnedNonFir;
-
-        // 퀘스트에서 사용된 양 계산
-        foreach (var quest in integrated.QuestSources.Where(q => q.IsFulfilled))
-        {
-            if (quest.RequiresFir)
-                availableFir -= quest.RequiredCount;
-            else
-                availableNonFir -= quest.RequiredCount;
-        }
-
-        availableFir = Math.Max(0, availableFir);
-        availableNonFir = Math.Max(0, availableNonFir);
-
         foreach (var source in integrated.HideoutSources)
         {
             if (source.RequiresFir)
             {
                 source.IsFulfilled = availableFir >= source.RequiredCount;
+                if (source.IsFulfilled)
+                    availableFir -= source.RequiredCount;
             }
             else
             {
                 var total = availableFir + availableNonFir;
                 source.IsFulfilled = total >= source.RequiredCount;
+                if (source.IsFulfilled)
+                {
+                    if (availableNonFir >= source.RequiredCount)
+                        availableNonFir -= source.RequiredCount;
+                    else
+                    {
+                        var fromFir = source.RequiredCount - availableNonFir;
+                        availableNonFir = 0;
+                        availableFir -= fromFir;
+                    }
+                }
             }
         }
     }

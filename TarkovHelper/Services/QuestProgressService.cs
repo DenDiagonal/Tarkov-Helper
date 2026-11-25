@@ -57,7 +57,7 @@ namespace TarkovHelper.Services
 
 
 
-        private Dictionary<string, QuestStatus> _questProgress = new();
+        private Dictionary<string, QuestStatus> _questProgress = new(StringComparer.OrdinalIgnoreCase);
 
         private Dictionary<string, TarkovTask> _tasksById = new(StringComparer.OrdinalIgnoreCase);
 
@@ -275,6 +275,8 @@ namespace TarkovHelper.Services
 
             _traderLevelOverrides.Clear();
 
+            InvalidateStatusCache();
+
         }
 
 
@@ -292,6 +294,8 @@ namespace TarkovHelper.Services
             if (string.IsNullOrEmpty(taskKey)) return;
 
             _questProgress[taskKey] = status;
+
+            InvalidateStatusCache();
 
         }
 
@@ -1558,7 +1562,7 @@ namespace TarkovHelper.Services
         public void SetBtrDriverUnlocked(bool unlocked)
         {
             SettingsService.Instance.IsBtrDriverContacted = unlocked;
-                        ProgressChanged?.Invoke(this, EventArgs.Empty);
+            NotifyProgressChanged();
         }
 
 
@@ -2200,7 +2204,7 @@ namespace TarkovHelper.Services
 
                 System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Progress save initiated for {_loadedProfile}");
 
-                ProgressChanged?.Invoke(this, EventArgs.Empty);
+                NotifyProgressChanged();
 
             }
 
@@ -2468,7 +2472,7 @@ namespace TarkovHelper.Services
 
                 _ = SaveProgressBatchAsync(changedQuests, _loadedProfile);
 
-                ProgressChanged?.Invoke(this, EventArgs.Empty);
+                NotifyProgressChanged();
 
             }
 
@@ -2592,11 +2596,11 @@ namespace TarkovHelper.Services
 
                 // Save all changes in one batch transaction
 
-                await _userDataDb.SaveQuestProgressBatchAsync(changedItems);
+                await _userDataDb.SaveQuestProgressBatchAsync(changedItems, _loadedProfile);
 
                 System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Batch saved {changedItems.Count} quest changes");
 
-                ProgressChanged?.Invoke(this, EventArgs.Empty);
+                NotifyProgressChanged();
 
             }
 
@@ -2696,7 +2700,7 @@ namespace TarkovHelper.Services
 
             });
 
-            ProgressChanged?.Invoke(this, EventArgs.Empty);
+            NotifyProgressChanged();
 
         }
 
@@ -2770,7 +2774,7 @@ namespace TarkovHelper.Services
 
             });
 
-            ProgressChanged?.Invoke(this, EventArgs.Empty);
+            NotifyProgressChanged();
 
         }
 
@@ -2850,7 +2854,7 @@ namespace TarkovHelper.Services
                 }
             }
 
-            ProgressChanged?.Invoke(this, EventArgs.Empty);
+            NotifyProgressChanged();
         }
 
         public void SetQuestOverride(string taskId, QuestStatus? overrideStatus)
@@ -2973,7 +2977,7 @@ namespace TarkovHelper.Services
 
 
 
-            ProgressChanged?.Invoke(this, EventArgs.Empty);
+            NotifyProgressChanged();
 
         }
 
@@ -3025,7 +3029,7 @@ namespace TarkovHelper.Services
 
 
 
-            ProgressChanged?.Invoke(this, EventArgs.Empty);
+            NotifyProgressChanged();
 
         }
 
@@ -3379,7 +3383,8 @@ namespace TarkovHelper.Services
 
 
 
-                    await _userDataDb.DeleteQuestProgressAsync(id);
+                    var targetProfile = _loadedProfile;
+                    await _userDataDb.DeleteQuestProgressAsync(id, targetProfile);
 
                 }
 
@@ -3447,9 +3452,11 @@ namespace TarkovHelper.Services
 
 
 
-                // Restore persisted Trader Loyalty Level overrides
+                // Restore persisted Trader Loyalty Level overrides in one batch query
 
                 _traderLevelOverrides.Clear();
+
+                var allProfileSettings = _userDataDb.GetAllSettings(actualProfileType);
 
                 var traders = new[] { "prapor", "therapist", "fence", "skier", "peacekeeper", "mechanic", "ragman", "jaeger", "ref", "lightkeeper", "btr driver" };
 
@@ -3457,9 +3464,11 @@ namespace TarkovHelper.Services
 
                 {
 
-                    var val = _userDataDb.GetSetting($"trader.ll.{trader}", actualProfileType);
-
-                    if (!string.IsNullOrEmpty(val) && int.TryParse(val, out var lvl) && lvl >= 1 && lvl <= 4)
+                    if (allProfileSettings.TryGetValue($"trader.ll.{trader}", out var val)
+                        && !string.IsNullOrEmpty(val)
+                        && int.TryParse(val, out var lvl)
+                        && lvl >= 1
+                        && lvl <= 4)
 
                     {
 
@@ -3489,6 +3498,8 @@ namespace TarkovHelper.Services
 
                 // Auto-reconcile trader unlock quests (TarkovTracker parity)
                 ReconcileTraderUnlockQuests();
+
+                InvalidateStatusCache();
 
             }
 

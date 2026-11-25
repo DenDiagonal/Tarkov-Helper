@@ -1043,6 +1043,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 		LogMapWatcherService.Instance.MapChanged -= OnLogMapWatcherMapChanged;
+		EftRaidEventService.Instance.RaidEvent -= OnRaidEvent;
 
 
 
@@ -1937,6 +1938,9 @@ public partial class OverlayMiniMapWindow : Window
 			LogMapWatcherService.Instance.MapChanged -= OnLogMapWatcherMapChanged;
 			LogMapWatcherService.Instance.MapChanged += OnLogMapWatcherMapChanged;
 
+			EftRaidEventService.Instance.RaidEvent -= OnRaidEvent;
+			EftRaidEventService.Instance.RaidEvent += OnRaidEvent;
+
 			_trackerService.StartTracking();
 
 			string? currentMapKey = _trackerService.CurrentMapKey;
@@ -2100,7 +2104,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-				string? text = FloorDetectionService.Instance.DetectFloor(position.MapKey, position.OriginalPosition.X, position.OriginalPosition.Y, position.OriginalPosition.Z.GetValueOrDefault());
+				string? text = FloorDetectionService.Instance.DetectFloor(position.MapKey, position.OriginalPosition.X, position.OriginalPosition.Y, position.OriginalPosition.Z.GetValueOrDefault(), _currentFloorId);
 
 
 
@@ -2296,7 +2300,7 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
-			if (!string.Equals(_lastLoadedMapKey, text, StringComparison.OrdinalIgnoreCase) || !((DateTime.UtcNow - _lastMapLoadTime).TotalMilliseconds < 350.0))
+			if (!string.Equals(_currentMapKey, text, StringComparison.OrdinalIgnoreCase) || !string.Equals(_lastLoadedMapKey, text, StringComparison.OrdinalIgnoreCase) || !((DateTime.UtcNow - _lastMapLoadTime).TotalMilliseconds < 350.0))
 
 
 
@@ -2388,6 +2392,28 @@ public partial class OverlayMiniMapWindow : Window
 
 
 
+	}
+
+	private void OnRaidEvent(object? sender, EftRaidEventArgs e)
+	{
+		if (e.EventType == EftRaidEventType.RaidStarted || e.EventType == EftRaidEventType.MapLoadingStarted)
+		{
+			var raidMapKey = e.RaidInfo?.MapKey;
+			if (!string.IsNullOrEmpty(raidMapKey))
+			{
+				_log.Info($"OverlayMiniMapWindow: Raid event ({e.EventType}) map detected: '{raidMapKey}'");
+				if (e.EventType == EftRaidEventType.RaidStarted)
+				{
+					Dispatcher.BeginInvoke((Action)(() =>
+					{
+						PlayerMarkerContainer.Visibility = Visibility.Collapsed;
+						TrailPath.Points.Clear();
+					}));
+				}
+
+				OnMapChanged(raidMapKey);
+			}
+		}
 	}
 
 

@@ -10,16 +10,18 @@ namespace TarkovHelper.Services;
 /// </summary>
 public sealed class HideoutDbService
 {
-    private static HideoutDbService? _instance;
-    public static HideoutDbService Instance => _instance ??= new HideoutDbService();
+    private static readonly Lazy<HideoutDbService> _lazyInstance =
+        new(() => new HideoutDbService(), LazyThreadSafetyMode.ExecutionAndPublication);
+    public static HideoutDbService Instance => _lazyInstance.Value;
 
     private readonly string _databasePath;
+    private readonly SemaphoreSlim _reloadLock = new(1, 1);
     private List<HideoutModule> _allStations = new();
     private Dictionary<string, HideoutModule> _stationsById = new(StringComparer.OrdinalIgnoreCase);
     private bool _isLoaded;
 
-    public bool IsLoaded => _isLoaded;
-    public int StationCount => _allStations.Count;
+    public bool IsLoaded => Volatile.Read(ref _isLoaded);
+    public int StationCount => Volatile.Read(ref _allStations).Count;
 
     /// <summary>
     /// 데이터가 새로고침되었을 때 발생하는 이벤트.
@@ -40,8 +42,18 @@ public sealed class HideoutDbService
     /// </summary>
     private async void OnDatabaseUpdated(object? sender, EventArgs e)
     {
-        System.Diagnostics.Debug.WriteLine("[HideoutDbService] Database updated, reloading data...");
-        await RefreshAsync();
+        if (DatabaseUpdateService.Instance.IsInternalHotReloadInProgress)
+            return;
+
+        try
+        {
+            System.Diagnostics.Debug.WriteLine("[HideoutDbService] Database updated, reloading data...");
+            await RefreshAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[HideoutDbService] Error reloading after DB update: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -62,17 +74,19 @@ public sealed class HideoutDbService
     /// </summary>
     private void OnDataRefreshed()
     {
-        // UI 스레드에서 이벤트 발생
-        if (System.Windows.Application.Current?.Dispatcher != null)
+        var handler = DataRefreshed;
+        if (handler == null) return;
+
+        foreach (EventHandler listener in handler.GetInvocationList())
         {
-            System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
+            try
             {
-                DataRefreshed?.Invoke(this, EventArgs.Empty);
-            });
-        }
-        else
-        {
-            DataRefreshed?.Invoke(this, EventArgs.Empty);
+                listener(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[HideoutDbService] Error in DataRefreshed listener: {ex.Message}");
+            }
         }
     }
 
@@ -84,14 +98,14 @@ public sealed class HideoutDbService
     /// <summary>
     /// 모든 하이드아웃 스테이션 반환
     /// </summary>
-    public IReadOnlyList<HideoutModule> AllStations => _allStations;
+    public IReadOnlyList<HideoutModule> AllStations => Volatile.Read(ref _allStations);
 
     /// <summary>
     /// ID로 스테이션 조회
     /// </summary>
     public HideoutModule? GetStationById(string id)
     {
-        return _stationsById.TryGetValue(id, out var station) ? station : null;
+        return Volatile.Read(ref _stationsById).TryGetValue(id, out var station) ? station : null;
     }
 
     /// <summary>
@@ -105,25 +119,26 @@ public sealed class HideoutDbService
             return false;
         }
 
+        await _reloadLock.WaitAsync().ConfigureAwait(false);
         try
         {
             var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
             await using var connection = new SqliteConnection(connectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync().ConfigureAwait(false);
 
             // HideoutStations 테이블 존재 여부 확인
-            if (!await TableExistsAsync(connection, "HideoutStations"))
+            if (!await TableExistsAsync(connection, "HideoutStations").ConfigureAwait(false))
             {
                 System.Diagnostics.Debug.WriteLine("[HideoutDbService] HideoutStations table not found");
                 return false;
             }
 
             // 1. 기본 스테이션 정보 로드
-            var stations = await LoadBaseStationsAsync(connection);
+            var stations = await LoadBaseStationsAsync(connection).ConfigureAwait(false);
             var stationLookup = stations.ToDictionary(s => s.Id, s => s, StringComparer.OrdinalIgnoreCase);
 
             // 2. 레벨 정보 로드
-            await LoadLevelsAsync(connection, stationLookup);
+            await LoadLevelsAsync(connection, stationLookup).ConfigureAwait(false);
 
             // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
             var newStationsById = new Dictionary<string, HideoutModule>(StringComparer.OrdinalIgnoreCase);
@@ -137,9 +152,9 @@ public sealed class HideoutDbService
             }
 
             // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
-            _allStations = stations;
-            _stationsById = newStationsById;
-            _isLoaded = true;
+            Interlocked.Exchange(ref _allStations, stations);
+            Interlocked.Exchange(ref _stationsById, newStationsById);
+            Volatile.Write(ref _isLoaded, true);
             System.Diagnostics.Debug.WriteLine($"[HideoutDbService] Loaded {stations.Count} hideout stations from DB");
             return true;
         }
@@ -147,6 +162,10 @@ public sealed class HideoutDbService
         {
             System.Diagnostics.Debug.WriteLine($"[HideoutDbService] Error loading stations: {ex.Message}");
             return false;
+        }
+        finally
+        {
+            _reloadLock.Release();
         }
     }
 

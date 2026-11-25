@@ -16,8 +16,9 @@ namespace TarkovHelper.Services.DataAudit
     public class DatabaseBackupManager
     {
         private static readonly ILogger _log = Log.For<DatabaseBackupManager>();
-        private static DatabaseBackupManager? _instance;
-        public static DatabaseBackupManager Instance => _instance ??= new DatabaseBackupManager();
+        private static readonly Lazy<DatabaseBackupManager> _lazyInstance =
+            new(() => new DatabaseBackupManager(), LazyThreadSafetyMode.ExecutionAndPublication);
+        public static DatabaseBackupManager Instance => _lazyInstance.Value;
 
         private static readonly SemaphoreSlim _backupLock = new(1, 1);
         private static readonly byte[] SqliteHeaderMagic = new byte[]
@@ -279,6 +280,9 @@ namespace TarkovHelper.Services.DataAudit
 
             _log.Info($"Restoring database from '{fullBackupPath}' to '{resolvedTarget}'...");
 
+            await _backupLock.WaitAsync();
+            try
+            {
             // Clear connection pools to release open file handles
             SqliteConnection.ClearAllPools();
             await Task.Delay(100);
@@ -381,6 +385,11 @@ namespace TarkovHelper.Services.DataAudit
                 {
                     try { File.Delete(preRestorePath); } catch { }
                 }
+            }
+            }
+            finally
+            {
+                _backupLock.Release();
             }
         }
 

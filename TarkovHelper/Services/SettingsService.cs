@@ -216,11 +216,14 @@ public class SettingsService
             if (Math.Abs((_scavRep ?? DefaultScavRep) - clampedValue) > 0.01)
             {
                 _scavRep = clampedValue;
-                SaveSetting(KeyScavRep, clampedValue.ToString());
+                SaveSetting(KeyScavRep, clampedValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 ScavRepChanged?.Invoke(this, clampedValue);
             }
         }
     }
+
+    private string? _cachedAutoLogFolder;
+    private bool _autoLogFolderChecked;
 
     /// <summary>
     /// Log folder path (user-set or auto-detected)
@@ -237,12 +240,18 @@ public class SettingsService
                 return _logFolderPath;
             }
 
-            // Otherwise try auto-detection
-            return AutoDetectLogFolder();
+            // Cache auto-detected folder so repeated reads don't probe disk every time
+            if (!_autoLogFolderChecked)
+            {
+                _cachedAutoLogFolder = AutoDetectLogFolder();
+                _autoLogFolderChecked = true;
+            }
+            return _cachedAutoLogFolder;
         }
         set
         {
             _logFolderPath = value;
+            _autoLogFolderChecked = false;
             SaveSetting(KeyLogFolderPath, value ?? "");
             LogFolderChanged?.Invoke(this, value);
         }
@@ -332,12 +341,7 @@ public class SettingsService
         get
         {
             if (!_settingsLoaded) LoadSettings();
-            var val = _baseFontSize ?? DefaultBaseFontSize;
-            if (Math.Abs(val - 18.0) < 0.01)
-            {
-                return DefaultBaseFontSize;
-            }
-            return val;
+            return _baseFontSize ?? DefaultBaseFontSize;
         }
         set
         {
@@ -345,7 +349,7 @@ public class SettingsService
             if (Math.Abs((_baseFontSize ?? DefaultBaseFontSize) - clampedValue) > 0.01)
             {
                 _baseFontSize = clampedValue;
-                SaveSetting(KeyBaseFontSize, clampedValue.ToString());
+                SaveSetting(KeyBaseFontSize, clampedValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 BaseFontSizeChanged?.Invoke(this, clampedValue);
             }
         }
@@ -493,7 +497,6 @@ public class SettingsService
         {
             if (_fontFamilyName != value)
             {
-                _lastProfileType = null; // Reset cached value just in case, though not strictly needed here
                 _fontFamilyName = value;
                 SaveSetting(KeyFontFamilyName, value);
                 FontFamilyNameChanged?.Invoke(this, value);
@@ -516,7 +519,7 @@ public class SettingsService
             if (_lastProfileType != value)
             {
                 _lastProfileType = value;
-                SaveSetting(KeyLastProfileType, value.ToString(), ProfileType.Pvp);
+                SaveSetting(KeyLastProfileType, value.ToString(), null);
             }
         }
     }
@@ -867,13 +870,17 @@ public class SettingsService
     {
         // Reset cached values
         _logFolderPath = null;
+        _cachedAutoLogFolder = null;
+        _autoLogFolderChecked = false;
         _logMonitoringEnabled = null;
         _playerLevel = null;
         _scavRep = null;
         _showLevelLockedQuests = null;
         _hideWipeWarning = null;
+        _isBtrDriverContacted = null;
         _syncDaysRange = null;
         _baseFontSize = null;
+        _fontFamilyName = null;
         _dspDecodeCount = null;
         _playerFaction = null;
         _hasEodEdition = null;
@@ -904,7 +911,7 @@ public class SettingsService
             if (int.TryParse(GetBatch(KeyPlayerLevel), out var level))
                 _playerLevel = level;
 
-            if (double.TryParse(GetBatch(KeyScavRep), out var scavRep))
+            if (double.TryParse(GetBatch(KeyScavRep), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var scavRep))
                 _scavRep = scavRep;
 
             if (bool.TryParse(GetBatch(KeyShowLevelLockedQuests), out var showLocked))
@@ -919,7 +926,7 @@ public class SettingsService
             if (int.TryParse(GetBatch(KeySyncDaysRange), out var syncDays))
                 _syncDaysRange = syncDays;
 
-            if (double.TryParse(GetBatch(KeyBaseFontSize), out var fontSize))
+            if (double.TryParse(GetBatch(KeyBaseFontSize), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var fontSize))
                 _baseFontSize = fontSize;
 
             if (int.TryParse(GetBatch(KeyDspDecodeCount), out var dspCount))

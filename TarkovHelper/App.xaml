@@ -739,14 +739,28 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="3"
                                 ClipToBounds="True">
-                            <Border x:Name="PART_Indicator"
-                                    HorizontalAlignment="Left"
-                                    Background="{TemplateBinding Foreground}"
-                                    CornerRadius="2"/>
+                            <Grid x:Name="Animation">
+                                <Border x:Name="PART_Indicator"
+                                        HorizontalAlignment="Left"
+                                        Background="{TemplateBinding Foreground}"
+                                        CornerRadius="2"/>
+                                <Border x:Name="PART_GlowRect"
+                                        Width="80"
+                                        HorizontalAlignment="Left"
+                                        Background="{TemplateBinding Foreground}"
+                                        Opacity="0.65"
+                                        CornerRadius="2"
+                                        Visibility="Collapsed"/>
+                            </Grid>
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsIndeterminate" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource TacticalGoldBrush}"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <!-- Global Slider Style (Dark Tactical Slider) -->

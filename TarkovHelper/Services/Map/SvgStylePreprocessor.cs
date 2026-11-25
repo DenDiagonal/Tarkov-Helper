@@ -90,10 +90,11 @@ public partial class SvgStylePreprocessor
     /// </summary>
     /// <param name="svgFilePath">SVG 파일 경로</param>
     /// <returns>변환된 SVG 문자열</returns>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _processedFileCache = new(StringComparer.OrdinalIgnoreCase);
+
     public string ProcessSvgFile(string svgFilePath)
     {
-        var svgContent = File.ReadAllText(svgFilePath);
-        return ProcessSvgContent(svgContent);
+        return ProcessSvgFile(svgFilePath, null, null);
     }
 
     /// <summary>
@@ -109,8 +110,22 @@ public partial class SvgStylePreprocessor
     /// <returns>변환된 SVG 문자열</returns>
     public string ProcessSvgFile(string svgFilePath, IEnumerable<string>? visibleFloorIds, IEnumerable<string>? allFloorIds = null, string? backgroundFloorId = null, double backgroundOpacity = 0.3, bool dimAllOtherFloors = false)
     {
-        var svgContent = File.ReadAllText(svgFilePath);
-        return ProcessSvgContent(svgContent, visibleFloorIds, allFloorIds, backgroundFloorId, backgroundOpacity, dimAllOtherFloors);
+        var fullPath = Path.GetFullPath(svgFilePath);
+        long ticks = File.Exists(fullPath) ? File.GetLastWriteTimeUtc(fullPath).Ticks : 0;
+        var visKey = visibleFloorIds != null ? string.Join(",", visibleFloorIds) : "";
+        var allKey = allFloorIds != null ? string.Join(",", allFloorIds) : "";
+        var cacheKey = $"{fullPath}|{ticks}|{visKey}|{allKey}|{backgroundFloorId ?? ""}|{backgroundOpacity:F2}|{dimAllOtherFloors}";
+
+        if (_processedFileCache.TryGetValue(cacheKey, out var cached))
+            return cached;
+
+        var svgContent = File.ReadAllText(fullPath);
+        var result = ProcessSvgContent(svgContent, visibleFloorIds, allFloorIds, backgroundFloorId, backgroundOpacity, dimAllOtherFloors);
+
+        if (_processedFileCache.Count > 64)
+            _processedFileCache.Clear();
+        _processedFileCache[cacheKey] = result;
+        return result;
     }
 
     /// <summary>

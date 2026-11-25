@@ -11,17 +11,16 @@ namespace TarkovHelper.Services;
 public sealed class FloorDetectionService
 {
     private static readonly ILogger _log = Log.For<FloorDetectionService>();
-    private static FloorDetectionService? _instance;
-    public static FloorDetectionService Instance => _instance ??= new FloorDetectionService();
+    private static readonly Lazy<FloorDetectionService> _lazyInstance =
+        new(() => new FloorDetectionService(), LazyThreadSafetyMode.ExecutionAndPublication);
+    public static FloorDetectionService Instance => _lazyInstance.Value;
 
     private readonly string _databasePath;
+    private readonly SemaphoreSlim _reloadLock = new(1, 1);
     private Dictionary<string, List<FloorYRange>> _floorRangesByMap = new(StringComparer.OrdinalIgnoreCase);
     private bool _isLoaded;
 
-    /// <summary>
-    /// 데이터가 로드되었는지 여부
-    /// </summary>
-    public bool IsLoaded => _isLoaded;
+    public bool IsLoaded => Volatile.Read(ref _isLoaded);
 
     private FloorDetectionService()
     {
@@ -31,13 +30,20 @@ public sealed class FloorDetectionService
         DatabaseUpdateService.Instance.DatabaseUpdated += OnDatabaseUpdated;
     }
 
-    /// <summary>
-    /// 데이터베이스 업데이트 시 데이터 리로드
-    /// </summary>
     private async void OnDatabaseUpdated(object? sender, EventArgs e)
     {
-        _log.Info("Database updated, reloading data...");
-        await RefreshAsync();
+        if (DatabaseUpdateService.Instance.IsInternalHotReloadInProgress)
+            return;
+
+        try
+        {
+            _log.Info("Database updated, reloading data...");
+            await RefreshAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Error reloading floor ranges after DB update: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -61,16 +67,17 @@ public sealed class FloorDetectionService
             return false;
         }
 
+        await _reloadLock.WaitAsync().ConfigureAwait(false);
         try
         {
             var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
             await using var connection = new SqliteConnection(connectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync().ConfigureAwait(false);
 
             // MapFloorLocations 테이블 존재 여부 확인
             var checkSql = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='MapFloorLocations'";
             await using var checkCmd = new SqliteCommand(checkSql, connection);
-            if (Convert.ToInt32(await checkCmd.ExecuteScalarAsync()) == 0)
+            if (Convert.ToInt32(await checkCmd.ExecuteScalarAsync().ConfigureAwait(false)) == 0)
             {
                 _log.Warning("MapFloorLocations table not found");
                 return false;
@@ -79,12 +86,12 @@ public sealed class FloorDetectionService
             // 층 범위 로드 (Priority 내림차순) - XZ 좌표 포함
             var sql = "SELECT MapKey, FloorId, MinY, MaxY, MinX, MaxX, MinZ, MaxZ, Priority FROM MapFloorLocations ORDER BY MapKey, Priority DESC";
             await using var cmd = new SqliteCommand(sql, connection);
-            await using var reader = await cmd.ExecuteReaderAsync();
+            await using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
 
             // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
             var newFloorRangesByMap = new Dictionary<string, List<FloorYRange>>(StringComparer.OrdinalIgnoreCase);
 
-            while (await reader.ReadAsync())
+            while (await reader.ReadAsync().ConfigureAwait(false))
             {
                 var mapKey = reader.GetString(0);
                 var range = new FloorYRange
@@ -108,15 +115,19 @@ public sealed class FloorDetectionService
             }
 
             // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
-            _floorRangesByMap = newFloorRangesByMap;
-            _isLoaded = true;
-            _log.Info($"Loaded floor ranges for {_floorRangesByMap.Count} maps");
+            Interlocked.Exchange(ref _floorRangesByMap, newFloorRangesByMap);
+            Volatile.Write(ref _isLoaded, true);
+            _log.Info($"Loaded floor ranges for {newFloorRangesByMap.Count} maps");
             return true;
         }
         catch (Exception ex)
         {
             _log.Error($"Error loading floor ranges: {ex.Message}");
             return false;
+        }
+        finally
+        {
+            _reloadLock.Release();
         }
     }
 
@@ -133,7 +144,7 @@ public sealed class FloorDetectionService
 
     public string? DetectFloor(string mapKey, double x, double y, double z, string? currentFloorId = null)
     {
-        if (!_floorRangesByMap.TryGetValue(mapKey, out var ranges))
+        if (!Volatile.Read(ref _floorRangesByMap).TryGetValue(mapKey, out var ranges))
             return null;
 
         // 1º coincidencia estricta por prioridad descendente
@@ -169,7 +180,7 @@ public sealed class FloorDetectionService
     [Obsolete("Use DetectFloor(mapKey, x, y, z) for accurate floor detection with XZ bounds")]
     public string? DetectFloor(string mapKey, double y)
     {
-        if (!_floorRangesByMap.TryGetValue(mapKey, out var ranges))
+        if (!Volatile.Read(ref _floorRangesByMap).TryGetValue(mapKey, out var ranges))
             return null;
 
         // Priority 순서대로 (내림차순) 체크 - XZ 범위가 없는 것만
@@ -187,7 +198,7 @@ public sealed class FloorDetectionService
     /// </summary>
     public bool HasFloorData(string mapKey)
     {
-        return _floorRangesByMap.ContainsKey(mapKey);
+        return Volatile.Read(ref _floorRangesByMap).ContainsKey(mapKey);
     }
 
     /// <summary>
@@ -195,7 +206,7 @@ public sealed class FloorDetectionService
     /// </summary>
     public IReadOnlyList<FloorYRange> GetFloorRanges(string mapKey)
     {
-        if (_floorRangesByMap.TryGetValue(mapKey, out var ranges))
+        if (Volatile.Read(ref _floorRangesByMap).TryGetValue(mapKey, out var ranges))
             return ranges;
         return Array.Empty<FloorYRange>();
     }

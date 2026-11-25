@@ -373,7 +373,7 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
         if (_aliasToKey.TryGetValue(mapNameOrAlias, out var actualKey))
             return actualKey;
 
-        // Fallback: canonical normalization
+        // Fallback: exact match against normalized canonical names and known aliases
         var clean = mapNameOrAlias.Trim().ToLowerInvariant().Replace("-", "").Replace("_", "").Replace(" ", "");
         foreach (var (key, config) in _mapConfigs)
         {
@@ -392,126 +392,26 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
             }
         }
 
-        if (clean.Contains("groundzero") || clean.Contains("sandbox")) return "GroundZero";
-        if (clean.Contains("customs") || clean.Contains("bigmap")) return "Customs";
-        if (clean.Contains("woods")) return "Woods";
-        if (clean.Contains("factory")) return "Factory";
-        if (clean.Contains("interchange") || clean.Contains("shopping")) return "Interchange";
-        if (clean.Contains("shoreline")) return "Shoreline";
-        if (clean.Contains("reserve") || clean.Contains("rezerv")) return "Reserve";
-        if (clean.Contains("lighthouse")) return "Lighthouse";
-        if (clean.Contains("street")) return "StreetsOfTarkov";
-        if (clean.Contains("labyrinth")) return "Labyrinth";
-        if (clean.Contains("terminal")) return "Terminal";
-        if (clean.Contains("lab")) return "Labs";
+        var canonical = clean.EndsWith("preset", StringComparison.Ordinal) && clean.Length > 6
+            ? clean[..^6]
+            : clean;
 
-        return null;
-    }
-
-    /// <summary>
-    /// 구 지도 변환을 기반으로 게임 좌표를 신 지도 좌표로 변환합니다.
-    /// 수동 보정 데이터가 있으면 구→신 매핑을 적용합니다.
-    /// </summary>
-    /// <param name="mapKey">맵 키</param>
-    /// <param name="gameX">게임 X 좌표</param>
-    /// <param name="gameY">게임 Y 좌표 (높이)</param>
-    /// <param name="gameZ">게임 Z 좌표</param>
-    /// <param name="angle">방향 각도</param>
-    /// <param name="screenPosition">변환된 화면 좌표</param>
-    /// <returns>변환 성공 여부</returns>
-    public bool TryTransformWithAutoCalibration(string mapKey, double gameX, double gameY, double gameZ, double? angle, out ScreenPosition? screenPosition)
-    {
-        screenPosition = null;
-
-        var config = GetMapConfig(mapKey);
-        if (config == null)
-            return false;
-
-        try
+        return canonical switch
         {
-            double finalX, finalY;
-
-            // 수동 보정 데이터가 있으면 자동 보정 사용
-            if (config.CalibrationPoints != null && config.CalibrationPoints.Count >= 3)
-            {
-                var autoCalibration = AutoCalibrationService.Instance;
-                var result = autoCalibration.CalibrateFromExistingPoints(config);
-
-                if (result.Success && result.OldToNewMapping != null)
-                {
-                    var transformed = autoCalibration.TransformWithMapping(mapKey, gameX, gameZ, result.OldToNewMapping);
-                    if (transformed != null)
-                    {
-                        finalX = transformed.Value.x;
-                        finalY = transformed.Value.y;
-                    }
-                    else
-                    {
-                        // 폴백: IDW 변환
-                        return TryTransformGameCoordinate(mapKey, gameX, gameY, gameZ, angle, out screenPosition);
-                    }
-                }
-                else
-                {
-                    // 폴백: IDW 변환
-                    return TryTransformGameCoordinate(mapKey, gameX, gameY, gameZ, angle, out screenPosition);
-                }
-            }
-            else
-            {
-                // 보정 데이터 없으면 구 지도 기반 단순 변환
-                var oldTransform = OldMapTransformService.Instance;
-                var result = oldTransform.TransformToNewScreenSimple(mapKey, gameX, gameZ);
-                if (result == null)
-                    return false;
-
-                finalX = result.Value.x;
-                finalY = result.Value.y;
-            }
-
-            screenPosition = new ScreenPosition
-            {
-                MapKey = config.Key,
-                X = finalX,
-                Y = finalY,
-                Angle = angle,
-                OriginalPosition = new EftPosition
-                {
-                    MapName = mapKey,
-                    X = gameX,
-                    Y = gameY,
-                    Z = gameZ,
-                    Angle = angle,
-                    Timestamp = DateTime.Now
-                }
-            };
-
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// 맵의 자동 보정 결과를 가져옵니다.
-    /// </summary>
-    public AutoCalibrationResult? GetAutoCalibrationResult(string mapKey)
-    {
-        var config = GetMapConfig(mapKey);
-        if (config == null)
-            return null;
-
-        return AutoCalibrationService.Instance.CalibrateFromExistingPoints(config);
-    }
-
-    /// <summary>
-    /// 모든 맵의 자동 보정 결과를 가져옵니다.
-    /// </summary>
-    public Dictionary<string, AutoCalibrationResult> GetAllAutoCalibrationResults()
-    {
-        return AutoCalibrationService.Instance.CalibrateAllMaps(_mapConfigs.Values);
+            "groundzero" or "sandbox" or "sandboxhigh" or "sandboxstart" => "GroundZero",
+            "customs" or "bigmap" => "Customs",
+            "woods" => "Woods",
+            "factory" or "factory4day" or "factory4night" or "factoryday" or "factorynight" => "Factory",
+            "interchange" or "shopping" or "shoppingmall" => "Interchange",
+            "shoreline" => "Shoreline",
+            "reserve" or "rezerv" or "rezervbase" => "Reserve",
+            "lighthouse" => "Lighthouse",
+            "streets" or "streetsoftarkov" or "tarkovstreets" or "city" => "StreetsOfTarkov",
+            "labyrinth" or "thelabyrinth" => "Labyrinth",
+            "terminal" => "Terminal",
+            "lab" or "labs" or "thelab" or "laboratory" => "Labs",
+            _ => null
+        };
     }
 
     /// <inheritdoc />

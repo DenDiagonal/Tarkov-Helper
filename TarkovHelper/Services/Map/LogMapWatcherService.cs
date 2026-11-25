@@ -11,12 +11,15 @@ namespace TarkovHelper.Services.Map;
 public sealed class LogMapWatcherService : IDisposable
 {
     private static readonly ILogger _log = Log.For<LogMapWatcherService>();
-    private static LogMapWatcherService? _instance;
-    public static LogMapWatcherService Instance => _instance ??= new LogMapWatcherService();
+    private static readonly Lazy<LogMapWatcherService> _lazyInstance = new(() => new LogMapWatcherService());
+    public static LogMapWatcherService Instance => _lazyInstance.Value;
 
     private FileSystemWatcher? _logWatcher;
     private readonly object _watcherLock = new();
     private readonly object _readLock = new();
+    private CancellationTokenSource? _watchCts;
+    private System.Threading.Timer? _debounceTimer;
+    private string? _pendingChangedPath;
     private string? _currentLogFolderPath;
     private string? _lastDetectedMap;
     private readonly Dictionary<string, long> _filePositions = new(StringComparer.OrdinalIgnoreCase);
@@ -137,6 +140,19 @@ public sealed class LogMapWatcherService : IDisposable
     /// </summary>
     public string? LastDetectedMap => _lastDetectedMap;
 
+    /// <summary>
+    /// 레이드가 종료되었을 때 마지막 감지된 맵 상태를 초기화합니다.
+    /// 동일한 맵에 다시 진입할 때 정상적으로 감지되도록 보장합니다.
+    /// </summary>
+    public void ResetLastDetectedMap()
+    {
+        lock (_readLock)
+        {
+            _lastDetectedMap = null;
+        }
+        _log.Info("LogMapWatcherService: LastDetectedMap reset (RaidEnded)");
+    }
+
     private LogMapWatcherService() { }
 
     /// <summary>
@@ -145,8 +161,12 @@ public sealed class LogMapWatcherService : IDisposable
     /// <param name="logFolderPath">로그 폴더 경로. null이면 기본 경로 사용.</param>
     public bool StartWatching(string? logFolderPath = null)
     {
+        bool started = false;
+        string? latestFolder = null;
+
         lock (_watcherLock)
         {
+            if (_isDisposed) return false;
             StopWatching();
 
             // 경로가 지정되지 않거나 존재하지 않으면 자동 감지
@@ -158,63 +178,81 @@ public sealed class LogMapWatcherService : IDisposable
 
             if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
             {
-                ErrorOccurred?.Invoke(this, "Log folder is not set or does not exist.");
                 _log.Warning($"Log folder is not set or does not exist: '{folderPath}'");
-                return false;
+                folderPath = null;
             }
-
-            try
+            else
             {
-                if (string.IsNullOrEmpty(SettingsService.Instance.LogFolderPath) || !Directory.Exists(SettingsService.Instance.LogFolderPath))
+                try
                 {
-                    SettingsService.Instance.LogFolderPath = folderPath;
-                    // Auto-saved via setter
+                    if (string.IsNullOrEmpty(SettingsService.Instance.LogFolderPath) || !Directory.Exists(SettingsService.Instance.LogFolderPath))
+                    {
+                        SettingsService.Instance.LogFolderPath = folderPath;
+                    }
+                }
+                catch { }
+
+                _currentLogFolderPath = folderPath;
+
+                try
+                {
+                    _watchCts = new CancellationTokenSource();
+                    _debounceTimer = new System.Threading.Timer(OnDebounceTimerTick, null, Timeout.Infinite, Timeout.Infinite);
+
+                    _logWatcher = new FileSystemWatcher(folderPath)
+                    {
+                        NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
+                        Filter = "*application*.log",
+                        IncludeSubdirectories = true,
+                        InternalBufferSize = 65536,
+                        EnableRaisingEvents = true
+                    };
+
+                    _logWatcher.Changed += OnLogFileChanged;
+                    _logWatcher.Created += OnLogFileCreated;
+                    _logWatcher.Error += OnWatcherError;
+
+                    _isWatching = true;
+                    lock (_readLock)
+                    {
+                        _filePositions.Clear();
+                        _lastFileEventTimes.Clear();
+                    }
+
+                    _log.Info($"LogMapWatcherService started watching: '{folderPath}' (Filter=*application*.log)");
+                    latestFolder = FindLatestLogSubfolder(folderPath);
+                    started = true;
+                }
+                catch (Exception ex)
+                {
+                    _log.Error($"Failed to start log watcher: {ex.Message}", ex);
+                    _isWatching = false;
+                    ErrorOccurred?.Invoke(this, $"Failed to start log watcher: {ex.Message}");
                 }
             }
-            catch { }
 
-            _currentLogFolderPath = folderPath;
-
-            try
+            if (folderPath == null)
             {
-                // 기본 로그 폴더를 감시 (모든 하위 폴더 포함)
-                // application*.log 파일만 감시하여 output_000.log 등의 과도한 I/O 노이즈 배제
-                _logWatcher = new FileSystemWatcher(folderPath)
-                {
-                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
-                    Filter = "*application*.log",
-                    IncludeSubdirectories = true,
-                    EnableRaisingEvents = true
-                };
-
-                _logWatcher.Changed += OnLogFileChanged;
-                _logWatcher.Created += OnLogFileCreated;
-
-                _isWatching = true;
-                lock (_readLock)
-                {
-                    _filePositions.Clear();
-                    _lastFileEventTimes.Clear();
-                }
-
-                _log.Info($"LogMapWatcherService started watching: '{folderPath}' (Filter=*application*.log)");
-
-                // 초기 스캔 - 최신 로그에서 마지막 맵 찾기
-                var latestFolder = FindLatestLogSubfolder(folderPath);
-                ScanLatestLogForMap(latestFolder);
-
-                WatchingStateChanged?.Invoke(this, true);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _log.Error($"Failed to start log watcher: {ex.Message}", ex);
-                ErrorOccurred?.Invoke(this, $"Failed to start log watcher: {ex.Message}");
-                _isWatching = false;
-                WatchingStateChanged?.Invoke(this, false);
+                ErrorOccurred?.Invoke(this, "Log folder is not set or does not exist.");
                 return false;
             }
         }
+
+        // Invoke scans & events OUTSIDE _watcherLock to prevent lock reentrancy deadlocks
+        if (started)
+        {
+            if (latestFolder != null)
+            {
+                ScanLatestLogForMap(latestFolder);
+            }
+            WatchingStateChanged?.Invoke(this, true);
+        }
+        else
+        {
+            WatchingStateChanged?.Invoke(this, false);
+        }
+
+        return started;
     }
 
     /// <summary>
@@ -282,26 +320,53 @@ public sealed class LogMapWatcherService : IDisposable
     /// </summary>
     public void StopWatching()
     {
+        bool wasWatching;
         lock (_watcherLock)
         {
+            wasWatching = _isWatching || _logWatcher != null;
+            _isWatching = false;
+
+            try
+            {
+                _watchCts?.Cancel();
+                _watchCts?.Dispose();
+            }
+            catch { }
+            _watchCts = null;
+
+            _debounceTimer?.Dispose();
+            _debounceTimer = null;
+            _pendingChangedPath = null;
+
             if (_logWatcher != null)
             {
                 _logWatcher.EnableRaisingEvents = false;
                 _logWatcher.Changed -= OnLogFileChanged;
                 _logWatcher.Created -= OnLogFileCreated;
+                _logWatcher.Error -= OnWatcherError;
                 _logWatcher.Dispose();
                 _logWatcher = null;
             }
 
-            _isWatching = false;
             lock (_readLock)
             {
                 _filePositions.Clear();
                 _lastFileEventTimes.Clear();
             }
+        }
+
+        if (wasWatching)
+        {
             WatchingStateChanged?.Invoke(this, false);
             _log.Info("LogMapWatcherService stopped watching");
         }
+    }
+
+    private void OnWatcherError(object sender, ErrorEventArgs e)
+    {
+        var ex = e.GetException();
+        _log.Warning($"LogMapWatcher FileSystemWatcher error: {ex.Message}");
+        ErrorOccurred?.Invoke(this, ex.Message);
     }
 
     /// <summary>
@@ -379,8 +444,12 @@ public sealed class LogMapWatcherService : IDisposable
 
             if (lastMap != null)
             {
-                var previousMap = _lastDetectedMap;
-                _lastDetectedMap = lastMap;
+                string? previousMap;
+                lock (_readLock)
+                {
+                    previousMap = _lastDetectedMap;
+                    _lastDetectedMap = lastMap;
+                }
 
                 _log.Info($"Initial scan detected map: '{lastMap}' from '{Path.GetFileName(latestLog)}'");
 
@@ -406,41 +475,65 @@ public sealed class LogMapWatcherService : IDisposable
             return;
 
         _log.Info($"New application log detected: '{e.FullPath}'");
+        CancellationToken token;
         lock (_readLock)
         {
             _lastDetectedMap = null;
             _filePositions[e.FullPath] = 0;
             _lastFileEventTimes[e.FullPath] = DateTime.Now;
+            token = _watchCts?.Token ?? CancellationToken.None;
         }
 
-        // 새 파일 생성 후 Tarkov 헤더 작성이 완료되도록 약간의 지연 후 스캔
-        Task.Delay(200).ContinueWith(_ => ProcessLogFileChanges(e.FullPath));
+        if (token.IsCancellationRequested) return;
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(200, token).ConfigureAwait(false);
+                if (!token.IsCancellationRequested && _isWatching)
+                {
+                    ProcessLogFileChanges(e.FullPath);
+                }
+            }
+            catch (OperationCanceledException) { }
+        }, token);
     }
 
     private void OnLogFileChanged(object sender, FileSystemEventArgs e)
     {
-        // application.log 파일만 처리
         var fileName = Path.GetFileName(e.FullPath);
         if (!fileName.Contains("application", StringComparison.OrdinalIgnoreCase))
             return;
 
-        // 파일별 디바운스 (동일 파일에 연속 쓰기 발생 시 과도한 읽기 방지)
-        var now = DateTime.Now;
-        lock (_readLock)
+        lock (_watcherLock)
         {
-            if (_lastFileEventTimes.TryGetValue(e.FullPath, out var lastTime))
-            {
-                if ((now - lastTime).TotalMilliseconds < 100)
-                    return;
-            }
-            _lastFileEventTimes[e.FullPath] = now;
+            if (!_isWatching || _isDisposed) return;
+            _pendingChangedPath = e.FullPath;
+            _debounceTimer?.Change(150, Timeout.Infinite);
+        }
+    }
+
+    private void OnDebounceTimerTick(object? state)
+    {
+        string? path;
+        lock (_watcherLock)
+        {
+            if (!_isWatching || _isDisposed) return;
+            path = _pendingChangedPath;
+            _pendingChangedPath = null;
         }
 
-        Task.Run(() => ProcessLogFileChanges(e.FullPath));
+        if (!string.IsNullOrEmpty(path))
+        {
+            ProcessLogFileChanges(path);
+        }
     }
 
     public void ProcessLogFileChanges(string filePath)
     {
+        List<MapChangedEventArgs>? pendingEvents = null;
+
         lock (_readLock)
         {
             try
@@ -448,10 +541,7 @@ public sealed class LogMapWatcherService : IDisposable
                 var fileInfo = new FileInfo(filePath);
                 if (!fileInfo.Exists) return;
 
-                // 이 파일의 마지막 읽은 위치 가져오기
                 var lastPosition = _filePositions.GetValueOrDefault(filePath, 0);
-
-                // 파일이 줄어들었으면 새 파일로 간주
                 if (fileInfo.Length < lastPosition)
                 {
                     lastPosition = 0;
@@ -462,37 +552,75 @@ public sealed class LogMapWatcherService : IDisposable
                     return;
                 }
 
-                // 새로운 내용만 읽기
-                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                 stream.Seek(lastPosition, SeekOrigin.Begin);
 
-                using var reader = new StreamReader(stream);
-                string? line;
-                while ((line = reader.ReadLine()) != null)
+                var bytesAvailable = stream.Length - lastPosition;
+                if (bytesAvailable <= 0) return;
+
+                var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent((int)Math.Min(bytesAvailable, 1024 * 1024));
+                try
                 {
-                    var map = TryExtractMapFromLine(line);
-                    if (map != null && !string.Equals(map, _lastDetectedMap, StringComparison.OrdinalIgnoreCase))
+                    int totalRead = 0;
+                    int toRead = (int)Math.Min(bytesAvailable, buffer.Length);
+                    while (totalRead < toRead)
                     {
-                        var previousMap = _lastDetectedMap;
-                        _lastDetectedMap = map;
+                        int n = stream.Read(buffer, totalRead, toRead - totalRead);
+                        if (n <= 0) break;
+                        totalRead += n;
+                    }
 
-                        _log.Info($"Map change detected from EFT logs: '{previousMap}' -> '{map}' (file={Path.GetFileName(filePath)})");
+                    if (totalRead <= 0) return;
 
-                        // 맵 변경 이벤트 발생
-                        MapChanged?.Invoke(this, new MapChangedEventArgs
+                    // Solo avanzar hasta el último salto de línea completo para no truncar líneas UTF-8 parciales
+                    int lastNewline = Array.LastIndexOf(buffer, (byte)'\n', totalRead - 1);
+                    if (lastNewline < 0)
+                    {
+                        // Si la línea aún no terminó en '\n' (o es extremadamente larga), esperar al siguiente flush o leer todo si supera el buffer
+                        if (totalRead < buffer.Length) return;
+                        lastNewline = totalRead - 1;
+                    }
+
+                    int completeLen = lastNewline + 1;
+                    _filePositions[filePath] = lastPosition + completeLen;
+
+                    var chunk = System.Text.Encoding.UTF8.GetString(buffer, 0, completeLen);
+                    foreach (var lineSpan in chunk.AsSpan().EnumerateLines())
+                    {
+                        if (lineSpan.IsEmpty) continue;
+                        var map = TryExtractMapFromLine(lineSpan.ToString());
+                        if (map != null && !string.Equals(map, _lastDetectedMap, StringComparison.OrdinalIgnoreCase))
                         {
-                            NewMapKey = map,
-                            PreviousMapKey = previousMap,
-                            Timestamp = DateTime.Now
-                        });
+                            var previousMap = _lastDetectedMap;
+                            _lastDetectedMap = map;
+                            _log.Info($"Map change detected from EFT logs: '{previousMap}' -> '{map}' (file={Path.GetFileName(filePath)})");
+                            pendingEvents ??= new List<MapChangedEventArgs>();
+                            pendingEvents.Add(new MapChangedEventArgs
+                            {
+                                NewMapKey = map,
+                                PreviousMapKey = previousMap,
+                                Timestamp = DateTime.Now
+                            });
+                        }
                     }
                 }
-
-                _filePositions[filePath] = stream.Position;
+                finally
+                {
+                    System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+                }
             }
             catch (Exception ex)
             {
                 _log.Warning($"Error reading log file '{filePath}': {ex.Message}");
+            }
+        }
+
+        // Disparar MapChanged fuera de _readLock para evitar bloqueos cruzados con suscriptores
+        if (pendingEvents != null)
+        {
+            foreach (var ev in pendingEvents)
+            {
+                MapChanged?.Invoke(this, ev);
             }
         }
     }

@@ -12,16 +12,18 @@ namespace TarkovHelper.Services;
 public sealed class MapMarkerDbService
 {
     private static readonly ILogger _log = Log.For<MapMarkerDbService>();
-    private static MapMarkerDbService? _instance;
-    public static MapMarkerDbService Instance => _instance ??= new MapMarkerDbService();
+    private static readonly Lazy<MapMarkerDbService> _lazyInstance =
+        new(() => new MapMarkerDbService(), LazyThreadSafetyMode.ExecutionAndPublication);
+    public static MapMarkerDbService Instance => _lazyInstance.Value;
 
     private readonly string _databasePath;
+    private readonly SemaphoreSlim _reloadLock = new(1, 1);
     private List<MapMarker> _allMarkers = new();
     private Dictionary<string, List<MapMarker>> _markersByMap = new(StringComparer.OrdinalIgnoreCase);
     private bool _isLoaded;
 
-    public bool IsLoaded => _isLoaded;
-    public int MarkerCount => _allMarkers.Count;
+    public bool IsLoaded => Volatile.Read(ref _isLoaded);
+    public int MarkerCount => Volatile.Read(ref _allMarkers).Count;
 
     /// <summary>
     /// 데이터가 새로고침되었을 때 발생하는 이벤트.
@@ -42,8 +44,18 @@ public sealed class MapMarkerDbService
     /// </summary>
     private async void OnDatabaseUpdated(object? sender, EventArgs e)
     {
-        _log.Info("Database updated, reloading data...");
-        await RefreshAsync();
+        if (DatabaseUpdateService.Instance.IsInternalHotReloadInProgress)
+            return;
+
+        try
+        {
+            _log.Info("Database updated, reloading data...");
+            await RefreshAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"Error reloading marker data after DB update: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -54,21 +66,15 @@ public sealed class MapMarkerDbService
     /// <summary>
     /// 모든 마커 반환
     /// </summary>
-    public IReadOnlyList<MapMarker> AllMarkers => _allMarkers;
+    public IReadOnlyList<MapMarker> AllMarkers => Volatile.Read(ref _allMarkers);
 
-    /// <summary>
-    /// 특정 맵의 마커 반환
-    /// </summary>
     public IReadOnlyList<MapMarker> GetMarkersForMap(string mapKey)
     {
-        if (_markersByMap.TryGetValue(mapKey, out var markers))
+        if (Volatile.Read(ref _markersByMap).TryGetValue(mapKey, out var markers))
             return markers;
         return Array.Empty<MapMarker>();
     }
 
-    /// <summary>
-    /// DB에서 모든 마커를 로드합니다.
-    /// </summary>
     public async Task<bool> LoadMarkersAsync()
     {
         if (!DatabaseExists)
@@ -77,23 +83,20 @@ public sealed class MapMarkerDbService
             return false;
         }
 
+        await _reloadLock.WaitAsync().ConfigureAwait(false);
         try
         {
             var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
             await using var connection = new SqliteConnection(connectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync().ConfigureAwait(false);
 
-            // MapMarkers 테이블 존재 여부 확인
-            if (!await TableExistsAsync(connection, "MapMarkers"))
+            if (!await TableExistsAsync(connection, "MapMarkers").ConfigureAwait(false))
             {
                 _log.Warning("MapMarkers table not found");
                 return false;
             }
 
-            // 마커 로드
-            var markers = await LoadAllMarkersAsync(connection);
-
-            // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
+            var markers = await LoadAllMarkersAsync(connection).ConfigureAwait(false);
             var newMarkersByMap = new Dictionary<string, List<MapMarker>>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var marker in markers)
@@ -106,10 +109,9 @@ public sealed class MapMarkerDbService
                 mapMarkers.Add(marker);
             }
 
-            // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
-            _allMarkers = markers;
-            _markersByMap = newMarkersByMap;
-            _isLoaded = true;
+            Interlocked.Exchange(ref _allMarkers, markers);
+            Interlocked.Exchange(ref _markersByMap, newMarkersByMap);
+            Volatile.Write(ref _isLoaded, true);
             _log.Info($"Loaded {markers.Count} markers from DB");
             return true;
         }
@@ -117,6 +119,10 @@ public sealed class MapMarkerDbService
         {
             _log.Error($"Error loading markers: {ex.Message}");
             return false;
+        }
+        finally
+        {
+            _reloadLock.Release();
         }
     }
 
@@ -256,17 +262,19 @@ public sealed class MapMarkerDbService
     /// </summary>
     private void OnDataRefreshed()
     {
-        // UI 스레드에서 이벤트 발생
-        if (System.Windows.Application.Current?.Dispatcher != null)
+        var handler = DataRefreshed;
+        if (handler == null) return;
+
+        foreach (EventHandler listener in handler.GetInvocationList())
         {
-            System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
+            try
             {
-                DataRefreshed?.Invoke(this, EventArgs.Empty);
-            });
-        }
-        else
-        {
-            DataRefreshed?.Invoke(this, EventArgs.Empty);
+                listener(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                _log.Warning($"Error in MapMarkerDbService.DataRefreshed listener: {ex.Message}");
+            }
         }
     }
 }

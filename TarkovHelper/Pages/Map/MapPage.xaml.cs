@@ -433,8 +433,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		{
 			GlobalKeyboardHookService.Instance.FloorKeyPressed -= OnFloorKeyPressed;
 			_overlayService.OverlayVisibilityChanged -= OnOverlayVisibilityChanged;
-			StopAutoTracking();
-			StopRaidEventMonitoring();
+			_raidEventService.RaidEvent -= OnRaidEvent;
 		}
 	}
 
@@ -973,7 +972,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		{
 			return;
 		}
-		string? text = FloorDetectionService.Instance.DetectFloor(_currentMapKey, originalPosition.X, originalPosition.Y, originalPosition.Z.GetValueOrDefault());
+		string? text = FloorDetectionService.Instance.DetectFloor(_currentMapKey, originalPosition.X, originalPosition.Y, originalPosition.Z.GetValueOrDefault(), _currentFloorId);
 		if (string.IsNullOrEmpty(text))
 		{
 			text = "main";
@@ -1462,9 +1461,13 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void StartRaidEventMonitoring()
 	{
+		_raidEventService.RaidEvent -= OnRaidEvent;
 		_raidEventService.RaidEvent += OnRaidEvent;
-		string? logFolderPath = SettingsService.Instance.LogFolderPath;
-		_raidEventService.StartMonitoring(logFolderPath);
+		if (!_raidEventService.IsMonitoring)
+		{
+			string? logFolderPath = SettingsService.Instance.LogFolderPath;
+			_raidEventService.StartMonitoring(logFolderPath);
+		}
 	}
 
 	private void StopRaidEventMonitoring()
@@ -2570,6 +2573,7 @@ public partial class MapPage : System.Windows.Controls.UserControl
 				TransformGroup transformGroup = new TransformGroup();
 				transformGroup.Children.Add(new TranslateTransform(0.0 - bounds.X, 0.0 - bounds.Y));
 				transformGroup.Children.Add(new ScaleTransform(scaleX, scaleY));
+				transformGroup.Freeze();
 				drawingContext.PushTransform(transformGroup);
 				drawingContext.DrawDrawing(drawingGroup);
 				drawingContext.Pop();
@@ -3770,7 +3774,9 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		}
 		System.Drawing.Color color2 = colorDialog.Color;
 		string hexColor = $"#{color2.R:X2}{color2.G:X2}{color2.B:X2}";
-		border.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(color2.R, color2.G, color2.B));
+		var bgBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(color2.R, color2.G, color2.B));
+		bgBrush.Freeze();
+		border.Background = bgBrush;
 		if (_trackerService != null)
 		{
 			_trackerService.Settings.SetMarkerColor(tag, hexColor);
@@ -3816,11 +3822,17 @@ public partial class MapPage : System.Windows.Controls.UserControl
 	{
 		if (_trackerService != null)
 		{
-			ColorVisit.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_trackerService.Settings.GetMarkerColor("visit")));
-			ColorMark.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_trackerService.Settings.GetMarkerColor("mark")));
-			ColorPlant.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_trackerService.Settings.GetMarkerColor("plantItem")));
-			ColorExtract.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_trackerService.Settings.GetMarkerColor("extract")));
-			ColorFind.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_trackerService.Settings.GetMarkerColor("findItem")));
+			static SolidColorBrush FrozenBrush(string hex)
+			{
+				var b = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex));
+				b.Freeze();
+				return b;
+			}
+			ColorVisit.Background = FrozenBrush(_trackerService.Settings.GetMarkerColor("visit"));
+			ColorMark.Background = FrozenBrush(_trackerService.Settings.GetMarkerColor("mark"));
+			ColorPlant.Background = FrozenBrush(_trackerService.Settings.GetMarkerColor("plantItem"));
+			ColorExtract.Background = FrozenBrush(_trackerService.Settings.GetMarkerColor("extract"));
+			ColorFind.Background = FrozenBrush(_trackerService.Settings.GetMarkerColor("findItem"));
 		}
 	}
 

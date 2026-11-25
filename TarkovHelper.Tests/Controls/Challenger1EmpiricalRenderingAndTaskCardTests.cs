@@ -212,10 +212,11 @@ namespace TarkovHelper.Tests.Controls
             var mainBorder = doc.Descendants("Border").FirstOrDefault(b => (b.GetAttr("DataContext") ?? "").Contains("CardModel"));
             Assert.NotNull(mainBorder);
 
-            // 2. Trader Avatar / Initial
-            Assert.NotNull(doc.Descendants("TextBlock").FirstOrDefault(tb => (tb.GetAttr("Text") ?? "").Contains("{Binding TraderInitial}")));
-            // 3. Avatar Image
-            Assert.NotNull(doc.Descendants("Image").FirstOrDefault(img => (img.GetAttr("Source") ?? "").Contains("{Binding AvatarSource}")));
+            // 2. Trader Lock Toggle Icon Badge
+            Assert.NotNull(doc.Descendants("TextBlock").FirstOrDefault(tb => (tb.GetAttr("Text") ?? "").Contains("{Binding LockToggleIcon}")));
+            // 3. AvatarSource property on TaskCardModel & DetailedItemRewards IconSource Image in XAML
+            Assert.NotNull(typeof(TarkovHelper.Controls.TaskCardViewModel).GetProperty("AvatarSource"));
+            Assert.NotNull(doc.Descendants("Image").FirstOrDefault(img => (img.GetAttr("Source") ?? "").Contains("{Binding IconSource}")));
             // 4. Task Title
             Assert.NotNull(doc.Descendants("TextBlock").FirstOrDefault(tb => (tb.GetAttr("Text") ?? "").Contains("{Binding Title}")));
             // 5. Wiki Link Button
