@@ -381,7 +381,7 @@
                             CornerRadius="6" Padding="6,3">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <!-- PMC Extracts Pill Button -->
-                            <ToggleButton x:Name="BtnTogglePmcExtracts" IsChecked="True"
+                            <ToggleButton x:Name="BtnTogglePmcExtracts" IsChecked="False"
                                           Click="BtnTogglePmcExtracts_Click"
                                           Height="26" Padding="8,0"
                                           Style="{StaticResource MapPillToggleStyle}"
@@ -390,7 +390,7 @@
                             </ToggleButton>
 
                             <!-- Scav Extracts Pill Button -->
-                            <ToggleButton x:Name="BtnToggleScavExtracts" IsChecked="True"
+                            <ToggleButton x:Name="BtnToggleScavExtracts" IsChecked="False"
                                           Click="BtnToggleScavExtracts_Click"
                                           Height="26" Padding="8,0" Margin="4,0,0,0"
                                           Style="{StaticResource MapPillToggleStyle}"
@@ -399,7 +399,7 @@
                             </ToggleButton>
 
                             <!-- Spawns Pill Button -->
-                            <ToggleButton x:Name="BtnToggleSpawns" IsChecked="True"
+                            <ToggleButton x:Name="BtnToggleSpawns" IsChecked="False"
                                           Click="BtnToggleSpawns_Click"
                                           Height="26" Padding="8,0" Margin="4,0,0,0"
                                           Style="{StaticResource MapPillToggleStyle}"
@@ -859,9 +859,9 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
                             <TextBlock x:Name="TxtExtractNameSizeLabel" Text="Name size:" Foreground="{StaticResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" Width="100"/>
-                            <Slider x:Name="SliderExtractTextSize" Width="120" Minimum="8" Maximum="24"
-                                    Value="16" ValueChanged="SliderExtractTextSize_ValueChanged"/>
-                            <TextBlock x:Name="TxtExtractTextSize" Text="16" Width="30"
+                            <Slider x:Name="SliderExtractTextSize" Width="120" Minimum="7" Maximum="24"
+                                    Value="10" ValueChanged="SliderExtractTextSize_ValueChanged"/>
+                            <TextBlock x:Name="TxtExtractTextSize" Text="10" Width="30"
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        VerticalAlignment="Center" Margin="8,0,0,0"/>
                         </StackPanel>

@@ -32,9 +32,9 @@ public class MapExtractMarkerManager
     private string? _currentFloorId;
     private double _zoomLevel = 1.0;
     private bool _showExtractMarkers = true;
-    private bool _showPmcExtracts = true;
-    private bool _showScavExtracts = true;
-    private bool _showTransitExtracts = true;
+    private bool _showPmcExtracts = false;
+    private bool _showScavExtracts = false;
+    private bool _showTransitExtracts = false;
     private double _extractNameTextSize = 10.0;
 
     // 보정 모드 콜백 (MapCalibrationController에서 처리)
@@ -197,7 +197,7 @@ public class MapExtractMarkerManager
 
         var baseSize = 20.0;
         var markerSize = baseSize * mapScale;
-        var dotSize = 8.0 * mapScale;
+        var dotSize = 6.5 * mapScale;
 
         // 진영 결정 (오버라이드 또는 기본)
         var faction = overrideFaction ?? extract.Faction;
@@ -223,6 +223,7 @@ public class MapExtractMarkerManager
             : extract.Name;
 
         var textSize = _extractNameTextSize * mapScale;
+        var effectiveFontSize = Math.Max(7.0, textSize * 0.9);
 
         // 이름과 층 뱃지를 담을 StackPanel
         var labelStackPanel = new StackPanel
@@ -231,20 +232,27 @@ public class MapExtractMarkerManager
             HorizontalAlignment = HorizontalAlignment.Center
         };
 
-        // 이름 라벨 - 고대비 다크 뱃지와 굵은 텍스트로 가독성 극대화
+        var labelBg = new SolidColorBrush(Color.FromArgb(230, 16, 17, 22));
+        labelBg.Freeze();
+        var labelBorder = new SolidColorBrush(Color.FromArgb(170, 58, 62, 78));
+        labelBorder.Freeze();
+        var fillBrush = new SolidColorBrush(fillColor);
+        fillBrush.Freeze();
+
+        // 이름 라벨 - 콤팩트한 다크 뱃지와 세밀한 텍스트로 가독성 및 시야 확보
         var nameLabel = new Border
         { 
-            Background = new SolidColorBrush(Color.FromArgb(240, 18, 18, 24)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(200, 60, 60, 75)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(3 * mapScale),
-            Padding = new Thickness(5 * mapScale, 2 * mapScale, 5 * mapScale, 2 * mapScale),
+            Background = labelBg,
+            BorderBrush = labelBorder,
+            BorderThickness = new Thickness(0.8),
+            CornerRadius = new CornerRadius(2.5 * mapScale),
+            Padding = new Thickness(3.5 * mapScale, 1.0 * mapScale, 3.5 * mapScale, 1.0 * mapScale),
             Child = new TextBlock
             { 
                 Text = displayName,
-                FontSize = Math.Max(10.5, textSize),
-                FontWeight = FontWeights.Bold,
-                Foreground = new SolidColorBrush(fillColor),
+                FontSize = effectiveFontSize,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = fillBrush,
                 TextAlignment = TextAlignment.Center
             }
         };
@@ -255,17 +263,19 @@ public class MapExtractMarkerManager
         if (floorInfo.HasValue)
         { 
             var (arrow, floorText, indicatorColor) = floorInfo.Value;
+            var badgeBg = new SolidColorBrush(indicatorColor);
+            badgeBg.Freeze();
 
             var floorBadge = new Border
             { 
-                Background = new SolidColorBrush(indicatorColor),
-                CornerRadius = new CornerRadius(3 * mapScale),
-                Padding = new Thickness(4 * mapScale, 2 * mapScale, 4 * mapScale, 2 * mapScale),
-                Margin = new Thickness(3 * mapScale, 0, 0, 0),
+                Background = badgeBg,
+                CornerRadius = new CornerRadius(2.5 * mapScale),
+                Padding = new Thickness(3.0 * mapScale, 1.0 * mapScale, 3.0 * mapScale, 1.0 * mapScale),
+                Margin = new Thickness(2.0 * mapScale, 0, 0, 0),
                 Child = new TextBlock
                 { 
                     Text = $"{arrow}{floorText}",
-                    FontSize = textSize * 0.9,
+                    FontSize = Math.Max(6.5, effectiveFontSize * 0.85),
                     FontWeight = FontWeights.Bold,
                     Foreground = Brushes.White,
                     TextAlignment = TextAlignment.Center
@@ -279,7 +289,7 @@ public class MapExtractMarkerManager
         var labelWidth = labelStackPanel.DesiredSize.Width;
         var labelHeight = labelStackPanel.DesiredSize.Height;
         Canvas.SetLeft(labelStackPanel, -labelWidth / 2);
-        Canvas.SetTop(labelStackPanel, (dotSize / 2) + (2 * mapScale));
+        Canvas.SetTop(labelStackPanel, (dotSize / 2) + (1.5 * mapScale));
         canvas.Children.Add(labelStackPanel);
 
         // TarkovTracker 스타일 마커: 깔끔한 원형 도트(Point)와 라벨
@@ -287,9 +297,9 @@ public class MapExtractMarkerManager
         { 
             Width = dotSize,
             Height = dotSize,
-            Fill = new SolidColorBrush(fillColor),
+            Fill = fillBrush,
             Stroke = Brushes.White,
-            StrokeThickness = 1.2 * mapScale
+            StrokeThickness = 1.0 * mapScale
         };
         Canvas.SetLeft(dot, -dotSize / 2);
         Canvas.SetTop(dot, -dotSize / 2);

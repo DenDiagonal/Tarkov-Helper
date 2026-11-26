@@ -674,15 +674,15 @@ public class MapSettings
         get
         {
             EnsureLoaded();
-            return _extractNameSize ?? 16.0;
+            return _extractNameSize ?? 10.0;
         }
         set
         {
-            var clampedValue = Math.Clamp(value, 10.0, 32.0);
-            if (Math.Abs((_extractNameSize ?? 16.0) - clampedValue) > 0.1)
+            var clampedValue = Math.Clamp(value, 7.0, 24.0);
+            if (Math.Abs((_extractNameSize ?? 10.0) - clampedValue) > 0.1)
             {
                 _extractNameSize = clampedValue;
-                SaveSetting(KeyMapExtractNameSize, clampedValue.ToString());
+                SaveSetting(KeyMapExtractNameSize, clampedValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
         }
     }
@@ -1373,35 +1373,61 @@ public class MapSettings
             if (ParseDouble(KeyMapLastTranslateY, out var lastTranslateY)) _lastTranslateY = lastTranslateY;
             if (ParseBool(KeyMapCustomMarkersPanelCollapsed, out var customMarkersCollapsed)) _customMarkersPanelCollapsed = customMarkersCollapsed;
 
-            if (GetBatch("map.config.defaults_quests_only_v2") != "true")
+            // Quests-only startup invariant: extractions, spawns, and map markers always start unchecked on launch
+            _showPmcExtracts = false;
+            _showScavExtracts = false;
+            _showTransits = false;
+            _showPmcSpawns = false;
+            _showSniperScavs = false;
+            _showRogues = false;
+            _showCultists = false;
+            _showLevers = false;
+            _showBosses = false;
+
+            if (string.Equals(GetBatch(KeyMapShowPmcExtracts), "True", StringComparison.OrdinalIgnoreCase))
+                _userDataDb.SetSetting(KeyMapShowPmcExtracts, "False");
+            if (string.Equals(GetBatch(KeyMapShowScavExtracts), "True", StringComparison.OrdinalIgnoreCase))
+                _userDataDb.SetSetting(KeyMapShowScavExtracts, "False");
+            if (string.Equals(GetBatch(KeyMapShowTransits), "True", StringComparison.OrdinalIgnoreCase))
+                _userDataDb.SetSetting(KeyMapShowTransits, "False");
+
+            foreach (var kvp in allSettings)
             {
-                var mapKeys = new[] { "customs", "factory", "groundzero", "interchange", "lighthouse", "reserve", "shoreline", "streetsoftarkov", "streets", "terminal", "the-lab", "the-labyrinth", "woods", "labs", "labyrinth" };
-                foreach (var mk in mapKeys)
+                if (!kvp.Key.StartsWith("map.config.", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(kvp.Key, "map.config.defaults_quests_only_v2", StringComparison.OrdinalIgnoreCase) ||
+                    string.IsNullOrEmpty(kvp.Value))
                 {
-                    var settingKey = $"map.config.{mk}";
-                    var existingJson = GetBatch(settingKey);
-                    if (!string.IsNullOrEmpty(existingJson))
+                    continue;
+                }
+
+                try
+                {
+                    var cfg = JsonSerializer.Deserialize<PerMapConfig>(kvp.Value);
+                    if (cfg != null && (cfg.ShowPmcExtracts || cfg.ShowScavExtracts || cfg.ShowSpawns ||
+                        cfg.ShowSnipers || cfg.ShowRogues || cfg.ShowCultists || cfg.ShowLevers || cfg.ShowBosses))
                     {
-                        try
-                        {
-                            var cfg = JsonSerializer.Deserialize<PerMapConfig>(existingJson);
-                            if (cfg != null)
-                            {
-                                cfg.ShowPmcExtracts = false;
-                                cfg.ShowScavExtracts = false;
-                                cfg.ShowSpawns = false;
-                                cfg.ShowSnipers = false;
-                                cfg.ShowRogues = false;
-                                cfg.ShowCultists = false;
-                                cfg.ShowLevers = false;
-                                cfg.ShowBosses = false;
-                                _userDataDb.SetSetting(settingKey, JsonSerializer.Serialize(cfg));
-                            }
-                        }
-                        catch { }
+                        cfg.ShowPmcExtracts = false;
+                        cfg.ShowScavExtracts = false;
+                        cfg.ShowSpawns = false;
+                        cfg.ShowSnipers = false;
+                        cfg.ShowRogues = false;
+                        cfg.ShowCultists = false;
+                        cfg.ShowLevers = false;
+                        cfg.ShowBosses = false;
+                        _userDataDb.SetSetting(kvp.Key, JsonSerializer.Serialize(cfg));
                     }
                 }
-                _userDataDb.SetSetting("map.config.defaults_quests_only_v2", "true");
+                catch { }
+            }
+
+            if (GetBatch("map.extractNameSize.compact_v1") != "true")
+            {
+                if (!_extractNameSize.HasValue || _extractNameSize.Value >= 14.0)
+                {
+                    _extractNameSize = 10.0;
+                    _userDataDb.SetSetting(KeyMapExtractNameSize, "10");
+                }
+                _userDataDb.SetSetting("map.extractNameSize.compact_v1", "true");
             }
         }
         catch (Exception ex)

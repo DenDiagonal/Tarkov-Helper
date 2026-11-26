@@ -91,27 +91,27 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private bool _showExtractMarkers = true;
 
-	private bool _showPmcExtracts = true;
+	private bool _showPmcExtracts = false;
 
-	private bool _showScavExtracts = true;
+	private bool _showScavExtracts = false;
 
-	private bool _showTransitExtracts = true;
+	private bool _showTransitExtracts = false;
 
 	private double _extractNameTextSize = 10.0;
 
 	private bool _hideCompletedObjectives = true;
 
-	private bool _showPmcSpawnsMarker = true;
+	private bool _showPmcSpawnsMarker = false;
 
-	private bool _showSniperScavsMarker = true;
+	private bool _showSniperScavsMarker = false;
 
-	private bool _showRoguesMarker = true;
+	private bool _showRoguesMarker = false;
 
-	private bool _showCultistsMarker = true;
+	private bool _showCultistsMarker = false;
 
-	private bool _showLeversMarkerOverlay = true;
+	private bool _showLeversMarkerOverlay = false;
 
-	private bool _showBossesMarker = true;
+	private bool _showBossesMarker = false;
 
 	private bool _isMapMarkersPanelCollapsed;
 
@@ -542,11 +542,25 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			PopulateMapComboBox();
 			StartRaidEventMonitoring();
 			RestoreMapState();
+			if (string.IsNullOrEmpty(_currentMapKey) && CmbMapSelect.SelectedItem is ComboBoxItem { Tag: string initialMapKey })
+			{
+				_currentMapKey = initialMapKey;
+				_trackerService?.SetCurrentMap(initialMapKey);
+			}
+			if (!string.IsNullOrEmpty(_currentMapKey))
+			{
+				LoadAndApplyPerMapConfig(_currentMapKey);
+				if (CmbFloorSelect.Items.Count == 0)
+				{
+					UpdateFloorComboBox(_currentMapKey);
+				}
+			}
 			UpdateUI();
 			await Task.Delay(50, ct);
 			if (!string.IsNullOrEmpty(_currentMapKey))
 			{
-				await LoadMapImageAsync(_currentMapKey, centerView: true, ct);
+				bool centerView = MapSettings.Instance.GetPerMapConfig(_currentMapKey).ZoomLevel < 0.1;
+				await LoadMapImageAsync(_currentMapKey, centerView: centerView, ct);
 			}
 			await LoadQuestObjectivesAsync(ct);
 			await Task.Delay(20, ct);
@@ -786,30 +800,50 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			SettingsService.Instance.MapQuestMarkerStyle = (int)_questMarkerStyle;
 		}
 		_hideCompletedObjectives = instance.MapHideCompletedObjectives;
-		ChkShowPmcExtracts.IsChecked = _showPmcExtracts;
-		ChkShowScavExtracts.IsChecked = _showScavExtracts;
-		ChkShowTransitExtracts.IsChecked = _showTransitExtracts;
-		SliderExtractTextSize.Value = _extractNameTextSize;
-		ChkShowExtractMarkers.IsChecked = _showExtractMarkers;
-		ChkShowQuestMarkers.IsChecked = _showQuestMarkers;
-		CmbQuestMarkerStyle.SelectedIndex = (int)_questMarkerStyle;
-		if (ChkSettingTaskTitles != null)
+		_isApplyingMapConfig = true;
+		try
 		{
-			ChkSettingTaskTitles.IsChecked = _questMarkerStyle == QuestMarkerStyle.DefaultWithName || _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
+			ChkShowPmcExtracts.IsChecked = _showPmcExtracts;
+			ChkShowScavExtracts.IsChecked = _showScavExtracts;
+			ChkShowTransitExtracts.IsChecked = _showTransitExtracts;
+			if (BtnTogglePmcExtracts != null)
+			{
+				BtnTogglePmcExtracts.IsChecked = _showPmcExtracts;
+			}
+			if (BtnToggleScavExtracts != null)
+			{
+				BtnToggleScavExtracts.IsChecked = _showScavExtracts;
+			}
+			SliderExtractTextSize.Value = _extractNameTextSize;
+			if (TxtExtractTextSize != null)
+			{
+				TxtExtractTextSize.Text = _extractNameTextSize.ToString("F0");
+			}
+			ChkShowExtractMarkers.IsChecked = _showExtractMarkers;
+			ChkShowQuestMarkers.IsChecked = _showQuestMarkers;
+			CmbQuestMarkerStyle.SelectedIndex = (int)_questMarkerStyle;
+			if (ChkSettingTaskTitles != null)
+			{
+				ChkSettingTaskTitles.IsChecked = _questMarkerStyle == QuestMarkerStyle.DefaultWithName || _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
+			}
+			SliderQuestNameTextSize.Value = _questNameTextSize;
+			ChkHideCompletedObjectives.IsChecked = _hideCompletedObjectives;
+			SliderMarkerOpacity.Value = MapSettings.Instance.MarkerOpacity;
+			if (ExtractMarkersContainer != null)
+			{
+				ExtractMarkersContainer.Visibility = ((!_showExtractMarkers) ? Visibility.Collapsed : Visibility.Visible);
+			}
+			if (QuestMarkersContainer != null)
+			{
+				QuestMarkersContainer.Visibility = ((!_showQuestMarkers) ? Visibility.Collapsed : Visibility.Visible);
+			}
+			UpdateMarkerColorUI();
+			LoadMapMarkersSettings();
 		}
-		SliderQuestNameTextSize.Value = _questNameTextSize;
-		ChkHideCompletedObjectives.IsChecked = _hideCompletedObjectives;
-		SliderMarkerOpacity.Value = MapSettings.Instance.MarkerOpacity;
-		if (ExtractMarkersContainer != null)
+		finally
 		{
-			ExtractMarkersContainer.Visibility = ((!_showExtractMarkers) ? Visibility.Collapsed : Visibility.Visible);
+			_isApplyingMapConfig = false;
 		}
-		if (QuestMarkersContainer != null)
-		{
-			QuestMarkersContainer.Visibility = ((!_showQuestMarkers) ? Visibility.Collapsed : Visibility.Visible);
-		}
-		UpdateMarkerColorUI();
-		LoadMapMarkersSettings();
 		_isCustomMarkersPanelCollapsed = instance.IsCustomMarkersPanelCollapsed;
 		UpdateCustomMarkersPanelUI(_isCustomMarkersPanelCollapsed);
 		if (ChkFixedView != null)
@@ -833,6 +867,12 @@ public partial class MapPage : System.Windows.Controls.UserControl
 		ChkShowCultists.IsChecked = _showCultistsMarker;
 		ChkShowLeversMarker.IsChecked = _showLeversMarkerOverlay;
 		ChkShowBosses.IsChecked = _showBossesMarker;
+		if (BtnToggleSpawns != null) BtnToggleSpawns.IsChecked = _showPmcSpawnsMarker;
+		if (ChkSettingSniperScavs != null) ChkSettingSniperScavs.IsChecked = _showSniperScavsMarker;
+		if (ChkSettingRogues != null) ChkSettingRogues.IsChecked = _showRoguesMarker;
+		if (ChkSettingCultists != null) ChkSettingCultists.IsChecked = _showCultistsMarker;
+		if (ChkSettingLevers != null) ChkSettingLevers.IsChecked = _showLeversMarkerOverlay;
+		if (ChkSettingBosses != null) ChkSettingBosses.IsChecked = _showBossesMarker;
 		LoadMapMarkerIcons();
 	}
 
@@ -4055,36 +4095,91 @@ public partial class MapPage : System.Windows.Controls.UserControl
 
 	private void BtnTogglePmcExtracts_Click(object sender, RoutedEventArgs e)
 	{
-		if (ChkShowPmcExtracts != null)
+		bool isChecked = BtnTogglePmcExtracts.IsChecked ?? false;
+		_showPmcExtracts = isChecked;
+		_showTransitExtracts = isChecked;
+		if (isChecked && !_showExtractMarkers)
 		{
-			ChkShowPmcExtracts.IsChecked = BtnTogglePmcExtracts.IsChecked;
+			_showExtractMarkers = true;
+			if (ExtractMarkersContainer != null)
+			{
+				ExtractMarkersContainer.Visibility = Visibility.Visible;
+			}
+			if (ChkShowExtractMarkers != null)
+			{
+				ChkShowExtractMarkers.IsChecked = true;
+			}
 		}
-		_showPmcExtracts = BtnTogglePmcExtracts.IsChecked ?? true;
-		_showTransitExtracts = _showPmcExtracts;
+		_isApplyingMapConfig = true;
+		try
+		{
+			if (ChkShowPmcExtracts != null)
+			{
+				ChkShowPmcExtracts.IsChecked = isChecked;
+			}
+			if (ChkShowTransitExtracts != null)
+			{
+				ChkShowTransitExtracts.IsChecked = isChecked;
+			}
+		}
+		finally
+		{
+			_isApplyingMapConfig = false;
+		}
 		SaveCurrentPerMapMarkerConfig();
-		RefreshExtractMarkers();
+		_ = RefreshExtractMarkers();
 	}
 
 	private void BtnToggleScavExtracts_Click(object sender, RoutedEventArgs e)
 	{
-		if (ChkShowScavExtracts != null)
+		bool isChecked = BtnToggleScavExtracts.IsChecked ?? false;
+		_showScavExtracts = isChecked;
+		if (isChecked && !_showExtractMarkers)
 		{
-			ChkShowScavExtracts.IsChecked = BtnToggleScavExtracts.IsChecked;
+			_showExtractMarkers = true;
+			if (ExtractMarkersContainer != null)
+			{
+				ExtractMarkersContainer.Visibility = Visibility.Visible;
+			}
+			if (ChkShowExtractMarkers != null)
+			{
+				ChkShowExtractMarkers.IsChecked = true;
+			}
 		}
-		_showScavExtracts = BtnToggleScavExtracts.IsChecked ?? true;
+		_isApplyingMapConfig = true;
+		try
+		{
+			if (ChkShowScavExtracts != null)
+			{
+				ChkShowScavExtracts.IsChecked = isChecked;
+			}
+		}
+		finally
+		{
+			_isApplyingMapConfig = false;
+		}
 		SaveCurrentPerMapMarkerConfig();
-		RefreshExtractMarkers();
+		_ = RefreshExtractMarkers();
 	}
 
 	private void BtnToggleSpawns_Click(object sender, RoutedEventArgs e)
 	{
-		if (ChkShowPmcSpawns != null)
+		bool isChecked = BtnToggleSpawns.IsChecked ?? false;
+		_showPmcSpawnsMarker = isChecked;
+		_isApplyingMapConfig = true;
+		try
 		{
-			ChkShowPmcSpawns.IsChecked = BtnToggleSpawns.IsChecked;
+			if (ChkShowPmcSpawns != null)
+			{
+				ChkShowPmcSpawns.IsChecked = isChecked;
+			}
 		}
-		_showPmcSpawnsMarker = BtnToggleSpawns.IsChecked ?? true;
+		finally
+		{
+			_isApplyingMapConfig = false;
+		}
 		SaveCurrentPerMapMarkerConfig();
-		RefreshMapMarkers();
+		_ = RefreshMapMarkers();
 	}
 
 	private void BtnMapSettingsCog_Click(object sender, RoutedEventArgs e)
@@ -4173,12 +4268,28 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			PerMapConfig perMapConfig = MapSettings.Instance.GetPerMapConfig(mapKey);
 			_showPmcExtracts = perMapConfig.ShowPmcExtracts;
 			_showScavExtracts = perMapConfig.ShowScavExtracts;
+			_showTransitExtracts = perMapConfig.ShowPmcExtracts;
 			_showPmcSpawnsMarker = perMapConfig.ShowSpawns;
 			_showSniperScavsMarker = perMapConfig.ShowSnipers;
 			_showRoguesMarker = perMapConfig.ShowRogues;
 			_showCultistsMarker = perMapConfig.ShowCultists;
 			_showLeversMarkerOverlay = perMapConfig.ShowLevers;
 			_showBossesMarker = perMapConfig.ShowBosses;
+			if (_extractMarkerManager != null)
+			{
+				_extractMarkerManager.SetShowPmcExtracts(_showPmcExtracts);
+				_extractMarkerManager.SetShowScavExtracts(_showScavExtracts);
+				_extractMarkerManager.SetShowTransitExtracts(_showTransitExtracts);
+			}
+			if (_mapMarkersManager != null)
+			{
+				_mapMarkersManager.SetShowPmcSpawns(_showPmcSpawnsMarker);
+				_mapMarkersManager.SetShowSniperScavs(_showSniperScavsMarker);
+				_mapMarkersManager.SetShowRogues(_showRoguesMarker);
+				_mapMarkersManager.SetShowCultists(_showCultistsMarker);
+				_mapMarkersManager.SetShowLevers(_showLeversMarkerOverlay);
+				_mapMarkersManager.SetShowBosses(_showBossesMarker);
+			}
 			if (BtnTogglePmcExtracts != null)
 			{
 				BtnTogglePmcExtracts.IsChecked = perMapConfig.ShowPmcExtracts;
@@ -4218,6 +4329,10 @@ public partial class MapPage : System.Windows.Controls.UserControl
 			if (ChkShowScavExtracts != null)
 			{
 				ChkShowScavExtracts.IsChecked = perMapConfig.ShowScavExtracts;
+			}
+			if (ChkShowTransitExtracts != null)
+			{
+				ChkShowTransitExtracts.IsChecked = perMapConfig.ShowPmcExtracts;
 			}
 			if (ChkShowPmcSpawns != null)
 			{
